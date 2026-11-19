@@ -9,6 +9,7 @@ import dev.rail8.api.Runtime;
 import dev.rail8.api.StepResources;
 import dev.rail8.api.Timer;
 import dev.rail8.api.plugin.ComponentContext;
+import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.components.mock.Behaviour;
 import dev.rail8.components.mock.MockComponent;
 import dev.rail8.core.dlq.InMemoryDlq;
@@ -249,7 +250,7 @@ final class FlowTests {
      * other modules and the plugins are not built again.
      */
     private Component direct(FakeRuntime rt, Timer timer) {
-        return plugins.components(DIRECT, new ComponentContext(vertx, rt.blobs(), rt.ids(), timer, rt.clock())).stream()
+        return plugins.components(DIRECT, new ComponentContext(vertx, rt.blobs(), rt.ids(), timer, rt.clock(), HttpIngress.NONE)).stream()
                 .filter(c -> c.scheme().equals(DIRECT)).findFirst().orElseThrow();
     }
 

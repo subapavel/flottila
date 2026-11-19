@@ -9,7 +9,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.UncheckedIOException;
-import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -114,18 +113,16 @@ class ValidateCommandTest {
     }
 
     /**
-     * Nothing is started: the tree's in endpoint names a loopback port this case holds bound, so a validate that started (or
-     * deployed) the http consumer could not listen and would not answer 0.
+     * Nothing is started: the tree's in endpoint is an http door, served on the node's HTTP port, and this case holds the node's
+     * default HTTP port bound, so a validate that opened the port, or started (or deployed) the http consumer, could not listen
+     * and would not answer 0.
      */
     @Test
-    void validateStartsNothingItsInPortMayBeTaken() throws Exception {
-        try (ServerSocket taken = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
-            Path tree = CliRuns.copy(FIXTURES.resolve("tree"), tmp.resolve("tree"));
-            CliRuns.rewrite(tree.resolve("in.yaml"), Map.of("port: 18081", "port: " + taken.getLocalPort()));
+    void validateStartsNothingTheNodesHttpPortMayBeTaken() throws Exception {
+        try (ServerSocket taken = CliRuns.holdTheDefaultHttpPort()) {
+            Ran ran = run("validate", FIXTURES.resolve("tree").toString());
 
-            Ran ran = run("validate", tree.toString());
-
-            assertEquals(0, ran.exit(), "the port is held by the case, the validate binds nothing: " + ran);
+            assertEquals(0, ran.exit(), "the port is taken, the validate binds nothing: " + ran);
             assertEquals(TREE, ran.outLines(), ran.toString());
         }
     }
@@ -170,7 +167,7 @@ class ValidateCommandTest {
         assertEquals(DEMO_TREE, ran.outLines().subList(0, Math.min(DEMO_TREE.size(), ran.outLines().size())), "the tree first: " + ran);
         assertFalse(ran.problems().isEmpty(), ran.toString());
         assertEquals(ran.outLines().size(), DEMO_TREE.size() + ran.problems().size(), "nothing but the tree and the problems: " + ran);
-        assertTrue(ran.problems().stream().allMatch(l -> l.startsWith("problem: endpoint 'http-in' config (environment dev) at '/port': ")), ran.toString());
+        assertTrue(ran.problems().stream().allMatch(l -> l.startsWith("problem: endpoint 'http-in' config (environment dev) at '/address': ")), ran.toString());
     }
 
     /**
@@ -531,18 +528,18 @@ class ValidateCommandTest {
     }
 
     /**
-     * FIX-110: common runs an http flow listening on a loopback port this case holds bound; validating invoice, which depends on
-     * it, answers 0 with no problem — the dry build neither deploys nor starts the dependency, so nothing tries to listen there
-     * (a deployed common could not, and its refusal would be a problem).
+     * Common runs an http flow, served on the node's HTTP port, whose default port this case holds bound; validating invoice,
+     * which depends on it, answers 0 with no problem — the dry build neither deploys nor starts the dependency and opens no
+     * HTTP port, so nothing tries to listen there (a deployed common could not, and its refusal would be a problem).
      */
     @Test
     void aDependencyWithAnHttpFlowBindsNoPort() throws Exception {
-        try (ServerSocket taken = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
-            Path invoice = DepsFixture.invoiceOverCommonWithAnHttpFlow(tmp.resolve("deps"), taken.getLocalPort());
+        try (ServerSocket taken = CliRuns.holdTheDefaultHttpPort()) {
+            Path invoice = DepsFixture.invoiceOverCommonWithAnHttpFlow(tmp.resolve("deps"));
 
             Ran ran = run("validate", invoice.toString());
 
-            assertEquals(List.of(), ran.problems(), "the port is held by the case, the dry build binds nothing: " + ran);
+            assertEquals(List.of(), ran.problems(), "the port is taken, the dry build binds nothing: " + ran);
             assertEquals(0, ran.exit(), ran.toString());
             assertEquals("", ran.err(), ran.toString());
         }

@@ -16,8 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * CORE-5a acceptance A4 (packet S10, S11): the peer link's keys and the journal's copies, read by NodeConfig only —
- * {@code RAIL8_PEER_BIND} (0.0.0.0), {@code RAIL8_PEER_PORT} (8083; 0 = any free port; 0..65535; 8082 is the compose
- * async door), {@code RAIL8_PEER_HOST} (the node id), {@code RAIL8_PEER_TIMEOUT} (PT2S; PT0.1S..PT30S),
+ * {@code RAIL8_PEER_BIND} (0.0.0.0), {@code RAIL8_PEER_PORT} (8083; 0 = any free port; 0..65535),
+ * {@code RAIL8_PEER_HOST} (the node id), {@code RAIL8_PEER_TIMEOUT} (PT2S; PT0.1S..PT30S),
  * {@code RAIL8_PEER_READS} (16; 1..64 per peer, CORE-5a2 P3), {@code RAIL8_JOURNAL_COPIES} (1..2; unset 1 in dev and ci, 2 in every
  * deployed environment). A value out of its range or unparseable is an {@link IllegalArgumentException} naming the key;
  * {@code RAIL8_JOURNAL_KEY_GENERATE=true} with more than one copy is refused naming both keys (a generated key is one dev

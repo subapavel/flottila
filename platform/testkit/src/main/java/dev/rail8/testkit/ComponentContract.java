@@ -13,6 +13,7 @@ import dev.rail8.api.Health;
 import dev.rail8.api.NackException;
 import dev.rail8.api.Producer;
 import dev.rail8.api.Timer;
+import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.api.settings.Direction;
 import dev.rail8.api.settings.Settings;
 import io.vertx.core.Future;
@@ -67,7 +68,9 @@ import static org.junit.jupiter.api.Assertions.fail;
  * its {@link Deadline} runs out is cut — failed with a retryable {@link NackException} on the {@link Timer} the component was
  * built with ({@link #component(Timer)}), the deadline re-read there, so a deadline renewed meanwhile is waited for. A fresh
  * consumer of an endpoint whose last consumer stopped serves it, as the node starts one after a break; {@link Consumer#broken()}
- * stays pending while a consumer delivers or refuses messages, and through its stop.
+ * stays pending while a consumer delivers or refuses messages, and through its stop. A component's prefix on the node's HTTP
+ * port ({@link Component#httpPrefix()}) is none, or one of {@link HttpIngress#PREFIX_PATTERN} other than
+ * {@link HttpIngress#RESERVED_PREFIX}, the same on every call, with {@link HttpIngress#ADDRESS} among its settings.
  *
  * @since 0.1
  */
@@ -172,6 +175,20 @@ public abstract class ComponentContract {
         } finally {
             consumer.stop().await();
         }
+    }
+
+    @Test
+    public void anHttpPrefixIsOfItsFormTheSameOnEveryCallAndItsSettingsListTheAddress() {
+        Component component = component();
+        Optional<String> prefix = component.httpPrefix();
+        assertNotNull(prefix, "httpPrefix() answers an Optional, never null");
+        assertEquals(prefix, component.httpPrefix(), "the node reads the prefix once and takes it as the same on every call");
+        if (prefix.isEmpty()) return;
+        assertTrue(prefix.get().matches(HttpIngress.PREFIX_PATTERN), "a prefix is / and one segment of " + HttpIngress.PREFIX_PATTERN + ": " + prefix.get());
+        assertFalse(HttpIngress.RESERVED_PREFIX.equals(prefix.get()), "the prefix " + HttpIngress.RESERVED_PREFIX + " is the platform's own");
+        Object address = ((List<?>) Settings.of(HttpIngress.ADDRESS).toJson().get("fields")).getFirst();
+        assertTrue(((List<?>) component.settings().toJson().get("fields")).contains(address),
+                "a component with a prefix lists HttpIngress.ADDRESS among its settings, so the node finds the path of each in endpoint");
     }
 
     /** Whether {@code component}'s class, or a superclass of it, declares {@link Component#configSchema()} rather than taking the default. */

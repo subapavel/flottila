@@ -52,10 +52,8 @@ import java.util.stream.Stream;
 
 import static dev.rail8.runtime.NodeIT.DEMO;
 import static dev.rail8.runtime.NodeIT.demoFiles;
-import static dev.rail8.runtime.NodeIT.freePort;
 import static dev.rail8.runtime.NodeIT.get;
 import static dev.rail8.runtime.NodeIT.http;
-import static dev.rail8.runtime.NodeIT.refuses;
 import static dev.rail8.runtime.NodeIT.replaced;
 import static dev.rail8.runtime.NodeIT.send;
 import static dev.rail8.runtime.NodeIT.sha256;
@@ -152,6 +150,7 @@ class RestoreIT {
         env.put("RAIL8_NODE_ID", nodeId);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", dataDir.toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -175,7 +174,7 @@ class RestoreIT {
     Node start(Map<String, String> env) throws Exception {
         SaxonXml xml = new SaxonXml();
         NodeConfig config = NodeConfig.from(env);
-        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())),
                 Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
         running.add(node);
         return node;
@@ -298,8 +297,7 @@ class RestoreIT {
             }
         })).listen(0, "127.0.0.1").await();
         partners.add(partner);
-        int inPort = freePort();
-        Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
+        Map<String, byte[]> files = demoFiles("http://127.0.0.1:" + partner.actualPort());
         files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once", "maxInFlight: 16", "maxInFlight: 1")));
         files.put("endpoints/partner-domestic.yaml", replaced(files.get("endpoints/partner-domestic.yaml"), Map.of("maxBodyBytes: 1048576", "maxBodyBytes: 1048576\n  timeoutMs: 600000")));
         byte[] zip = zip(files);
@@ -311,7 +309,7 @@ class RestoreIT {
             HttpResponse<String> put = send(client, "PUT", one.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip, "application/zip");
             assertEquals(200, put.statusCode(), "fixture: node 1 deploys the demo: " + put.body());
             for (int id : List.of(4711, 4712, 4713)) {
-                HttpResponse<String> accepted = send(client, "POST", inPort, "/in", invoice(id), "application/xml");
+                HttpResponse<String> accepted = send(client, "POST", one.httpPort(), "/http/in", invoice(id), "application/xml");
                 assertEquals(202, accepted.statusCode(), "fixture: invoice " + id + " is accepted: " + accepted.body());
                 ids.add(accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers())));
                 if (id == 4711) until(() -> held.equals(List.of("4711")), "node 1's worker runs 4711 and the partner holds it");
@@ -330,12 +328,12 @@ class RestoreIT {
         Node two = start(env("node-2", empty));
 
         try (HttpClient client = http()) {
-            HttpResponse<String> own = send(client, "POST", inPort, "/in", invoice(4714), "application/xml");
+            HttpResponse<String> own = send(client, "POST", two.httpPort(), "/http/in", invoice(4714), "application/xml");
             assertEquals(202, own.statusCode(), "node 2, restored without a PUT, accepts: " + own.body());
             until(() -> answered.contains("4714"), "node 2 runs what it accepted (partner saw " + answered + ")");
             assertEquals(List.of("4714"), answered, "and nothing of node 1's, though 4712 and 4713 are older and unleased: " + answered);
             sql("update work set locked_until = now() - interval '1 second' where id = '" + ids.get(0) + "'");   // node 1's lease ran out
-            HttpResponse<String> after = send(client, "POST", inPort, "/in", invoice(4715), "application/xml");
+            HttpResponse<String> after = send(client, "POST", two.httpPort(), "/http/in", invoice(4715), "application/xml");
             assertEquals(202, after.statusCode(), after.body());
             until(() -> answered.contains("4715"), "node 2 runs what it accepts after the lease ran out (partner saw " + answered + ")");
         }
@@ -369,7 +367,7 @@ class RestoreIT {
     /**
      * Node 1 deploys the demo over S3 and serves an invoice; then the demo's object is deleted from S3. Node 2 starts all the same
      * (a missing object is no reason not to start), lists the demo FAILED — version, revision and archive from its row, problems
-     * naming the archive, no flows, no files — lists no flow, serves nothing on the demo's in port, and its /health is 200 with
+     * naming the archive, no flows, no files — lists no flow, answers 404 at the demo's in path, and its /health is 200 with
      * the {@code deployments} check DEGRADED (the wire names no package). A PUT of the demo stores the object again, runs it, and
      * the check is UP.
      */
@@ -379,14 +377,13 @@ class RestoreIT {
         HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b ->
                 req.response().putHeader("content-type", "application/xml").end(ack))).listen(0, "127.0.0.1").await();
         partners.add(partner);
-        int inPort = freePort();
-        byte[] zip = zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort()));
+        byte[] zip = zip(demoFiles("http://127.0.0.1:" + partner.actualPort()));
         String sha = sha256(zip);
 
         Node one = start(env("node-1", tmp.resolve("node-1")));
         try (HttpClient client = http()) {
             assertEquals(200, send(client, "PUT", one.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip, "application/zip").statusCode(), "fixture: node 1 deploys");
-            assertEquals(200, send(client, "POST", inPort, "/in", invoice(4711), "application/xml").statusCode(), "fixture: node 1 serves the in port");
+            assertEquals(200, send(client, "POST", one.httpPort(), "/http/in", invoice(4711), "application/xml").statusCode(), "fixture: node 1 serves the in path");
         }
         assertEquals("UP", health(one.adminPort(), 200).getJsonObject("checks").getString("deployments"), "the deployments check, UP on node 1");
         List<String> row = deploymentRows();
@@ -406,7 +403,10 @@ class RestoreIT {
         assertEquals(REVISION, demo.getString("revision"), demo.encode());
         assertEquals("sha256:" + sha, demo.getString("archive"), demo.encode());
         assertEquals(Map.of(), listed(two.adminPort(), "flows", "id"), "no flow runs");
-        assertTrue(refuses(inPort), "nothing listens on the demo's in port (node 1 served it)");
+        try (HttpClient client = http()) {
+            assertEquals(404, send(client, "POST", two.httpPort(), "/http/in", invoice(4711), "application/xml").statusCode(),
+                    "no flow takes requests at the demo's in path on node 2");
+        }
         JsonObject down = health(two.adminPort(), 200);
         assertEquals("UP", down.getString("status"), down.encode());
         assertEquals("DEGRADED", down.getJsonObject("checks").getString("deployments"), down.encode());
@@ -417,7 +417,7 @@ class RestoreIT {
         try (HttpClient client = http()) {
             HttpResponse<String> put = send(client, "PUT", two.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip, "application/zip");
             assertEquals(200, put.statusCode(), "a PUT recovers the package: " + put.body());
-            assertEquals(200, send(client, "POST", inPort, "/in", invoice(4712), "application/xml").statusCode(), "the demo serves on node 2");
+            assertEquals(200, send(client, "POST", two.httpPort(), "/http/in", invoice(4712), "application/xml").statusCode(), "the demo serves on node 2");
         }
         assertArrayEquals(zip, object(key(sha)), "the PUT stored the object again");
         assertEquals("UP", health(two.adminPort(), 200).getJsonObject("checks").getString("deployments"), "UP once the demo runs");
@@ -426,10 +426,11 @@ class RestoreIT {
 
     /**
      * A package that cannot be restored does not make the node unhealthy. Node 1 runs two copies of the demo, {@code demo} and
-     * {@code other}, on two in ports. Node 2's peer link takes the demo's in port, so the demo's flow cannot listen there when node
-     * 2 restores it. Node 2 starts all the same: the demo is listed FAILED with its reason, naming the peer link, and {@code other} runs and serves.
-     * {@code /health} answers 200 with the status UP and the {@code deployments} check DEGRADED, and {@code /ready} answers 200.
-     * A PUT of the demo on another port replaces it, and then the check is UP.
+     * {@code other}, at two in paths. The demo's domestic partner is the secret {@code secret://demo-partner}, which node 1 sets and
+     * node 2 does not, so node 2 cannot restore the demo. Node 2 starts all the same: the demo is listed FAILED with its reason,
+     * naming the secret, and {@code other} runs and serves. {@code /health} answers 200 with the status UP and the
+     * {@code deployments} check DEGRADED, and {@code /ready} answers 200. A PUT of the demo naming its partner's URL replaces it,
+     * and then the check is UP.
      */
     @Test
     void aPackageThatCannotBeRestoredLeavesTheNodeHealthyAndAPutReplacesIt() throws Exception {
@@ -438,36 +439,36 @@ class RestoreIT {
                 req.response().putHeader("content-type", "application/xml").end(ack))).listen(0, "127.0.0.1").await();
         partners.add(partner);
         String partnerBase = "http://127.0.0.1:" + partner.actualPort();
-        int demoPort = freePort();
-        int otherPort = freePort();
-        Map<String, byte[]> otherFiles = demoFiles(otherPort, partnerBase);
+        Map<String, byte[]> demoPkg = demoFiles(partnerBase);
+        demoPkg.put("endpoints/partner-domestic.yaml", replaced(demoPkg.get("endpoints/partner-domestic.yaml"), Map.of("url: " + partnerBase + "/echo", "url: secret://demo-partner")));
+        Map<String, byte[]> otherFiles = demoFiles(partnerBase);
         otherFiles.put("package.yaml", replaced(otherFiles.get("package.yaml"), Map.of("name: demo", "name: other")));
+        otherFiles.put("endpoints/http-in.yaml", replaced(otherFiles.get("endpoints/http-in.yaml"), Map.of("address: /in", "address: /other")));
 
-        Node one = start(env("node-1", tmp.resolve("node-1")));
+        Map<String, String> holding = env("node-1", tmp.resolve("node-1"));
+        holding.put("RAIL8_SECRET_DEMO_PARTNER", partnerBase + "/echo");
+        Node one = start(holding);
         try (HttpClient client = http()) {
-            assertEquals(200, send(client, "PUT", one.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip(demoFiles(demoPort, partnerBase)), "application/zip").statusCode(),
+            assertEquals(200, send(client, "PUT", one.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip(demoPkg), "application/zip").statusCode(),
                     "fixture: node 1 deploys the demo");
             assertEquals(200, send(client, "PUT", one.adminPort(), "/admin/packages/other?revision=" + REVISION, zip(otherFiles), "application/zip").statusCode(),
                     "fixture: node 1 deploys other");
         }
         close(one);
 
-        Map<String, String> taken = env("node-2", tmp.resolve("node-2"));
-        taken.put("RAIL8_PEER_BIND", "127.0.0.1");
-        taken.put("RAIL8_PEER_PORT", String.valueOf(demoPort));   // the peer link listens where the demo's flow would
-        Node two = start(taken);
+        Node two = start(env("node-2", tmp.resolve("node-2")));   // no secret demo-partner
 
         Map<String, JsonObject> packages = listed(two.adminPort(), "packages", "name");
         Map<String, JsonObject> flows = listed(two.adminPort(), "flows", "id");
         JsonObject demo = packages.get("demo");
         assertEquals("FAILED", demo.getString("state"), "the demo could not be restored: " + demo.encode());
-        assertTrue(demo.getJsonArray("problems").stream().map(String::valueOf).anyMatch(l -> l.contains("peer link")),
-                "its reason names the peer link: " + demo.encode());
+        assertTrue(demo.getJsonArray("problems").stream().map(String::valueOf).anyMatch(l -> l.contains("secret://demo-partner")),
+                "its reason names the secret: " + demo.encode());
         assertFalse(flows.containsKey("demo/invoice-sync"), "nothing of the demo is listed as a flow: " + flows);
         assertEquals("RUNNING", packages.get("other").getString("state"), "the other package runs: " + packages);
         assertEquals("RUNNING", flows.get("other/invoice-sync").getString("state"), "its flow runs: " + flows);
         try (HttpClient client = http()) {
-            assertEquals(200, send(client, "POST", otherPort, "/in", invoice(4711), "application/xml").statusCode(), "the other package serves");
+            assertEquals(200, send(client, "POST", two.httpPort(), "/http/other", invoice(4711), "application/xml").statusCode(), "the other package serves");
         }
         JsonObject degraded = health(two.adminPort(), 200);
         assertEquals("UP", degraded.getString("status"), "a FAILED package does not make the node unhealthy: " + degraded.encode());
@@ -476,11 +477,10 @@ class RestoreIT {
         HttpResponse<String> ready = get(two.adminPort(), "/ready");
         assertEquals(200, ready.statusCode(), "the node is ready for the packages that run: " + ready.body());
 
-        int movedPort = freePort();
         try (HttpClient client = http()) {
-            HttpResponse<String> put = send(client, "PUT", two.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip(demoFiles(movedPort, partnerBase)), "application/zip");
+            HttpResponse<String> put = send(client, "PUT", two.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip(demoFiles(partnerBase)), "application/zip");
             assertEquals(200, put.statusCode(), "a PUT replaces the FAILED package: " + put.body());
-            assertEquals(200, send(client, "POST", movedPort, "/in", invoice(4712), "application/xml").statusCode(), "the demo serves on its new port");
+            assertEquals(200, send(client, "POST", two.httpPort(), "/http/in", invoice(4712), "application/xml").statusCode(), "the demo serves at its in path");
         }
         assertEquals("UP", health(two.adminPort(), 200).getJsonObject("checks").getString("deployments"), "UP once nothing is FAILED");
     }

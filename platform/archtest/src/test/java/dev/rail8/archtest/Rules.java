@@ -30,6 +30,8 @@ final class Rules {
     static final String STEPS = "dev.rail8.steps..";
     static final String TESTKIT = "dev.rail8.testkit..";
     static final String CLI = "dev.rail8.cli..";
+    /** The node's shared HTTP port. */
+    static final String INGRESS = "dev.rail8.ingress..";
     static final String SIM = "dev.rail8.sim..";
     /** The mapping engine under {@code mapping/}, every package of it. */
     static final String MAPPING_ENGINE = "dev.rail8.mapping..";
@@ -49,11 +51,14 @@ final class Rules {
             "io.vertx.core.streams.ReadStream", "io.vertx.core.streams.WriteStream",
             "io.vertx.core.streams.StreamBase", "io.vertx.core.streams.Pipe");
 
-    /** The plugin contract: the one api package that may name {@link #VERTX}. */
+    /** The plugin contract: the one api package that may name {@link #VERTX} and {@link #HTTP_REQUEST}. */
     static final String PLUGIN_CONTRACT = "dev.rail8.api.plugin..";
 
     /** The node's Vert.x, which the plugin contract hands to a plugin's components. */
     static final String VERTX = "io.vertx.core.Vertx";
+
+    /** A request on the node's HTTP port, which the plugin contract hands to the consumer that mounted its path. */
+    static final String HTTP_REQUEST = "io.vertx.core.http.HttpServerRequest";
 
     /** Client libraries of the five stores; only runtime may depend on them (CLAUDE.md). */
     static final String[] STORE_CLIENT_PACKAGES = {
@@ -79,10 +84,11 @@ final class Rules {
     private static final DescribedPredicate<JavaClass> VERTX_ALLOWED =
             describe("the allowed Vert.x types " + VERTX_ALLOWLIST, c -> VERTX_ALLOWLIST.contains(c.getName()));
 
-    private static final DescribedPredicate<JavaClass> THE_VERTX = describe(VERTX, c -> VERTX.equals(c.getName()));
+    private static final DescribedPredicate<JavaClass> THE_VERTX = describe(VERTX + " and " + HTTP_REQUEST,
+            c -> VERTX.equals(c.getName()) || HTTP_REQUEST.equals(c.getName()));
 
     static final ArchRule API_DEPENDS_ON_NO_OTHER_MODULE = noClasses().that().resideInAPackage(API)
-            .should().dependOnClassesThat().resideInAnyPackage(CORE, RUNTIME, COMPONENTS, STEPS, TESTKIT, CLI)
+            .should().dependOnClassesThat().resideInAnyPackage(CORE, RUNTIME, COMPONENTS, STEPS, TESTKIT, CLI, INGRESS)
             .because("api is the bottom of the dependency direction api <- core <- runtime");
 
     static final ArchRule API_SURFACE = classes().that().resideInAPackage(API).and().resideOutsideOfPackage(PLUGIN_CONTRACT)
@@ -91,7 +97,8 @@ final class Rules {
 
     static final ArchRule PLUGIN_SURFACE = classes().that().resideInAPackage(PLUGIN_CONTRACT)
             .should().onlyDependOnClassesThat(JDK.or(resideInAnyPackage(API)).or(VERTX_ALLOWED).or(THE_VERTX))
-            .because("a plugin's components run on the node's Vert.x: " + VERTX + " is the one type the plugin contract adds to api's surface");
+            .because("a plugin's components run on the node's Vert.x and take requests on its HTTP port: " + VERTX + " and " + HTTP_REQUEST
+                    + " are the types the plugin contract adds to api's surface");
 
     static final ArchRule NOTHING_ELSE_NAMES_THE_PLUGIN_CONTRACT = noClasses().that().resideInAnyPackage(API, CORE)
             .and().resideOutsideOfPackage(PLUGIN_CONTRACT)
@@ -99,7 +106,7 @@ final class Rules {
             .because("the rest of api and core never reach " + VERTX + ", not even through the plugin contract");
 
     static final ArchRule CORE_DEPENDS_ON_API_ONLY = noClasses().that().resideInAPackage(CORE)
-            .should().dependOnClassesThat().resideInAnyPackage(RUNTIME, COMPONENTS, STEPS, TESTKIT, CLI)
+            .should().dependOnClassesThat().resideInAnyPackage(RUNTIME, COMPONENTS, STEPS, TESTKIT, CLI, INGRESS)
             .because("core depends on api only (ARCHITECTURE §12)");
 
     static final ArchRule CORE_SURFACE = classes().that().resideInAPackage(CORE)
@@ -107,16 +114,20 @@ final class Rules {
             .because("core uses the JDK, api and the same Vert.x allowlist as api (CLAUDE.md)");
 
     static final ArchRule COMPONENTS_DEPEND_ON_API_ONLY = noClasses().that().resideInAPackage(COMPONENTS)
-            .should().dependOnClassesThat().resideInAnyPackage(CORE, RUNTIME, TESTKIT, CLI, STEPS)
+            .should().dependOnClassesThat().resideInAnyPackage(CORE, RUNTIME, TESTKIT, CLI, STEPS, INGRESS)
             .because("components depend on api only (CLAUDE.md)");
 
     static final ArchRule STEPS_DEPEND_ON_API_ONLY = noClasses().that().resideInAPackage(STEPS)
-            .should().dependOnClassesThat().resideInAnyPackage(CORE, RUNTIME, TESTKIT, CLI, COMPONENTS)
+            .should().dependOnClassesThat().resideInAnyPackage(CORE, RUNTIME, TESTKIT, CLI, COMPONENTS, INGRESS)
             .because("steps depend on api only (CLAUDE.md)");
 
     static final ArchRule TESTKIT_DEPENDS_ON_CORE_AND_API = noClasses().that().resideInAPackage(TESTKIT)
-            .should().dependOnClassesThat().resideInAnyPackage(RUNTIME, COMPONENTS, STEPS, CLI)
+            .should().dependOnClassesThat().resideInAnyPackage(RUNTIME, COMPONENTS, STEPS, CLI, INGRESS)
             .because("testkit depends on core (and api) only (ARCHITECTURE §12)");
+
+    static final ArchRule INGRESS_DEPENDS_ON_API_ONLY = noClasses().that().resideInAPackage(INGRESS)
+            .should().dependOnClassesThat().resideInAnyPackage(CORE, RUNTIME, COMPONENTS, STEPS, TESTKIT, CLI, SIM)
+            .because("the shared HTTP port is api only: the node runs it, and so do the tests of a component, a shipped one or a plugin's");
 
     static final ArchRule NOTHING_DEPENDS_ON_CLI = noClasses().that().resideInAPackage("dev.rail8..")
             .and().resideOutsideOfPackage(CLI)

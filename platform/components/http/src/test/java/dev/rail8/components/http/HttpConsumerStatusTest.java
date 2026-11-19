@@ -5,6 +5,7 @@ import dev.rail8.api.EndpointConfig;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Fault;
 import dev.rail8.api.NackException;
+import dev.rail8.ingress.SharedHttpPort;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
@@ -40,8 +41,9 @@ class HttpConsumerStatusTest {
 
     static Vertx vertx;
     static HttpClientAgent raw;
+    static SharedHttpPort port;
     final FakeRuntime rt = FakeRuntime.create();
-    final HttpComponent http = new HttpComponent(vertx, rt.blobs(), rt.ids());
+    final HttpComponent http = new HttpComponent(vertx, rt.blobs(), rt.ids(), rt.timer(), port);
     HttpComponent.HttpConsumer consumer;
 
     /** A failure that says what kind it is and nothing else. */
@@ -55,11 +57,13 @@ class HttpConsumerStatusTest {
     static void start() {
         vertx = Vertx.vertx();
         raw = vertx.createHttpClient();
+        port = SharedHttpPort.loopback(vertx, Map.of("http", HttpComponent.PREFIX)).await();
     }
 
     @AfterAll
     static void stop() {
         raw.close().await();
+        port.close().await();
         vertx.close().await();
     }
 
@@ -71,7 +75,7 @@ class HttpConsumerStatusTest {
     record Answer(int status, MultiMap headers, String body) {}
 
     Answer post(String failureCase) {
-        return raw.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + consumer.port() + "/in"))
+        return raw.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI(consumer.url().orElseThrow().toString()))
                 .compose(req -> { req.putHeader("x-case", failureCase); return req.send(Buffer.buffer("<x/>")); })
                 .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.headers(), b.toString()))).await();
     }
@@ -87,9 +91,9 @@ class HttpConsumerStatusTest {
         failures.put("no-fault", new IllegalStateException("boom"));
         failures.put("partner-5xx", new HttpStatusException(500, "partner exploded"));
         failures.put("partner-4xx", new HttpStatusException(404, "no such partner path"));
-        EndpointConfig in = new EndpointConfig("http-in", URI.create("http://127.0.0.1:0/in"), Map.of("host", "127.0.0.1", "port", 0, "path", "/in", "flow", "orders", "maxBodyBytes", 1024));
+        EndpointConfig in = new EndpointConfig("http-in", URI.create("http://in"), Map.of("address", "/in", "flow", "orders", "maxBodyBytes", 1024));
         consumer = (HttpComponent.HttpConsumer) http.consumer(in, (Envelope e) -> Future.<Ack>failedFuture(failures.get(e.headers().get("x-case"))));
-        consumer.start().await();   // bound to port 0: the port is the one the server got (FIX-8)
+        consumer.start().await();
 
         Map<String, Integer> expected = new LinkedHashMap<>();
         expected.put("malformed", 400);
@@ -122,11 +126,11 @@ class HttpConsumerStatusTest {
         Map<String, Exception> thrown = new LinkedHashMap<>();
         thrown.put("io", new IOException("disk gone"));
         thrown.put("interrupted", new InterruptedException("woken by the stop deadline"));
-        EndpointConfig in = new EndpointConfig("http-in", URI.create("http://127.0.0.1:0/in"), Map.of("host", "127.0.0.1", "port", 0, "path", "/in", "flow", "orders", "maxBodyBytes", 1024));
+        EndpointConfig in = new EndpointConfig("http-in", URI.create("http://in"), Map.of("address", "/in", "flow", "orders", "maxBodyBytes", 1024));
         consumer = (HttpComponent.HttpConsumer) http.consumer(in, (Envelope e) -> { throw sneaky(thrown.get(e.headers().get("x-case"))); });
         consumer.start().await();
         for (Map.Entry<String, Exception> c : thrown.entrySet()) {
-            Future<Answer> answered = raw.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + consumer.port() + "/in").setTimeout(5_000))
+            Future<Answer> answered = raw.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI(consumer.url().orElseThrow().toString()).setTimeout(5_000))
                     .compose(req -> { req.putHeader("x-case", c.getKey()); return req.send(Buffer.buffer("<x/>")); })
                     .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.headers(), b.toString())));
             try {

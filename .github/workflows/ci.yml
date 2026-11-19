@@ -199,6 +199,12 @@ jobs:
           code=$(docker compose ps -a deploy --format '{{.ExitCode}}')
           [ "$code" = 0 ] || { echo "::error::deploy exited $code"; docker compose logs deploy; exit 1; }
           curl -sf -H "Authorization: Bearer $RAIL8_ADMIN_TOKEN" localhost:8081/admin/packages | grep -q '"name":"demo"'
+      - name: An invoice sent to the node's HTTP port, published on 8080, is answered by the partner
+        run: |
+          set -euo pipefail
+          reply=$(curl -sf -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/http/in)
+          echo "$reply"
+          echo "$reply" | grep -q '<PartnerInvoice number="4711" currency="CZK"'
       - name: Stack logs on failure
         if: failure()
         working-directory: deploy/compose
@@ -259,7 +265,7 @@ jobs:
       - name: An invoice is sent in, found, listed and counted through the UI's server
         run: |
           set -euo pipefail
-          reply=$(curl -sf -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/in)
+          reply=$(curl -sf -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/http/in)
           echo "$reply"
           echo "$reply" | grep -q '<PartnerInvoice number="4711" currency="CZK"'
           # the UI's server adds the token itself; the Sec-Fetch-Site header stands in for the browser's own page
@@ -284,12 +290,12 @@ jobs:
           set -euo pipefail
           ui() { curl -sf -H 'Sec-Fetch-Site: same-origin' "localhost:5173$1" || true; }
           # invoice-async answers 202 after the durable save
-          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8082/invoice/async)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/http/invoice/async)
           [ "$code" = 202 ] || { echo "::error::invoice-async answered $code, not 202"; exit 1; }
           # sftp-invoice: a file dropped in the inbox is polled, saved and deleted
           docker compose cp examples/demo/fixtures/inbox/invoice-4711.xml sftp:/home/demo/inbox/
           # order-jq calls order-partner; the reply is the partner's echo of the mapped order
-          order=$(curl -sf -X POST --data-binary @examples/demo/fixtures/sample-order.json -H 'Content-Type: application/json' localhost:8084/order)
+          order=$(curl -sf -X POST --data-binary @examples/demo/fixtures/sample-order.json -H 'Content-Type: application/json' localhost:8080/http/order)
           echo "$order"
           echo "$order" | grep -q '"orderId":42' || { echo "::error::order-jq did not answer the mapped order: $order"; exit 1; }
           for flow in invoice-async sftp-invoice order-jq order-partner; do
@@ -388,7 +394,7 @@ jobs:
           echo "$components" | grep -q '"scheme":"acme"'
           endpoints=$(ui /files/endpoints)
           echo "$endpoints" | grep -q '"path":"package/endpoints/orders-in.yaml"'
-          reply=$(curl -sf -X POST --data-binary @"$HOME/acme-adapter/package/fixtures/order.xml" -H 'Content-Type: application/xml' localhost:18090/orders)
+          reply=$(curl -sf -X POST --data-binary @"$HOME/acme-adapter/package/fixtures/order.xml" -H 'Content-Type: application/xml' localhost:18090/acme/orders)
           echo "$reply"
           [ "$reply" = '<Order><Id>7</Id></Order>' ]
           for _ in $(seq 1 30); do

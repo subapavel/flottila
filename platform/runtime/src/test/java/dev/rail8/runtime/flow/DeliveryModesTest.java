@@ -6,6 +6,8 @@ import dev.rail8.api.EndpointConfig;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.NackException;
 import dev.rail8.components.http.HttpComponent;
+import dev.rail8.ingress.SharedHttpPort;
+import dev.rail8.runtime.time.VertxTimer;
 import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.flow.Delivery;
 import dev.rail8.core.flow.FlowBuilder;
@@ -83,12 +85,13 @@ class DeliveryModesTest {
     static final Map<String, Object> MAP_FOR_PARTNER = Map.of("type", "xslt", "name", "toPartner", "stylesheet", "flows/invoice-to-partner.xsl");
 
     static Vertx vertx;
+    static SharedHttpPort httpPort;
     static HttpClientAgent caller;
     static Context callerContext;
     static Buffer invoice;
 
     final FakeRuntime rt = FakeRuntime.create();
-    final HttpComponent http = new HttpComponent(vertx, rt.blobs(), rt.ids());
+    final HttpComponent http = new HttpComponent(vertx, rt.blobs(), rt.ids(), new VertxTimer(vertx), httpPort);
     final RecordingComponent partner = new RecordingComponent("mock");
     final InMemoryMessageStore store = new InMemoryMessageStore();
     final InMemoryWorkQueue queue = new InMemoryWorkQueue(rt.clock());
@@ -102,6 +105,7 @@ class DeliveryModesTest {
     static void start() throws IOException {
         vertx = Vertx.vertx();
         caller = vertx.createHttpClient();
+        httpPort = SharedHttpPort.loopback(vertx, Map.of("http", HttpComponent.PREFIX)).await();
         callerContext = vertx.getOrCreateContext();
         invoice = Buffer.buffer(Files.readAllBytes(Path.of("../../examples/demo/fixtures/sample-invoice.xml")));
     }
@@ -109,6 +113,7 @@ class DeliveryModesTest {
     @AfterAll
     static void stop() {
         caller.close().await();
+        httpPort.close().await();
         vertx.close().await();
     }
 
@@ -189,14 +194,14 @@ class DeliveryModesTest {
         @Override public Future<Page<String>> findByStep(String flow, String step, Optional<String> after, int limit) { return inner.findByStep(flow, step, after, limit); }
     }
 
-    /** The http consumer at {@code /in} on an ephemeral port with {@code handler}; {@link #port} is the port it got. */
+    /** The http consumer at {@code /http/in} on a shared port with {@code handler}; {@link #port} is that port. */
     void listen(FlowDefinition def, Function<Envelope, Future<Ack>> handler) {
         EndpointConfig in = new EndpointConfig("http-in", URI.create("http://127.0.0.1:0/in"),
-                Map.of("host", "127.0.0.1", "port", 0, "path", "/in", "flow", def.id(), "maxBodyBytes", def.maxBodyBytes()));
+                Map.of("address", "/in", "flow", def.id(), "maxBodyBytes", def.maxBodyBytes()));
         HttpComponent.HttpConsumer c = (HttpComponent.HttpConsumer) http.consumer(in, handler);
         c.start().await();
         started.add(c);
-        port = c.port();
+        port = httpPort.port();
     }
 
     /** Builds the flow's delivery handler and listens with it. */
@@ -222,7 +227,7 @@ class DeliveryModesTest {
      */
     Future<Answer> send(Buffer body, Map<String, String> headers) {
         Promise<Answer> answer = Promise.promise();
-        callerContext.runOnContext(v -> caller.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + "/in"))
+        callerContext.runOnContext(v -> caller.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + "/http/in"))
                 .compose(req -> { headers.forEach(req::putHeader); return req.send(body); })
                 .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.headers(), b.toString())))
                 .onComplete(answer));

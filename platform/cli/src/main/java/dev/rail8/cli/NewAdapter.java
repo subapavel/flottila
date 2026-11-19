@@ -2,6 +2,7 @@ package dev.rail8.cli;
 
 import dev.rail8.api.Component;
 import dev.rail8.api.plugin.ComponentContext;
+import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.runtime.plugin.Plugins;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Vertx;
@@ -36,7 +37,8 @@ import javax.lang.model.SourceVersion;
  * the contract suite as written; its HTTP code is what the developer replaces with their protocol.
  *
  * <p>The scheme is a lower-case letter, then lower-case letters and digits, at most {@value #SCHEME_MAX} characters, not a Java
- * keyword, and not the scheme of a component the node ships or of the platform's mock. The class names start with the scheme,
+ * keyword, not {@code rail8} (the skeleton's HTTP prefix is {@code /<scheme>}, and {@code /rail8} is the platform's), and not the
+ * scheme of a component the node ships or of the platform's mock. The class names start with the scheme,
  * its first letter upper-cased ({@code acme}: {@code AcmeComponent}, {@code AcmePlugin}). The Java package, also the Maven group,
  * is {@code --package}, else {@code com.example.<scheme>}. A wrong scheme, package or directory is a usage error, exit 2, nothing
  * written; done, it prints what it wrote and the next commands, exit 0.
@@ -81,11 +83,18 @@ final class NewAdapter {
         return 0;
     }
 
-    /** Refuses a scheme that is not a lower-case name, is a Java keyword, or is held by a shipped component or the mock. */
+    /**
+     * Refuses a scheme that is not a lower-case name, is a Java keyword, would make the skeleton's HTTP prefix ({@code /<scheme>})
+     * the one the platform keeps for itself, or is held by a shipped component or the mock.
+     */
     private static void checkScheme(String scheme) {
         if (scheme.length() > SCHEME_MAX || !SCHEME.matcher(scheme).matches() || SourceVersion.isKeyword(scheme)) {
             throw new Cli.Usage("new-adapter: --scheme '" + scheme + "' is not a lower-case letter followed by lower-case letters and digits, "
                     + "at most " + SCHEME_MAX + " characters and no Java keyword");
+        }
+        if (("/" + scheme).equals(HttpIngress.RESERVED_PREFIX)) {
+            throw new Cli.Usage("new-adapter: the scheme '" + scheme + "' is taken: its HTTP prefix " + HttpIngress.RESERVED_PREFIX
+                    + " is kept for the platform itself");
         }
         Set<String> taken = shippedSchemes();
         if (taken.contains(scheme)) throw new Cli.Usage("new-adapter: the scheme '" + scheme + "' is taken: the node has " + taken);
@@ -99,7 +108,7 @@ final class NewAdapter {
         FakeRuntime rt = FakeRuntime.create();
         Vertx vertx = Vertx.vertx();
         try (Plugins modules = Cli.plugins(Optional.empty())) {
-            List<Component> shipped = modules.components(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock()));
+            List<Component> shipped = modules.components(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock(), HttpIngress.NONE));
             Set<String> schemes = shipped.stream().map(Component::scheme).collect(Collectors.toCollection(TreeSet::new));
             schemes.add("mock");
             return schemes;

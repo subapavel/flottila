@@ -1,5 +1,6 @@
 package dev.rail8.components.http;
 
+import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.api.settings.Direction;
 import dev.rail8.api.settings.Settings;
 import org.junit.jupiter.api.Test;
@@ -10,23 +11,27 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * What an http endpoint file may set, as its settings description judges it. An in endpoint takes the server's host, port,
- * path and stop timeout; an out endpoint must set {@code maxBodyBytes} and may set a URL, a timeout and a pool size. A key
- * of the other direction, or one the description does not name, is refused. On an in endpoint the node's own
- * {@code flow} and {@code maxBodyBytes} are left alone.
+ * What an http endpoint file may set, as its settings description judges it. An in endpoint must set its address on the
+ * node's HTTP port; an out endpoint must set {@code maxBodyBytes} and may set a URL, a timeout and a pool size. A key of the
+ * other direction, or one the description does not name, is refused. On an in endpoint the node's own {@code flow} and
+ * {@code maxBodyBytes} are left alone.
  */
 class HttpSettingsTest {
 
     static final Settings SETTINGS = HttpComponent.SETTINGS;
 
     @Test
-    void anInEndpointTakesTheServersAddressAndStop() {
-        assertEquals(List.of(), SETTINGS.check(Map.of(), Direction.IN), "every in setting has a default or may be left out");
-        assertEquals(List.of(), SETTINGS.check(Map.of("host", "0.0.0.0", "port", 8080, "path", "/in", "shutdownTimeoutMs", 5_000), Direction.IN));
-        assertEquals(List.of(), SETTINGS.check(Map.of("port", 0, "flow", "invoice", "maxBodyBytes", 1_048_576), Direction.IN),
-                "port 0 is any free port; flow and maxBodyBytes are the node's on an in endpoint");
-        assertEquals(List.of(new Settings.Problem("/port", "must be a whole number from 0 to 65535")),
-                SETTINGS.check(Map.of("port", 65_536), Direction.IN));
+    void anInEndpointMustSetItsAddressOnTheHttpPort() {
+        assertEquals(List.of(new Settings.Problem("/address", "is required")), SETTINGS.check(Map.of(), Direction.IN));
+        assertEquals(List.of(), SETTINGS.check(Map.of("address", "/invoice/async"), Direction.IN));
+        assertEquals(List.of(), SETTINGS.check(Map.of("address", "/in", "flow", "invoice", "maxBodyBytes", 1_048_576), Direction.IN),
+                "flow and maxBodyBytes are the node's on an in endpoint");
+        for (String bad : List.of("in", "/", "/in/", "/a//b", "/../in", "/in?x=1", "/Ü"))
+            assertEquals(List.of(new Settings.Problem("/address", "must match " + HttpIngress.ADDRESS_PATTERN)),
+                    SETTINGS.check(Map.of("address", bad), Direction.IN), bad);
+        for (String gone : List.of("host", "port", "path", "shutdownTimeoutMs"))
+            assertEquals(List.of(new Settings.Problem("/" + gone, "no such setting")),
+                    SETTINGS.check(Map.of("address", "/in", gone, 1), Direction.IN), gone + ": the node's HTTP port has replaced it");
     }
 
     @Test
@@ -41,11 +46,11 @@ class HttpSettingsTest {
     @Test
     void aKeyOfTheOtherDirectionOrNoneIsRefused() {
         assertEquals(List.of(new Settings.Problem("/timeoutMs", "a setting of out endpoints only")),
-                SETTINGS.check(Map.of("timeoutMs", 5), Direction.IN));
-        assertEquals(List.of(new Settings.Problem("/host", "a setting of in endpoints only")),
-                SETTINGS.check(Map.of("maxBodyBytes", 1, "host", "x"), Direction.OUT));
+                SETTINGS.check(Map.of("address", "/in", "timeoutMs", 5), Direction.IN));
+        assertEquals(List.of(new Settings.Problem("/address", "a setting of in endpoints only")),
+                SETTINGS.check(Map.of("maxBodyBytes", 1, "address", "/x"), Direction.OUT));
         assertEquals(List.of(new Settings.Problem("/flow", "no such setting")),
                 SETTINGS.check(Map.of("maxBodyBytes", 1, "flow", "f"), Direction.OUT), "the node sets flow on in endpoints only");
-        assertEquals(List.of(new Settings.Problem("/proxy", "no such setting")), SETTINGS.check(Map.of("proxy", "p"), Direction.IN));
+        assertEquals(List.of(new Settings.Problem("/proxy", "no such setting")), SETTINGS.check(Map.of("address", "/in", "proxy", "p"), Direction.IN));
     }
 }

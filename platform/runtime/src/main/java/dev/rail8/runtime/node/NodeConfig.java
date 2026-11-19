@@ -81,18 +81,21 @@ import java.util.regex.Pattern;
  *                {@code RAIL8_RETRIES_COUNT} (3, 0..100) retries {@code RAIL8_RETRIES_INTERVAL}
  *                (PT5M, ISO-8601, PT1S..PT24H) apart, without growth: multiplier 1, the interval its own cap
  * @param peer the peer link's keys: {@code RAIL8_PEER_BIND} (0.0.0.0), {@code RAIL8_PEER_PORT} (8083,
- *             0..65535, 0 any free port; 8082 is the compose async door), {@code RAIL8_PEER_HOST} (the node id),
+ *             0..65535, 0 any free port), {@code RAIL8_PEER_HOST} (the node id),
  *             {@code RAIL8_PEER_TIMEOUT} (PT2S, PT0.1S..PT30S), {@code RAIL8_PEER_READS} (16, 1..64 per peer)
  * @param journalCopies {@code RAIL8_JOURNAL_COPIES}: 1 or 2; unset 1 in dev and ci, 2 in every
  *                      deployed environment. A generated master key ({@code RAIL8_JOURNAL_KEY_GENERATE=true}) is one node's
  *                      alone, which no peer could read with: with more than one copy it is refused
+ * @param http the node's HTTP port, which every in endpoint of an adapter with an HTTP prefix shares: {@code RAIL8_HTTP_HOST}
+ *             (127.0.0.1), {@code RAIL8_HTTP_PORT} (8080, 0..65535, 0 any free port); a port other than 0 that is
+ *             {@code RAIL8_ADMIN_PORT} or {@code RAIL8_PEER_PORT} is refused
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
                          long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
                          Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal,
                          MasterKeySource journalKey, SweepConfig journalSweep, IntakeGroup intakeGroup, Duration nodeLease,
-                         Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies) {
+                         Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies, Http http) {
 
     /**
      * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
@@ -116,6 +119,11 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Objects.requireNonNull(intakeGroup, "intakeGroup");
         Objects.requireNonNull(retries, "retries");
         Objects.requireNonNull(peer, "peer");
+        Objects.requireNonNull(http, "http");
+        if (http.port() != 0 && (http.port() == admin.port() || http.port() == peer.port())) {
+            throw new IllegalArgumentException("RAIL8_HTTP_PORT " + http.port() + " is " + (http.port() == admin.port() ? "RAIL8_ADMIN_PORT" : "RAIL8_PEER_PORT")
+                    + " too: the node's HTTP port, its admin API and its peer link each listen on a port of their own");
+        }
         if (journalCopies < 1 || journalCopies > COPIES_MAX) {
             throw new IllegalArgumentException("RAIL8_JOURNAL_COPIES must be between 1 and " + COPIES_MAX + ", was " + journalCopies);
         }
@@ -166,6 +174,15 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException("RAIL8_PG_POOL_QUEUE " + pg.poolQueue() + " must be from 1 to " + POOL_QUEUE_MAX
                     + ": the most callers waiting per pool (D-132)");
         }
+    }
+
+    /** A node whose HTTP port has the default keys (127.0.0.1:8080), as {@link #from} reads an env without them. */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
+                      IntakeGroup intakeGroup, Duration nodeLease, Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies, Http.DEFAULTS);
     }
 
     /**
@@ -268,7 +285,25 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
         return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention,
-                cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies);
+                cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies, http);
+    }
+
+    /**
+     * The node's HTTP port: one listener for every in endpoint of an adapter with an HTTP prefix, each served at its prefix and its
+     * address.
+     *
+     * @param host {@code RAIL8_HTTP_HOST} (127.0.0.1)
+     * @param port {@code RAIL8_HTTP_PORT} (8080), 0 to 65535: 0 any free port
+     */
+    public record Http(String host, int port) {
+
+        /** 127.0.0.1:8080: the HTTP port of a node whose env sets neither key. */
+        public static final Http DEFAULTS = new Http("127.0.0.1", 8080);
+
+        public Http {
+            Objects.requireNonNull(host, "host");
+            if (port < 0 || port > 65535) throw new IllegalArgumentException("RAIL8_HTTP_PORT " + port + " must be from 0 to 65535");
+        }
     }
 
     /** Every environment but {@code dev} and {@code ci} ({@code test} is deployed); a deployed node refuses a mock binding. */
@@ -697,7 +732,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
                 MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.intakePoolSize()), duration(env, "RAIL8_NODE_LEASE", NODE_LEASE_DEFAULT),
                 duration(env, "RAIL8_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT), retries(env), peer(env, nodeId),
-                (int) number(env, "RAIL8_JOURNAL_COPIES", deployed(name) ? COPIES_MAX : 1, 1, COPIES_MAX));
+                (int) number(env, "RAIL8_JOURNAL_COPIES", deployed(name) ? COPIES_MAX : 1, 1, COPIES_MAX),
+                new Http(env.getOrDefault("RAIL8_HTTP_HOST", Http.DEFAULTS.host()), (int) number(env, "RAIL8_HTTP_PORT", Http.DEFAULTS.port(), 0, 65535)));
     }
 
     /** The {@code RAIL8_PEER_*} keys: each range-checked naming its key. */

@@ -33,9 +33,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.ConnectException;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -166,6 +163,7 @@ class NodePoolWaitIT {
         env.put("RAIL8_NODE_ID", NODE);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", Files.createDirectories(data.resolve(NODE)).toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -178,10 +176,10 @@ class NodePoolWaitIT {
         return env;
     }
 
-    /** A node over {@code env} with invoice-async deployed on {@code inPort}, its partners a server no unparsable body reaches. */
-    Node startDeployed(HttpClient client, int inPort, Map<String, String> env) throws Exception {
+    /** A node over {@code env} with invoice-async deployed at /http/in on its HTTP port, its partners a server no unparsable body reaches. */
+    Node startDeployed(HttpClient client, Map<String, String> env) throws Exception {
         Node node = startNode(env);
-        deploy(client, node, asyncPackage(inPort), new CopyOnWriteArrayList<>());
+        deploy(client, node, asyncPackage(), new CopyOnWriteArrayList<>());
         return node;
     }
 
@@ -192,7 +190,7 @@ class NodePoolWaitIT {
     Node startNode(Map<String, String> env) throws Exception {
         SaxonXml xml = new SaxonXml();
         NodeConfig config = NodeConfig.from(env);
-        Node node = startedPastThePoolsWait(() -> OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+        Node node = startedPastThePoolsWait(() -> OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())),
                 Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages())));
         nodes.add(node);
         HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.response().setStatusCode(500).end("not expected")).listen(0, "127.0.0.1").await();
@@ -200,9 +198,9 @@ class NodePoolWaitIT {
         return node;
     }
 
-    /** The invoice-async package listening on {@code inPort}, sending to the partner {@link #startNode} started. */
-    byte[] asyncPackage(int inPort) throws IOException {
-        return NodeIT.zip(InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + servers.getFirst().actualPort()));
+    /** The invoice-async package served at /http/in on the node's HTTP port, sending to the partner {@link #startNode} started. */
+    byte[] asyncPackage() throws IOException {
+        return NodeIT.zip(InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + servers.getFirst().actualPort()));
     }
 
     /** The failure text of a pool's wait for a connection that elapsed, a connect included (vertx-sql-client 5.1.10 SqlConnectionPool). */
@@ -332,8 +330,9 @@ class NodePoolWaitIT {
         return locker;
     }
 
-    static HttpRequest post(int port, byte[] body, String requestId) {
-        return HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/in")).timeout(Duration.ofSeconds(60)).header("content-type", "application/xml")
+    /** A POST of {@code body} to the flow's in endpoint, /http/in on the node's HTTP port {@code httpPort}. */
+    static HttpRequest post(int httpPort, byte[] body, String requestId) {
+        return HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + httpPort + "/http/in")).timeout(Duration.ofSeconds(60)).header("content-type", "application/xml")
                 .header("x-request-id", requestId).POST(HttpRequest.BodyPublishers.ofByteArray(body)).build();
     }
 
@@ -346,17 +345,17 @@ class NodePoolWaitIT {
     }
 
     /** Two no-XML messages accepted whose parks hold the work pool's two connections, waiting on the locked {@code dlq}. */
-    void holdTheWorkPool(HttpClient client, int inPort) throws Exception {
+    void holdTheWorkPool(HttpClient client, int httpPort) throws Exception {
         for (int i = 1; i <= 2; i++) {
-            HttpResponse<String> accepted = client.send(post(inPort, NO_XML, "holder-" + i), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> accepted = client.send(post(httpPort, NO_XML, "holder-" + i), HttpResponse.BodyHandlers.ofString());
             assertEquals(202, accepted.statusCode(), "fixture: holder " + i + " saved and queued: " + accepted.body());
         }
         NodeIT.until(() -> waitingOnALock(WORK) == 2, "fixture: two parks hold the work pool's two connections, waiting on the locked dlq");
     }
 
     /** A message accepted and parked while the pools are free: a timeline the admin read finds (200). */
-    String parkedWhileFree(HttpClient client, int inPort) throws Exception {
-        HttpResponse<String> accepted = client.send(post(inPort, NO_XML, "free"), HttpResponse.BodyHandlers.ofString());
+    String parkedWhileFree(HttpClient client, int httpPort) throws Exception {
+        HttpResponse<String> accepted = client.send(post(httpPort, NO_XML, "free"), HttpResponse.BodyHandlers.ofString());
         assertEquals(202, accepted.statusCode(), "fixture: saved while the pools are free: " + accepted.body());
         String id = id(accepted);
         NodeIT.until(() -> count("select count(*) from dlq where id = $1", id) == 1, "fixture: parked while the work pool is free");
@@ -373,22 +372,22 @@ class NodePoolWaitIT {
     @Test
     void aRefusedWaitForTheIntakePoolAnswers503WellBeforeTheSaveTimeoutAndSavesNothing() throws Exception {
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
-            startDeployed(client, inPort, env("RAIL8_PG_POOL_SIZE", "2", "RAIL8_PG_POOL_WAIT", "PT0.2S", "RAIL8_BLOB_MEMORY_TIER", "4096",
+            Node node = startDeployed(client, env("RAIL8_PG_POOL_SIZE", "2", "RAIL8_PG_POOL_WAIT", "PT0.2S", "RAIL8_BLOB_MEMORY_TIER", "4096",
                     "RAIL8_INTAKE_GROUP_WINDOW", "PT0.05S"));
-            HttpResponse<String> warm = client.send(post(inPort, NO_XML, "warm"), HttpResponse.BodyHandlers.ofString());
+            int httpPort = node.httpPort();
+            HttpResponse<String> warm = client.send(post(httpPort, NO_XML, "warm"), HttpResponse.BodyHandlers.ofString());
             assertEquals(202, warm.statusCode(), "fixture: a save while the intake pool is free: " + warm.body());
 
             PgConnection locker = lock("journal_segments");
             byte[] spill = new byte[8192];
             Arrays.fill(spill, (byte) 'x');
-            CompletableFuture<HttpResponse<String>> holder = client.sendAsync(post(inPort, spill, "holder"), HttpResponse.BodyHandlers.ofString());
+            CompletableFuture<HttpResponse<String>> holder = client.sendAsync(post(httpPort, spill, "holder"), HttpResponse.BodyHandlers.ofString());
             NodeIT.until(() -> waitingOnALock(INTAKE) == 1, "fixture: the spill's segment row holds the intake pool's one connection, waiting on the lock");
 
             List<CompletableFuture<long[]>> refused = new ArrayList<>();
             for (int i = 1; i <= 3; i++) {
                 long sent = System.nanoTime();
-                refused.add(client.sendAsync(post(inPort, NO_XML, "refused-" + i), HttpResponse.BodyHandlers.ofString())
+                refused.add(client.sendAsync(post(httpPort, NO_XML, "refused-" + i), HttpResponse.BodyHandlers.ofString())
                         .thenApply(r -> new long[] {r.statusCode(), (System.nanoTime() - sent) / 1_000_000}));
             }
             for (int i = 0; i < refused.size(); i++) {
@@ -402,7 +401,7 @@ class NodePoolWaitIT {
 
             locker.query("rollback").execute().await();
             holder.get(30, TimeUnit.SECONDS);   // its answer, whichever: it waited on the lock, not on the pool
-            HttpResponse<String> probe = client.send(post(inPort, NO_XML, "probe"), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> probe = client.send(post(httpPort, NO_XML, "probe"), HttpResponse.BodyHandlers.ofString());
             assertEquals(202, probe.statusCode(), "after the release a save is accepted again: " + probe.body());
             assertEquals(1, count("select count(*) from messages where id = $1 and step = 0", id(probe)), "its ingress row is committed at the 202");
             assertEquals(1, count("select count(*) from messages where step = 0 and headers->>'x-request-id' = 'probe'"),
@@ -419,14 +418,14 @@ class NodePoolWaitIT {
     @Test
     void anAdminReadRefusedByTheWorkPoolAnswers503() throws Exception {
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
-            Node node = startDeployed(client, inPort, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
-            String id = parkedWhileFree(client, inPort);
+            Node node = startDeployed(client, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
+            int httpPort = node.httpPort();
+            String id = parkedWhileFree(client, httpPort);
             String path = "/admin/messages/" + id;
             assertEquals(200, client.send(get(node.adminPort(), path), HttpResponse.BodyHandlers.ofString()).statusCode(), "fixture: the read while the pool is free");
 
             PgConnection locker = lock("dlq");
-            holdTheWorkPool(client, inPort);
+            holdTheWorkPool(client, httpPort);
             HttpResponse<String> read = client.send(get(node.adminPort(), path), HttpResponse.BodyHandlers.ofString());
             assertEquals(503, read.statusCode(), "a read refused a pooled connection is retryable, 503, never 500: " + read.body());
             String error = new JsonObject(read.body()).getString("error");
@@ -449,8 +448,8 @@ class NodePoolWaitIT {
     @Test
     void aClaimRefusedByTheWorkPoolLeavesTheWorkerRunningAndItClaimsTheQueuedItemAfterTheRelease() throws Exception {
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
-            startDeployed(client, inPort, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
+            Node node = startDeployed(client, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
+            int httpPort = node.httpPort();
             AtomicBoolean woken = new AtomicBoolean();
             CountDownLatch refusedAfterTheWake = new CountDownLatch(1);
             List<String> refusals = new CopyOnWriteArrayList<>();
@@ -469,13 +468,13 @@ class NodePoolWaitIT {
             handlers.add(capture);
 
             PgConnection locker = lock("dlq");
-            holdTheWorkPool(client, inPort);
+            holdTheWorkPool(client, httpPort);
             woken.set(true);
             observer.query("notify rail8_work, 'w1 test-sender * *'").execute().await();
             assertTrue(refusedAfterTheWake.await(10, TimeUnit.SECONDS),
                     "the claim the wake issued is refused within RAIL8_PG_POOL_WAIT PT0.2S, logged well inside 10 s; none was");
 
-            HttpResponse<String> queued = client.send(post(inPort, NO_XML, "queued"), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> queued = client.send(post(httpPort, NO_XML, "queued"), HttpResponse.BodyHandlers.ofString());
             assertEquals(202, queued.statusCode(), "the intake is not the work pool: saved and queued while the claims are refused: " + queued.body());
             String id = id(queued);
             assertEquals(2, waitingOnALock(WORK), "still held by the same two parks: " + refusals);
@@ -497,12 +496,12 @@ class NodePoolWaitIT {
     @Test
     void aFullWaitQueueRefusesTheNextWaiterAtOnce() throws Exception {
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
-            Node node = startDeployed(client, inPort, env("RAIL8_PG_POOL_WAIT", "PT1M", "RAIL8_PG_POOL_QUEUE", "1"));
-            String path = "/admin/messages/" + parkedWhileFree(client, inPort);
+            Node node = startDeployed(client, env("RAIL8_PG_POOL_WAIT", "PT1M", "RAIL8_PG_POOL_QUEUE", "1"));
+            int httpPort = node.httpPort();
+            String path = "/admin/messages/" + parkedWhileFree(client, httpPort);
 
             PgConnection locker = lock("dlq");
-            holdTheWorkPool(client, inPort);
+            holdTheWorkPool(client, httpPort);
             CompletableFuture<HttpResponse<String>> a = client.sendAsync(get(node.adminPort(), path), HttpResponse.BodyHandlers.ofString());
             CompletableFuture<HttpResponse<String>> b = client.sendAsync(get(node.adminPort(), path), HttpResponse.BodyHandlers.ofString());
             try {
@@ -580,13 +579,13 @@ class NodePoolWaitIT {
     @Test
     void aDiscardRefusedByTheWorkPoolAtItsTransactionAnswers503AndKeepsTheRow() throws Exception {
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
-            Node node = startDeployed(client, inPort, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
+            Node node = startDeployed(client, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
+            int httpPort = node.httpPort();
             long seq = lostRow("lost-1");
             List<LogRecord> warnings = adminWarnings();
 
             PgConnection locker = lock("dlq");
-            holdTheWorkPool(client, inPort);
+            holdTheWorkPool(client, httpPort);
             HttpResponse<String> refused = post(client, node.adminPort(), "/admin/work/" + seq + "/discard");
             assertEquals(503, refused.statusCode(), "a discard whose transaction the pool refused is retryable, 503, never 500: " + refused.body()
                     + "; the admin log saw " + thrown(warnings));
@@ -616,12 +615,12 @@ class NodePoolWaitIT {
     @Test
     void aDlqRetryRefusedByTheWorkPoolAnswers503() throws Exception {
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
-            Node node = startDeployed(client, inPort, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
-            String id = parkedWhileFree(client, inPort);
+            Node node = startDeployed(client, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
+            int httpPort = node.httpPort();
+            String id = parkedWhileFree(client, httpPort);
 
             PgConnection locker = lock("dlq");
-            holdTheWorkPool(client, inPort);
+            holdTheWorkPool(client, httpPort);
             assertBusy(post(client, node.adminPort(), "/admin/dlq/" + id + "/retry"), "a DLQ retry the pool refused");
             assertEquals(2, waitingOnALock(WORK), "the refusal came while the parks still held the work pool");
 
@@ -643,12 +642,12 @@ class NodePoolWaitIT {
     @Test
     void aDeployRefusedByTheWorkPoolAnswers503() throws Exception {
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
-            Node node = startDeployed(client, inPort, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
-            byte[] zip = NodeIT.zip(InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + servers.getFirst().actualPort()));
+            Node node = startDeployed(client, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
+            int httpPort = node.httpPort();
+            byte[] zip = asyncPackage();
 
             PgConnection locker = lock("dlq");
-            holdTheWorkPool(client, inPort);
+            holdTheWorkPool(client, httpPort);
             HttpResponse<String> refused = NodeIT.send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip, "application/zip");
             assertEquals(503, refused.statusCode(), "a deploy the pool refused is retryable, 503, never 500: " + refused.body());
             String error = new JsonObject(refused.body()).getString("error");
@@ -670,13 +669,13 @@ class NodePoolWaitIT {
     @Test
     void anUndeployRefusedByTheWorkPoolAnswers503AndKeepsThePackage() throws Exception {
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
-            Node node = startDeployed(client, inPort, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
+            Node node = startDeployed(client, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
+            int httpPort = node.httpPort();
             assertEquals(1, count("select count(*) from deployments where package = 'demo'"), "fixture: demo is recorded");
             List<LogRecord> warnings = adminWarnings();
 
             PgConnection locker = lock("dlq");
-            holdTheWorkPool(client, inPort);
+            holdTheWorkPool(client, httpPort);
             HttpResponse<String> refused = NodeIT.send(client, "DELETE", node.adminPort(), "/admin/packages/demo", new byte[0], "application/json");
             assertEquals(503, refused.statusCode(), "an undeploy the pool refused is retryable, 503, never 500: " + refused.body()
                     + "; the admin log saw " + thrown(warnings));
@@ -708,21 +707,21 @@ class NodePoolWaitIT {
     @Test
     void aFullIntakeWaitQueueRefusesTheNextWaitingSaveAtOnce() throws Exception {
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
-            startDeployed(client, inPort, env("RAIL8_PG_POOL_SIZE", "2", "RAIL8_PG_POOL_WAIT", "PT1M", "RAIL8_PG_POOL_QUEUE", "1",
+            Node node = startDeployed(client, env("RAIL8_PG_POOL_SIZE", "2", "RAIL8_PG_POOL_WAIT", "PT1M", "RAIL8_PG_POOL_QUEUE", "1",
                     "RAIL8_BLOB_MEMORY_TIER", "4096"));
-            HttpResponse<String> warm = client.send(post(inPort, NO_XML, "warm"), HttpResponse.BodyHandlers.ofString());
+            int httpPort = node.httpPort();
+            HttpResponse<String> warm = client.send(post(httpPort, NO_XML, "warm"), HttpResponse.BodyHandlers.ofString());
             assertEquals(202, warm.statusCode(), "fixture: a save while the intake pool is free: " + warm.body());
 
             PgConnection locker = lock("journal_segments");
             byte[] spill = new byte[8192];
             Arrays.fill(spill, (byte) 'x');
-            CompletableFuture<HttpResponse<String>> holder = client.sendAsync(post(inPort, spill, "holder"), HttpResponse.BodyHandlers.ofString());
+            CompletableFuture<HttpResponse<String>> holder = client.sendAsync(post(httpPort, spill, "holder"), HttpResponse.BodyHandlers.ofString());
             NodeIT.until(() -> waitingOnALock(INTAKE) == 1, "fixture: the spill's segment row holds the intake pool's one connection, waiting on the lock");
 
             long sent = System.nanoTime();
-            CompletableFuture<HttpResponse<String>> a = client.sendAsync(post(inPort, spill, "queued-a"), HttpResponse.BodyHandlers.ofString());
-            CompletableFuture<HttpResponse<String>> b = client.sendAsync(post(inPort, spill, "queued-b"), HttpResponse.BodyHandlers.ofString());
+            CompletableFuture<HttpResponse<String>> a = client.sendAsync(post(httpPort, spill, "queued-a"), HttpResponse.BodyHandlers.ofString());
+            CompletableFuture<HttpResponse<String>> b = client.sendAsync(post(httpPort, spill, "queued-b"), HttpResponse.BodyHandlers.ofString());
             try {
                 CompletableFuture.anyOf(a, b).get(10, TimeUnit.SECONDS);
             } catch (TimeoutException none) {
@@ -773,7 +772,8 @@ class NodePoolWaitIT {
      * test before the node starts. The retention's first batch — begun by {@code Node.start}, not awaited — holds the work pool's
      * one connection, its statement over {@code messages} waiting on the lock; the first deploy's worker claims at its start
      * (not refused: it takes the queue's one place) and the deploy's record, the third user, is refused at once: 503 with the
-     * sighting's text. That refused first deploy leaves no record row, no listed package or flow and no listener on its port; it
+     * sighting's text. That refused first deploy leaves no record row, no listed package or flow, and its path answers 404 on the
+     * node's HTTP port; it
      * does leave its archive (put before the save, keyed by its sha256: a second send puts the same object) and its stopped
      * worker's start claim, in flight in the queue's one place until the pool frees it — with no row of the flow in {@code work}
      * that claim claims nothing, so a second send is sound. The fixture's deploy, sent while the hold lasts, is refused too (its
@@ -783,7 +783,6 @@ class NodePoolWaitIT {
     @Test
     void aFirstDeployRefusedByTheNodesStartUpWorkOnTheWorkPoolLeavesNoRecordFlowOrListenerAndIsSentAgainUntilAccepted() throws Exception {
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
             List<String> startClaimsRefused = new CopyOnWriteArrayList<>();
             Handler capture = new Handler() {
                 @Override public void publish(LogRecord r) {
@@ -802,7 +801,7 @@ class NodePoolWaitIT {
             NodeIT.until(() -> waitingOnALock(WORK) == 1, "fixture: the retention's first batch holds the work pool's one connection, waiting on the locked messages");
             String holder = waitingStatements(WORK);
             assertTrue(holder.contains("delete from messages"), "the holder is the retention's messages batch: " + holder);
-            byte[] zip = asyncPackage(inPort);
+            byte[] zip = asyncPackage();
 
             HttpResponse<String> first = NodeIT.send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip, "application/zip");
             assertEquals(503, first.statusCode(), "the first deploy meets the node's start-up work on the work pool: " + first.body());
@@ -811,17 +810,14 @@ class NodePoolWaitIT {
             assertEquals(List.of(), startClaimsRefused, "the first deploy's worker claim was not refused: it waits in the queue's one place");
             assertEquals(1, waitingOnALock(WORK), "the refusal came while the retention's batch still held the connection");
 
-            // what the refused first deploy leaves a second one does not meet: no record, nothing listed, no listener, no work row for
+            // what the refused first deploy leaves a second one does not meet: no record, nothing listed, no path served, no work row for
             // its leftover start claim to take (its archive stays, keyed by its sha256: the second send puts the same object)
             assertEquals(0, count("select count(*) from deployments"), "no deployment row");
             assertEquals(0, count("select count(*) from work"), "no work row: the stopped worker's start claim, still in flight, claims nothing");
             assertEquals(new JsonArray(), items(client, node, "/admin/packages"), "no package listed");
             assertEquals(new JsonArray(), items(client, node, "/admin/flows"), "no flow listed");
-            assertThrows(ConnectException.class, () -> {
-                try (Socket probe = new Socket()) {
-                    probe.connect(new InetSocketAddress("127.0.0.1", inPort), 2_000);
-                }
-            }, "no listener left on the refused flow's port " + inPort);
+            assertEquals(404, client.send(post(node.httpPort(), NO_XML, "probe"), HttpResponse.BodyHandlers.ofString()).statusCode(),
+                    "no flow takes requests at the refused flow's path on the node's HTTP port");
 
             List<HttpResponse<String>> answers = new CopyOnWriteArrayList<>();
             CompletableFuture<Void> deployed = new CompletableFuture<>();

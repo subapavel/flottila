@@ -113,6 +113,7 @@ class NodeJarIT {
                 Map.entry("RAIL8_NODE_ID", "node-jar-it"),
                 Map.entry("RAIL8_ADMIN_PORT", String.valueOf(adminPort)),
                 Map.entry("RAIL8_PEER_PORT", "0"),   // any free port: test JVMs run side by side
+                Map.entry("RAIL8_HTTP_PORT", "0"),
                 Map.entry("RAIL8_DATA_DIR", data.toString()),
                 Map.entry("RAIL8_PG_HOST", pg.getHost()),
                 Map.entry("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432))),

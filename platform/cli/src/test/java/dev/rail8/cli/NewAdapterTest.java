@@ -40,8 +40,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * {@code rail8 new-adapter}: the sample adapter under a new scheme, package and class names. A skeleton it writes compiles,
  * passes its own contract tests and component tests, and loads as a plugin under which its package validates and its flow
- * tests pass. A scheme that is no lower-case name, a Java keyword or one the node has, a package that is no Java name, a
- * directory that is not empty, and a missing scheme are usage errors with nothing written.
+ * tests pass. A scheme that is no lower-case name, a Java keyword, {@code rail8} or one the node has, a package that is no Java
+ * name, a directory that is not empty, and a missing scheme are usage errors with nothing written.
  */
 class NewAdapterTest {
 
@@ -123,7 +123,7 @@ class NewAdapterTest {
     @Test
     void aWrongSchemePackageOrDirectoryIsAUsageErrorAndWritesNothing() throws IOException {
         Path dir = temp.resolve("none");
-        for (String scheme : List.of("Acme", "1acme", "ac-me", "", "class", "http", "sftp", "mock", "a".repeat(NewAdapter.SCHEME_MAX + 1))) {
+        for (String scheme : List.of("Acme", "1acme", "ac-me", "", "class", "http", "sftp", "mock", "rail8", "a".repeat(NewAdapter.SCHEME_MAX + 1))) {
             Ran ran = run("new-adapter", dir.toString(), "--scheme", scheme);
             assertEquals(2, ran.exit(), scheme + ": " + ran);
             assertFalse(Files.exists(dir), scheme + ": nothing written");
@@ -150,6 +150,9 @@ class NewAdapterTest {
 
         Ran http = run("new-adapter", dir.toString(), "--scheme", "http");
         assertTrue(http.err().contains("the scheme 'http' is taken"), http.toString());
+        Ran rail8 = run("new-adapter", dir.toString(), "--scheme", "rail8");
+        assertEquals(List.of("rail8: new-adapter: the scheme 'rail8' is taken: its HTTP prefix /rail8 is kept for the platform itself"),
+                rail8.errLines().subList(0, 1), "the skeleton's prefix would be the platform's own: " + rail8);
     }
 
     /** The regular files under {@code dir}, relative to it with '/', sorted. */

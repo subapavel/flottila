@@ -18,6 +18,7 @@ import dev.rail8.api.Key;
 import dev.rail8.api.NackException;
 import dev.rail8.api.Producer;
 import dev.rail8.api.Timer;
+import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.api.settings.Field;
 import dev.rail8.api.settings.Settings;
 import io.vertx.core.Context;
@@ -29,14 +30,12 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.HttpServer;
-import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.PoolOptions;
 import io.vertx.core.http.RequestOptions;
 
-import java.net.InetSocketAddress;
+import java.net.URI;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Locale;
@@ -52,16 +51,19 @@ import java.util.function.Function;
 /**
  * The {@code http} component over the Vert.x server and client: the one place that opens an HTTP socket.
  *
- * <p><b>Consumer</b> (endpoint options {@code host}, {@code port} — 0 for an ephemeral one, see {@link HttpConsumer#port()} —,
- * {@code path}, {@code flow}, {@code maxBodyBytes}, {@code shutdownTimeoutMs} — default 30 000, positive): the server verticle owns the socket and never runs a pipeline. A request
- * at the path is streamed into the {@link BlobStore} under {@code maxBodyBytes} (413 above it), becomes the ingress envelope
- * (new id, the request headers, {@link #METHOD} / {@link #PATH} props) and is handed to the handler on its own virtual thread;
+ * <p><b>Consumer</b> (endpoint options {@code address}, {@code flow}, {@code maxBodyBytes}): it takes requests on the node's HTTP
+ * port ({@link HttpIngress}) under the prefix {@value #PREFIX}, at {@code /http} followed by its {@code address}, such as
+ * {@code /http/orders} ({@link HttpConsumer#url()}); the port's verticle owns the socket and the consumer never runs a pipeline
+ * on its event loop. A request at the path is streamed into the {@link BlobStore} under {@code maxBodyBytes} (413 above it),
+ * becomes the ingress envelope (new id, the request headers, {@link #METHOD} / {@link #PATH} props) and is handed to the handler
+ * on its own virtual thread;
  * the answer follows the {@link Ack}: {@code Reply} → 200 with the reply's headers and its body streamed, {@code Accepted} →
  * 202 with {@code x-message-id}, a retryable {@code Nack} → 503 + {@code Retry-After}, a final one → 400. A failed handler (a
  * sync flow's error reaches the caller) is answered by the failure's {@link Fault.Kind}: {@code MALFORMED} 400,
  * {@code INVALID} 422, {@code DOWNSTREAM} 503 + {@code Retry-After} when retryable ({@link NackException},
  * {@link HttpStatusException}) else 502, {@code INTERNAL} and any failure that is no {@link Fault} 500 — the body is the
- * failure's message as {@code text/plain}. Other paths are 404, other methods 405.
+ * failure's message as {@code text/plain}. Other methods are 405. Its stop closes its mount: no request reaches it from then
+ * on, and the stop completes once the requests it took have answered their senders, or at the node's stop deadline.
  *
  * <p><b>Producer</b> (options {@code url}, {@code maxBodyBytes} for the reply, optional {@code timeoutMs}, {@code poolSize}):
  * one client per endpoint with its connection pool; POSTs the envelope's body — streamed from {@link Body#open()}, so a retry
@@ -79,23 +81,19 @@ public final class HttpComponent implements Component {
 
     /** The request's method on an ingress envelope. */
     public static final Key<String> METHOD = new Key<>("http.method");
-    /** The request's path on an ingress envelope. */
+    /** The request's path on an ingress envelope: the prefix and the address, such as {@code /http/orders}. */
     public static final Key<String> PATH = new Key<>("http.path");
+    /** The component's prefix on the node's HTTP port. */
+    public static final String PREFIX = "/http";
     /** The response status on a reply envelope. */
     public static final Key<Integer> STATUS = new Key<>("http.status");
     /** The header carrying the message id on a 202, and on every request a producer sends ({@link Envelope#H_MESSAGE_ID}). */
     public static final String H_MESSAGE_ID = Envelope.H_MESSAGE_ID;
 
     private static final Set<String> HOP_BY_HOP = Set.of("content-length", "transfer-encoding", "connection", "host", "keep-alive", "upgrade", "expect", "te", "trailer", "proxy-authorization", "proxy-authenticate");
-    /** The consumer's {@code shutdownTimeoutMs} when the endpoint sets none: how long a stop waits for the requests in flight. */
-    static final long DEFAULT_SHUTDOWN_TIMEOUT_MS = 30_000;
-    /** What an http endpoint may set: the consumer's address and stop, the producer's target, reply limit, timeout and pool. */
+    /** What an http endpoint may set: the consumer's address, the producer's target, reply limit, timeout and pool. */
     static final Settings SETTINGS = Settings.of(
-            Field.text("host", "The address the server listens on.").byDefault("127.0.0.1").in(),
-            Field.integer("port", "The port the server listens on; 0, or none, for any free port.").range(0, 65535).in(),
-            Field.text("path", "The path requests are taken at; others get 404.").byDefault("/").in(),
-            Field.integer("shutdownTimeoutMs", "How long a stop waits for the requests in flight, in milliseconds.")
-                    .min(1).byDefault(DEFAULT_SHUTDOWN_TIMEOUT_MS).in(),
+            HttpIngress.ADDRESS,
             Field.text("url", "The http or https URL requests are posted to; none: the endpoint's URI.").out(),
             Field.integer("maxBodyBytes", "The largest reply body taken, in bytes.").required().min(1).out(),
             Field.integer("timeoutMs", "How long a request may take, in milliseconds.").range(1, Integer.MAX_VALUE).byDefault(30_000).out(),
@@ -107,20 +105,30 @@ public final class HttpComponent implements Component {
     private final BlobStore blobs;
     private final IdGenerator ids;
     private final Timer timer;
+    private final HttpIngress http;
     private final Map<HttpConsumer, Boolean> running = new ConcurrentHashMap<>();
     private final java.util.concurrent.atomic.AtomicLong handled = new java.util.concurrent.atomic.AtomicLong();   // numbers the handler threads
 
-    /** One whose producers time their bounded sends on Vert.x timers of {@code vertx}. */
+    /** One whose producers time their bounded sends on Vert.x timers of {@code vertx}, without an HTTP port: no consumer of it starts. */
     public HttpComponent(Vertx vertx, BlobStore blobs, IdGenerator ids) {
         this(vertx, blobs, ids, vertxTimer(vertx));
     }
 
-    /** One whose producers time their bounded sends on {@code timer} (the node's: {@code Runtime.timer()}). */
+    /** One whose producers time their bounded sends on {@code timer}, without an HTTP port: no consumer of it starts. */
     public HttpComponent(Vertx vertx, BlobStore blobs, IdGenerator ids, Timer timer) {
+        this(vertx, blobs, ids, timer, HttpIngress.NONE);
+    }
+
+    /**
+     * One whose producers time their bounded sends on {@code timer} (the node's: {@code Runtime.timer()}) and whose consumers
+     * mount their endpoints on {@code http} (the node's HTTP port).
+     */
+    public HttpComponent(Vertx vertx, BlobStore blobs, IdGenerator ids, Timer timer, HttpIngress http) {
         this.vertx = Objects.requireNonNull(vertx, "vertx");
         this.blobs = Objects.requireNonNull(blobs, "blobs");
         this.ids = Objects.requireNonNull(ids, "ids");
         this.timer = Objects.requireNonNull(timer, "timer");
+        this.http = Objects.requireNonNull(http, "http");
     }
 
     /** A {@link Timer} on {@code vertx}'s timers, at least a millisecond (Vert.x refuses less), rounded up. */
@@ -151,10 +159,10 @@ public final class HttpComponent implements Component {
         return Future.succeededFuture(running.isEmpty() ? Health.down("no consumer listening") : Health.up());
     }
 
-    /** Where a consumer of {@code cfg} binds ({@link #bindsTo}): every http consumer accepts connections. */
+    /** {@value #PREFIX}: every consumer of it takes requests on the node's HTTP port. */
     @Override
-    public Optional<InetSocketAddress> listensOn(EndpointConfig cfg) {
-        return Optional.of(bindsTo(cfg));
+    public Optional<String> httpPrefix() {
+        return Optional.of(PREFIX);
     }
 
     /**
@@ -183,25 +191,12 @@ public final class HttpComponent implements Component {
 
     // --- options
 
-    /**
-     * The address a consumer of {@code cfg} binds, unresolved: the {@code host} option (127.0.0.1 when absent) and the {@code port}
-     * option, else the URI's port, else 0 (any free port). {@link HttpConsumer} binds exactly this, so {@link #listensOn} answers it.
-     */
-    private static InetSocketAddress bindsTo(EndpointConfig cfg) {
-        return InetSocketAddress.createUnresolved(string(cfg, "host", "127.0.0.1"), intOption(cfg, "port", Math.max(cfg.uri().getPort(), 0)));
-    }
-
     static long requiredLong(EndpointConfig cfg, String key) {
         Object v = cfg.options().get(key);
         if (!(v instanceof Number n) || n.longValue() <= 0) {
             throw new IllegalArgumentException("endpoint '" + cfg.name() + "': option '" + key + "' must be a positive integer (never unlimited), was " + v);
         }
         return n.longValue();
-    }
-
-    /** {@code key} as a positive integer, {@code fallback} when absent; present and not positive is refused as by {@link #requiredLong}. */
-    static long positiveLong(EndpointConfig cfg, String key, long fallback) {
-        return cfg.options().get(key) == null ? fallback : requiredLong(cfg, key);
     }
 
     static String string(EndpointConfig cfg, String key, String fallback) {
@@ -255,59 +250,43 @@ public final class HttpComponent implements Component {
     public final class HttpConsumer implements Consumer {
         private final EndpointConfig cfg;
         private final Function<Envelope, Future<Ack>> handler;
-        private final String host;
-        private final int configuredPort;
-        private final String path;
         private final String flow;
         private final long maxBodyBytes;
-        private final Duration shutdownTimeout;
-        private volatile HttpServer server;
+        private volatile HttpIngress.Mount mount;
 
         HttpConsumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {
             this.cfg = Objects.requireNonNull(cfg, "cfg");
             this.handler = Objects.requireNonNull(handler, "handler");
-            InetSocketAddress at = bindsTo(cfg);
-            this.host = at.getHostString();
-            this.configuredPort = at.getPort();
-            this.path = string(cfg, "path", cfg.uri().getPath() == null || cfg.uri().getPath().isEmpty() ? "/" : cfg.uri().getPath());
             this.flow = string(cfg, "flow", cfg.name());
             this.maxBodyBytes = requiredLong(cfg, "maxBodyBytes");
-            this.shutdownTimeout = Duration.ofMillis(positiveLong(cfg, "shutdownTimeoutMs", DEFAULT_SHUTDOWN_TIMEOUT_MS));
         }
 
-        /** How long {@link #stop()} lets the requests in flight answer before the server force-closes: {@code shutdownTimeoutMs}. */
-        Duration shutdownTimeout() {
-            return shutdownTimeout;
+        /** The URL of its mount on the node's own socket ({@link HttpIngress.Mount#url()}); empty before {@link #start()} succeeded and after {@link #stop()}. */
+        public Optional<URI> url() {
+            return Optional.ofNullable(mount).map(HttpIngress.Mount::url);
         }
 
-        /** The port the server listens on (the actual one when configured 0); -1 before {@link #start()}. */
-        public int port() {
-            HttpServer s = server;
-            return s == null ? -1 : s.actualPort();
-        }
-
+        /** Mounts the endpoint on the node's HTTP port; fails as the mount fails (the path is held, no port is open). */
         @Override
         public Future<Void> start() {
-            HttpServer s = vertx.createHttpServer(new HttpServerOptions().setHost(host).setPort(configuredPort)).requestHandler(this::handle);
-            return s.listen().map(listening -> { server = listening; running.put(this, Boolean.TRUE); return null; });
+            return http.mount(cfg, this::handle).map(mounted -> { mount = mounted; running.put(this, Boolean.TRUE); return null; });
         }
 
         /**
          * Stops: health DOWN at once; a request whose body completes from now on is answered 503 + {@code retry-after}
-         * without calling the handler; the server stops listening and its connections close once their requests are answered
-         * — the deliveries in flight answer their senders — or, the transport's backstop, after {@code shutdownTimeoutMs}.
+         * without calling the handler; the mount closes, so no new request reaches the consumer, and the stop completes once the
+         * requests it took have answered — the deliveries in flight answer their senders — or at the node's stop deadline.
          */
         @Override
         public Future<Void> stop() {
-            HttpServer s = server;
-            server = null;
+            HttpIngress.Mount m = mount;
+            mount = null;
             running.remove(this);   // health DOWN, and a request whose body completes from now on is refused
-            return s == null ? Future.succeededFuture() : s.shutdown(shutdownTimeout);
+            return m == null ? Future.succeededFuture() : m.close();
         }
 
         private void handle(HttpServerRequest req) {
             HttpServerResponse res = req.response();
-            if (!path.equals(req.path())) { res.setStatusCode(404).end("no endpoint at " + req.path()); return; }
             if (req.method() != HttpMethod.POST && req.method() != HttpMethod.PUT) { res.setStatusCode(405).putHeader("allow", "POST, PUT").end(); return; }
             String declared = req.getHeader("content-length");
             if (declared != null && Long.parseLong(declared) > maxBodyBytes) { res.setStatusCode(413).end("body above " + maxBodyBytes + " bytes"); return; }
@@ -315,6 +294,7 @@ public final class HttpComponent implements Component {
             Context ctx = vertx.getOrCreateContext();
             Headers headers = headers(req.headers());
             String method = req.method().name();
+            String path = req.path();
             req.pause();   // nothing flows until the store attached its handlers (a store that attaches later resumes)
             blobs.write(BlobKey.body(id, 0), req, maxBodyBytes).onComplete(written -> {
                 if (written.failed()) {

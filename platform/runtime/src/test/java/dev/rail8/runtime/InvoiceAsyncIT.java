@@ -115,6 +115,7 @@ class InvoiceAsyncIT {
         env.put("RAIL8_NODE_ID", nodeId);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", Files.createDirectories(data.resolve(nodeId)).toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -130,15 +131,18 @@ class InvoiceAsyncIT {
     Node startNode(String nodeId) throws Exception {
         SaxonXml xml = new SaxonXml();
         NodeConfig config = NodeConfig.from(env(nodeId));
-        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())),
                 Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
         nodes.add(node);
         return node;
     }
 
-    /** The demo package with invoice-async in place of invoice-sync, its in endpoint on {@code inPort}, its partners at {@code partnerBase}. */
-    static Map<String, byte[]> asyncFiles(int inPort, String partnerBase) throws IOException {
-        Map<String, byte[]> files = NodeIT.demoFiles(inPort, partnerBase);
+    /**
+     * The demo package with invoice-async in place of invoice-sync, its in endpoint served at {@code /http/in} on the node's HTTP
+     * port, its partners at {@code partnerBase}.
+     */
+    static Map<String, byte[]> asyncFiles(String partnerBase) throws IOException {
+        Map<String, byte[]> files = NodeIT.demoFiles(partnerBase);
         assertNotNull(files.remove("flows/invoice-sync.yaml"), "fixture: the demo's sync flow is replaced");
         assertNotNull(files.remove("flows/invoice-sync.test.yaml"), "fixture: and its test file with it");
         files.put("flows/invoice-async.yaml", Files.readAllBytes(FIXTURE.resolve("flows/invoice-async.yaml")));
@@ -189,12 +193,11 @@ class InvoiceAsyncIT {
         holds.add(release);
         HttpServer partner = partner(partnerSaw, release.future());
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
-            byte[] zip = NodeIT.zip(asyncFiles(inPort, "http://127.0.0.1:" + partner.actualPort()));
+            byte[] zip = NodeIT.zip(asyncFiles("http://127.0.0.1:" + partner.actualPort()));
             Node node = startNode("node-async");
             deploy(client, node, zip);
 
-            HttpResponse<String> accepted = NodeIT.send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+            HttpResponse<String> accepted = NodeIT.send(client, "POST", node.httpPort(), "/http/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
 
             assertEquals(202, accepted.statusCode(), "accepted once saved and queued: " + accepted.body());
             String id = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("a 202 names its message: " + accepted.headers()));
@@ -232,18 +235,17 @@ class InvoiceAsyncIT {
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         HttpServer partner = partner(partnerSaw, Future.succeededFuture());
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
             Node node = startNode("node-async");
-            deploy(client, node, NodeIT.zip(asyncFiles(inPort, "http://127.0.0.1:" + partner.actualPort())));
+            deploy(client, node, NodeIT.zip(asyncFiles("http://127.0.0.1:" + partner.actualPort())));
             String longId = "7".repeat(257);
 
-            HttpResponse<String> refused = NodeIT.send(client, "POST", inPort, "/in", invoice(longId, "S-1"), "application/xml");
+            HttpResponse<String> refused = NodeIT.send(client, "POST", node.httpPort(), "/http/in", invoice(longId, "S-1"), "application/xml");
 
             assertEquals(400, refused.statusCode(), "a key over 256 characters is the sender's fault, final: " + refused.body());
             assertTrue(refused.body().contains("256"), "the answer names the bound: " + refused.body());
             assertEquals(List.of(), describe(workRows()), "nothing queued");
             assertEquals(0L, db.query("select count(*) from messages").execute().await().iterator().next().getLong(0), "nothing recorded");
-            HttpResponse<String> fine = NodeIT.send(client, "POST", inPort, "/in", invoice("7".repeat(256), "S-2"), "application/xml");
+            HttpResponse<String> fine = NodeIT.send(client, "POST", node.httpPort(), "/http/in", invoice("7".repeat(256), "S-2"), "application/xml");
             assertEquals(202, fine.statusCode(), "control: 256 characters is a key: " + fine.body());
             NodeIT.until(() -> partnerSaw.size() == 1, "the control invoice is delivered");
             assertTrue(partnerSaw.get(0).contains("number=\"" + "7".repeat(256) + "\""), partnerSaw.get(0));
@@ -256,11 +258,10 @@ class InvoiceAsyncIT {
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         HttpServer partner = partner(partnerSaw, Future.succeededFuture());
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
             Node node = startNode("node-async");
-            deploy(client, node, NodeIT.zip(asyncFiles(inPort, "http://127.0.0.1:" + partner.actualPort())));
+            deploy(client, node, NodeIT.zip(asyncFiles("http://127.0.0.1:" + partner.actualPort())));
 
-            HttpResponse<String> accepted = NodeIT.send(client, "POST", inPort, "/in", "this is no invoice".getBytes(StandardCharsets.UTF_8), "application/xml");
+            HttpResponse<String> accepted = NodeIT.send(client, "POST", node.httpPort(), "/http/in", "this is no invoice".getBytes(StandardCharsets.UTF_8), "application/xml");
 
             assertEquals(202, accepted.statusCode(), "the save does not judge the body: " + accepted.body());
             String id = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow();

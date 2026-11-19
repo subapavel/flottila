@@ -201,6 +201,7 @@ public final class LedgerMain {
                 "RAIL8_PG_DATABASE", o.db(), "RAIL8_PG_USER", o.user(), "RAIL8_PG_PASSWORD", o.password()));
         env.put("RAIL8_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY);   // one key for both nodes: they share journal_keys (D-106)
         env.put("RAIL8_PEER_PORT", "0");   // the peer link on any free port: two nodes, or two runs, on one host
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         if (o.s3().isEmpty()) {
             env.put("RAIL8_ARCHIVE_DIR", archives.toString());
         } else {
@@ -285,7 +286,7 @@ public final class LedgerMain {
         Map<String, String> env2 = nodeEnv(o, NODE_1, Files.createDirectories(run.resolve(NODE_2)), run.resolve("archives"), 0);
         env2.put("RAIL8_JOURNAL_DIR", NodeConfig.from(env1).journal().dir().toString());   // node 1's journal: its LOCK died with it
         Node node2 = Node.start(NodeConfig.from(env2), vertx,
-                ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())), xml.steps(), xml.languages());
+                ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())), xml.steps(), xml.languages());
         try {
             HttpClientAgent client = client(vertx);   // a fresh pool: none of node 1's dead connections
             sending.load(client, Integer.MAX_VALUE, new CompletableFuture<>(), SEND);   // the rest, and node 1's cut 202s again

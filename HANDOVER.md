@@ -26,7 +26,7 @@ docker compose --profile history --profile kafka down -v   # stop, remove every 
 
 Services: `rail8` (the node), `postgres`, `valkey`, `s3` (SeaweedFS), `sftp` + `sftp-keys`,
 `echo` (the partner), `netns` (holds the published ports and the network namespace that the node and the echo share; FIX-105),
-`deploy` (one-shot `rail8 deploy` of `examples/demo`); `kafka` is the optional add-on under `--profile kafka` (CORE-9). Ports: 8080 sync door, 8082 async door, 8081 admin, all bound to
+`deploy` (one-shot `rail8 deploy` of `examples/demo`); `kafka` is the optional add-on under `--profile kafka` (CORE-9). Ports: 8080 the node's HTTP port (every inbound HTTP endpoint, under `/http/`), 8081 admin, both bound to
 127.0.0.1. The repo-root `docker-compose.yml` is the quickstart variant (`docs/QUICKSTART.md`). More detail:
 `deploy/compose/README.md`.
 
@@ -37,9 +37,9 @@ A="Authorization: Bearer $RAIL8_ADMIN_TOKEN"
 INV=../../examples/demo/fixtures/sample-invoice.xml
 
 # Flow A sync (invoice-sync): 200 with the partner's reply
-curl -X POST -H 'Content-Type: application/xml' --data-binary @$INV localhost:8080/in
+curl -X POST -H 'Content-Type: application/xml' --data-binary @$INV localhost:8080/http/in
 # Flow A async (invoice-async): 202 after the durable save; the worker delivers it
-curl -X POST -H 'Content-Type: application/xml' --data-binary @$INV localhost:8082/invoice/async
+curl -X POST -H 'Content-Type: application/xml' --data-binary @$INV localhost:8080/http/invoice/async
 # Flow B (sftp-invoice): drop a file. The poller picks it up within 10 s, saves it, deletes it and delivers it
 docker compose cp ../../examples/demo/fixtures/inbox/invoice-4711.xml sftp:/home/demo/inbox/
 docker compose logs echo
@@ -49,7 +49,7 @@ curl -H "$A" 'localhost:8081/admin/messages?key=invoiceId:4711'             # fi
 curl -H "$A" localhost:8081/admin/messages/<id>                             # timeline: steps, wallNanos, cpuNanos (null, F-21), versions
 curl -H "$A" localhost:8081/admin/messages/<id>/steps/3/body                # the payload after step 3
 # DLQ and retry
-docker compose stop echo; curl -X POST -H 'Content-Type: application/xml' --data-binary @$INV localhost:8082/invoice/async
+docker compose stop echo; curl -X POST -H 'Content-Type: application/xml' --data-binary @$INV localhost:8080/http/invoice/async
 curl -H "$A" localhost:8081/admin/dlq                                       # the row appears (gate run: 1.1 s, step 5 `partner`; since CORE-14a after one scheduled retry, at step 1)
 docker compose start echo; curl -X POST -H "$A" localhost:8081/admin/dlq/<dlq-id>/retry    # 202, the same id once more (D-136)
 # Kill test (check 5): drop files, then `docker kill -s KILL compose-rail8-1` and `docker compose up -d`

@@ -11,6 +11,7 @@ import dev.rail8.api.Runtime;
 import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.api.plugin.ComponentContext;
+import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.api.settings.Settings;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.plugin.Plugins;
@@ -123,7 +124,7 @@ class DeploymentsValidateTest {
     Deployments shipped(String rail8Env, UnaryOperator<Component> replace) {
         if (vertx == null) vertx = Vertx.vertx();
         Plugins shipped = Plugins.fromEnv(Map.of());
-        List<Component> built = shipped.components(new ComponentContext(vertx, rt.blobs(), rt.ids(), timer, rt.clock()));
+        List<Component> built = shipped.components(new ComponentContext(vertx, rt.blobs(), rt.ids(), timer, rt.clock(), HttpIngress.NONE));
         Map<String, Component> byScheme = built.stream().map(replace).collect(Collectors.toMap(Component::scheme, c -> c));
         Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), byScheme);
         return new Deployments(NodeConfig.from(env(rail8Env)), runtime, byScheme, rt.clock(), timer, shipped.steps(), shipped.languages(),
@@ -261,14 +262,14 @@ class DeploymentsValidateTest {
                 "every http endpoint, and nothing else, is refused by the schema: " + undescribed);
     }
 
-    /** An endpoint config its component's settings description refuses (http: port is a whole number) is a problem naming endpoint, environment and pointer, and nothing else is. */
+    /** An endpoint config its component's settings description refuses (http: an address is a path) is a problem naming endpoint, environment and pointer, and nothing else is. */
     @Test
     void anEndpointConfigOutsideItsComponentSchemaIsAProblem() throws Exception {
-        Path bad = demoCopy("bad-config", Map.of("endpoints/http-in.yaml", Map.of("port: 8080", "port: eighty")));
+        Path bad = demoCopy("bad-config", Map.of("endpoints/http-in.yaml", Map.of("address: /in", "address: in")));
 
         List<String> problems = validate(shipped("dev"), "demo", bad);
 
-        assertOnly(problems, "endpoint 'http-in' config (environment dev) at '/port': ");
+        assertOnly(problems, "endpoint 'http-in' config (environment dev) at '/address': ");
         noAbsolutePath(problems, bad);
     }
 

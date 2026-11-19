@@ -119,23 +119,21 @@ class DemoFlowsTest {
     }
 
     @Test
-    void theAsyncHttpDoorListensOnItsOwnPortAtItsPath() throws IOException {
+    void theAsyncHttpDoorIsServedAtItsAddressOnTheNodesHttpPort() throws IOException {
         JsonObject door = endpoint("http-in-async");
         assertEquals("http", door.getString("scheme"));
         assertEquals("in", door.getString("direction"));
-        JsonObject config = door.getJsonObject("config");
-        assertEquals("/invoice/async", config.getString("path"));
-        assertEquals(8082, config.getInteger("port"));
-        assertEquals("0.0.0.0", config.getString("host"), "reachable from outside the node's container");
-        // one HttpServer per endpoint, a port shared between servers is shared round-robin, not by path: no two doors on one port
-        Map<Integer, String> ports = new HashMap<>();
+        assertEquals(new JsonObject().put("address", "/invoice/async"), door.getJsonObject("config"),
+                "only its address: the node's HTTP port has the host and the port, the http adapter the prefix /http");
+        // one HTTP port for every door, routed by its path: no two doors at one address
+        Map<String, String> addresses = new HashMap<>();
         for (Map.Entry<String, JsonObject> e : demo().endpoints().entrySet()) {
             JsonObject d = e.getValue();
             if (!"http".equals(d.getString("scheme")) || !"in".equals(d.getString("direction"))) continue;
-            String clash = ports.put(d.getJsonObject("config").getInteger("port"), e.getKey());
-            assertEquals(null, clash, "http endpoints '" + clash + "' and '" + e.getKey() + "' listen on one port");
+            String clash = addresses.put(d.getJsonObject("config").getString("address"), e.getKey());
+            assertEquals(null, clash, "http endpoints '" + clash + "' and '" + e.getKey() + "' are at one address");
         }
-        assertEquals(3, ports.size(), "the demo's three doors: " + ports);
+        assertEquals(Set.of("/in", "/invoice/async", "/order"), addresses.keySet(), "the demo's three doors: " + addresses);
     }
 
     @Test

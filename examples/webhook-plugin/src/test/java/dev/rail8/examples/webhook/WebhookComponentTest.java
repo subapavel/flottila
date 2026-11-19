@@ -5,6 +5,9 @@ import dev.rail8.api.Consumer;
 import dev.rail8.api.EndpointConfig;
 import dev.rail8.api.NackException;
 import dev.rail8.api.Producer;
+import dev.rail8.api.settings.Direction;
+import dev.rail8.api.settings.Settings;
+import dev.rail8.ingress.SharedHttpPort;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -18,6 +21,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -28,32 +32,49 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * What the contract suite leaves to the component: the HTTP statuses it answers and how it reads a partner's refusal. An adapter
- * for another protocol tests its own answers and refusals here.
+ * for another protocol tests its own answers and refusals here. Its consumers mount on a shared HTTP port of the test's own, as
+ * they would on the node's.
  */
 class WebhookComponentTest {
 
     static Vertx vertx;
+    static SharedHttpPort port;
     final FakeRuntime rt = FakeRuntime.create();
-    final WebhookComponent component = new WebhookComponent(vertx, rt.blobs(), rt.ids(), rt.timer());
+    final WebhookComponent component = new WebhookComponent(vertx, rt.blobs(), rt.ids(), rt.timer(), port);
 
     @BeforeAll
-    static void start() { vertx = Vertx.vertx(); }
+    static void start() {
+        vertx = Vertx.vertx();
+        port = SharedHttpPort.loopback(vertx, Map.of(WebhookComponent.SCHEME, WebhookComponent.PREFIX)).await();
+    }
 
     @AfterAll
-    static void stop() { vertx.close().await(); }
+    static void stop() {
+        port.close().await();
+        vertx.close().await();
+    }
+
+    @Test
+    void itsPrefixIsItsOwnAndItsInEndpointsNameAnAddress() {
+        assertEquals(Optional.of("/webhook"), component.httpPrefix());
+        assertEquals(Optional.empty(), component.listensOn(new EndpointConfig("in", URI.create("webhook://in"), Map.of("address", "/in"))),
+                "no port of its own: the node's HTTP port");
+        assertEquals(List.of(new Settings.Problem("/address", "is required")), component.settings().check(Map.of(), Direction.IN));
+    }
 
     @Test
     void theConsumerAnswersAFinalRefusal400AnotherPath404AnotherMethod405AndABodyAboveItsLimit413() {
         Consumer consumer = component.consumer(new EndpointConfig("in", URI.create("webhook://in"),
-                Map.of("path", "/in", "maxBodyBytes", 8, "flow", "test")), e -> Future.succeededFuture(new Ack.Nack("no such order", false)));
+                Map.of("address", "/in", "maxBodyBytes", 8, "flow", "test")), e -> Future.succeededFuture(new Ack.Nack("no such order", false)));
         consumer.start().await();
         HttpClientAgent client = vertx.createHttpClient();
         try {
-            int port = ((WebhookComponent.WebhookConsumer) consumer).port();
-            assertEquals(400, status(client, HttpMethod.POST, port, "/in", "order"));
-            assertEquals(404, status(client, HttpMethod.POST, port, "/other", "order"));
-            assertEquals(405, status(client, HttpMethod.GET, port, "/in", ""));
-            assertEquals(413, status(client, HttpMethod.POST, port, "/in", "nine bytes"));
+            assertEquals(Optional.of(URI.create("http://127.0.0.1:" + port.port() + "/webhook/in")), ((WebhookComponent.WebhookConsumer) consumer).url(),
+                    "served at its prefix and its address");
+            assertEquals(400, status(client, HttpMethod.POST, port.port(), "/webhook/in", "order"));
+            assertEquals(404, status(client, HttpMethod.POST, port.port(), "/webhook/other", "order"), "the port answers a path nothing serves");
+            assertEquals(405, status(client, HttpMethod.GET, port.port(), "/webhook/in", ""));
+            assertEquals(413, status(client, HttpMethod.POST, port.port(), "/webhook/in", "nine bytes"));
         } finally {
             client.close().await();
             consumer.stop().await();
@@ -64,15 +85,14 @@ class WebhookComponentTest {
     void theConsumerAnswersAnAcceptedMessage202WithItsId() {
         AtomicReference<String> accepted = new AtomicReference<>();
         Consumer consumer = component.consumer(new EndpointConfig("in", URI.create("webhook://in"),
-                Map.of("path", "/in", "maxBodyBytes", 1024, "flow", "test")), e -> {
+                Map.of("address", "/in", "maxBodyBytes", 1024, "flow", "test")), e -> {
             accepted.set(e.id());
             return Future.succeededFuture(new Ack.Accepted(e.id()));
         });
         consumer.start().await();
         HttpClientAgent client = vertx.createHttpClient();
         try {
-            int port = ((WebhookComponent.WebhookConsumer) consumer).port();
-            HttpClientResponse res = client.request(HttpMethod.POST, port, "127.0.0.1", "/in").compose(req -> req.send("order")).await();
+            HttpClientResponse res = client.request(HttpMethod.POST, port.port(), "127.0.0.1", "/webhook/in").compose(req -> req.send("order")).await();
             assertEquals(202, res.statusCode());
             assertEquals(accepted.get(), res.getHeader("x-message-id"), "the id of the message the handler accepted");
         } finally {

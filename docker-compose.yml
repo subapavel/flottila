@@ -30,10 +30,8 @@ services:
         aliases:
           - rail8
     ports:
-      - "127.0.0.1:8080:8080"   # the demo's http-in
-      - "127.0.0.1:8084:8084"   # the demo's http-in-order
+      - "127.0.0.1:8080:8080"   # the node's HTTP port: every inbound HTTP endpoint (/http/in, /http/invoice/async, /http/order)
       - "127.0.0.1:8081:8081"   # admin API and /health
-      - "127.0.0.1:8082:8082"   # the demo's http-in-async (/invoice/async)
     healthcheck:
       test: ["CMD", "true"]
       interval: 2s
@@ -57,6 +55,8 @@ services:
       # the stack's own network reaches Postgres as 'postgres', which defaults to verify-full: this dev stack's Postgres serves no
       # TLS, so its plaintext link is written down here (D-124); a deployed node sets verify-full and RAIL8_PG_SSL_ROOT_CERT
       RAIL8_PG_SSL_MODE: disable
+      # the node's HTTP port, shared by every inbound HTTP endpoint, listens on the container's network as the admin API does
+      RAIL8_HTTP_HOST: 0.0.0.0
       RAIL8_ADMIN_HOST: 0.0.0.0
       # an admin API off loopback needs a token: the node refuses to start without one (export it, docs/QUICKSTART.md)
       RAIL8_ADMIN_TOKEN: ${RAIL8_ADMIN_TOKEN:-}

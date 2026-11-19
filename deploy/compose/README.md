@@ -13,8 +13,8 @@ export RAIL8_S3_SECRET_KEY=$(openssl rand -hex 16)  # required too; RAIL8_S3_ACC
 docker compose up -d --build                           # returns once the node is healthy
 docker compose ps -a deploy                            # exited (0) after the demo is deployed
 curl -H "Authorization: Bearer $RAIL8_ADMIN_TOKEN" localhost:8081/admin/packages
-curl -X POST --data-binary @../../examples/demo/fixtures/sample-invoice.xml localhost:8080/in        # flow invoice-sync: the reply is the ACK
-curl -X POST --data-binary @../../examples/demo/fixtures/sample-invoice.xml localhost:8082/invoice/async   # flow invoice-async: 202 after the durable save
+curl -X POST --data-binary @../../examples/demo/fixtures/sample-invoice.xml localhost:8080/http/in   # flow invoice-sync: the reply is the ACK
+curl -X POST --data-binary @../../examples/demo/fixtures/sample-invoice.xml localhost:8080/http/invoice/async   # flow invoice-async: 202 after the durable save
 docker compose --profile history up -d clickhouse      # optional
 docker compose --profile kafka up -d kafka             # optional: the event-broker add-on
 docker compose --profile history --profile kafka down -v   # stop and remove every volume
@@ -31,7 +31,7 @@ the former name and Postgres initialises only an empty volume, so the node canno
 `down -v` leaves it, and while it exists it keeps its volumes in use. The old node-data volume is no longer declared in this file and stays
 after that: `docker volume ls` shows it under the former name, `docker volume rm` removes it.
 
-- Admin API and `/health`: `localhost:8081`; the demo's http-in: `localhost:8080`; its async door `http-in-async`: `localhost:8082/invoice/async` (answers 202).
+- Admin API and `/health`: `localhost:8081`. The node's HTTP port, shared by every inbound HTTP endpoint: `localhost:8080`; the demo's http-in at `/http/in`, its async door `http-in-async` at `/http/invoice/async` (answers 202).
 - Postgres password: `RAIL8_PG_PASSWORD` (default `rail8`). S3: bucket `rail8`, one Admin identity written at start
   from `RAIL8_S3_ACCESS_KEY` / `RAIL8_S3_SECRET_KEY` (an http endpoint, allowed in `dev`).
 - SFTP: user `demo`, password `RAIL8_SFTP_PASSWORD` (default `demo`), directory `inbox` (the demo's `sftp-inbox` polls `/inbox` every

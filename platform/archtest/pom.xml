@@ -68,6 +68,11 @@
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
+      <artifactId>rail8-ingress</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-testkit</artifactId>
       <scope>test</scope>
     </dependency>

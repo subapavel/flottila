@@ -4,6 +4,7 @@ import dev.rail8.api.Component;
 import dev.rail8.api.Expressions;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.plugin.ComponentContext;
+import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.api.plugin.Plugin;
 import dev.rail8.runtime.plugin.Plugins;
 import dev.rail8.testkit.FakeRuntime;
@@ -35,7 +36,7 @@ class NodeModulesTest {
             assertTrue(lines.stream().allMatch(l -> line.matcher(l).matches()), lines.toString());
             assertEquals(List.of("direct", "http", "jq", "mapping", "sftp", "xsd", "xslt"),
                     lines.stream().map(l -> l.split(" ")[1]).toList(), "exactly the shipped modules, in name order");
-            ComponentContext context = new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock());
+            ComponentContext context = new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock(), HttpIngress.NONE);
             assertEquals(List.of("direct", "http", "sftp"), plugins.components(context).stream().map(Component::scheme).toList(),
                     "the components a node serves");
             assertEquals(List.of("jq", "mapping", "xsd", "xslt"), plugins.steps().stream().map(StepFactory::type).toList());

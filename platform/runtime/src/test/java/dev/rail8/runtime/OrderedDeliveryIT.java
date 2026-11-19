@@ -180,6 +180,7 @@ class OrderedDeliveryIT {
         env.put("RAIL8_NODE_ID", nodeId);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", Files.createDirectories(data.resolve(nodeId)).toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -192,16 +193,15 @@ class OrderedDeliveryIT {
     }
 
     /**
-     * Node {@code nodeId} with the demo's components and steps, invoice-async deployed on it, its in endpoint on a port of its own;
-     * {@code maxInFlight} rewrites the flow's limit. Returns the node's in port.
+     * Node {@code nodeId} with the demo's components and steps, invoice-async deployed on it, its in endpoint at /http/in on the
+     * node's HTTP port; {@code maxInFlight} rewrites the flow's limit. Returns the node's HTTP port.
      */
     int nodeWithTheFlow(HttpClient client, String nodeId, int partnerPort, int maxInFlight) throws Exception {
         Node node = startNode(nodeId);
-        int inPort = NodeIT.freePort();
-        Map<String, byte[]> files = InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + partnerPort);
+        Map<String, byte[]> files = InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partnerPort);
         files.put("flows/invoice-async.yaml", NodeIT.replaced(files.get("flows/invoice-async.yaml"), Map.of("maxInFlight: 16", "maxInFlight: " + maxInFlight)));
         InvoiceAsyncIT.deploy(client, node, NodeIT.zip(files));
-        return inPort;
+        return node.httpPort();
     }
 
     /**
@@ -211,15 +211,15 @@ class OrderedDeliveryIT {
     Node startNode(String nodeId) throws Exception {
         SaxonXml xml = new SaxonXml();
         NodeConfig config = NodeConfig.from(env(nodeId));
-        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())),
                 Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
         nodes.add(node);
         return node;
     }
 
-    /** Posts invoice {@code key} with the line {@code sku} to the in port; returns the message id of the 202. */
-    static String accept(HttpClient client, int inPort, String key, String sku) throws Exception {
-        HttpResponse<String> r = NodeIT.send(client, "POST", inPort, "/in", InvoiceAsyncIT.invoice(key, sku), "application/xml");
+    /** Posts invoice {@code key} with the line {@code sku} to /http/in on the node's HTTP port {@code httpPort}; returns the message id of the 202. */
+    static String accept(HttpClient client, int httpPort, String key, String sku) throws Exception {
+        HttpResponse<String> r = NodeIT.send(client, "POST", httpPort, "/http/in", InvoiceAsyncIT.invoice(key, sku), "application/xml");
         assertEquals(202, r.statusCode(), key + "/" + sku + " is accepted: " + r.body());
         return r.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow();
     }

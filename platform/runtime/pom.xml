@@ -122,6 +122,11 @@
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-core</artifactId>
     </dependency>
+    <!-- the node's HTTP port, shared by the in endpoints of every adapter with an HTTP prefix -->
+    <dependency>
+      <groupId>dev.rail8</groupId>
+      <artifactId>rail8-ingress</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.vertx</groupId>
       <artifactId>vertx-pg-client</artifactId>

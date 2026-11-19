@@ -268,7 +268,7 @@ public final class PluginFixtures {
     /** A plugin built against the next api minor. */
     public static final class NextMinor implements Plugin {
         @Override public String name() { return "next-minor"; }
-        @Override public String api() { return "0.3"; }
+        @Override public String api() { return "0.4"; }
     }
 
     /** A plugin named {@code settled} whose one step's type is {@code depth-<n>}, {@code n} its setting {@code DEPTH}: 1 to 9, 5 unset. */

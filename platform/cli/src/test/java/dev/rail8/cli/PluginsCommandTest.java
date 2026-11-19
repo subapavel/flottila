@@ -22,8 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * it is blank. The
  * package {@code plugin} sends to a partner of the plugin acme's scheme and runs a flow through its {@code drop} step: with the
  * plugin it validates and its cases pass (the platform's mock stands in for the plugin's scheme, the plugin's step runs), without
- * it both are problems. Plugins a node would refuse are one line on stderr and 2; a plugin's component a node would refuse is a
- * problem of the dry build.
+ * it both are problems. Plugins a node would refuse are one line on stderr and 2; a plugin's component a node would refuse, its
+ * HTTP prefix included, is a problem of the dry build.
  */
 class PluginsCommandTest {
 
@@ -125,5 +125,25 @@ class PluginsCommandTest {
         Ran ran = run("validate", PACKAGE.toString(), "--plugins", plugins.toString());
         assertEquals(1, ran.exit(), ran.toString());
         assertEquals(List.of("problem: plugin shipped-scheme: the scheme http is module http's already; a plugin adds and never replaces"), ran.problems());
+    }
+
+    /** A plugin's component whose HTTP prefix a node's start would refuse, the platform's own or a shipped component's, is the one problem. */
+    @Test
+    void aPluginsComponentWithAPrefixANodeWouldRefuseIsAProblem() throws IOException {
+        plugin("acme.jar", CliPlugins.Acme.class);
+        Path reserved = plugin("hook.jar", CliPlugins.ReservedPrefix.class);
+        Ran ran = run("validate", PACKAGE.toString(), "--plugins", plugins.toString());
+        assertEquals(1, ran.exit(), ran.toString());
+        assertEquals(List.of("problem: the component of the scheme hook (" + CliPlugins.Hook.class.getName()
+                + ") declares the HTTP prefix /rail8, which is kept for the platform itself"), ran.problems());
+
+        Files.delete(reserved);
+        plugin("hook.jar", CliPlugins.ShippedPrefix.class);
+        Ran clash = run("validate", PACKAGE.toString(), "--plugins", plugins.toString());
+        assertEquals(1, clash.exit(), clash.toString());
+        assertEquals(1, clash.problems().size(), clash.toString());
+        String line = clash.problems().getFirst();
+        assertTrue(line.contains("the component of the scheme hook (" + CliPlugins.Hook.class.getName() + ")")
+                && line.contains("the component of the scheme http (") && line.endsWith("both declare the HTTP prefix /http; a prefix has one component"), line);
     }
 }

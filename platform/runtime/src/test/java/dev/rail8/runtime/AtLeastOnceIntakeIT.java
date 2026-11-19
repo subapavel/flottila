@@ -116,6 +116,7 @@ class AtLeastOnceIntakeIT {
         env.put("RAIL8_NODE_ID", nodeId);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", Files.createDirectories(data.resolve(nodeId)).toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -134,7 +135,7 @@ class AtLeastOnceIntakeIT {
     Node startNode(Map<String, String> env) throws Exception {
         SaxonXml xml = new SaxonXml();
         NodeConfig config = NodeConfig.from(env);
-        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())),
                 Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
         nodes.add(node);
         return node;
@@ -157,14 +158,13 @@ class AtLeastOnceIntakeIT {
     void aNodeIngressWhoseEnqueueFailsLeavesNoIngressRow() throws Exception {
         int partnerPort = partner();
         Node node = startNode("node-a");
-        int inPort = NodeIT.freePort();
         try (HttpClient client = NodeIT.http()) {
-            InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + partnerPort)));
+            InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partnerPort)));
             db.query("create function refuse_work() returns trigger language plpgsql as $$ begin raise exception 'work refused by the test'; end $$")
                     .execute().await();
             db.query("create trigger refuse_work before insert on work for each row execute function refuse_work()").execute().await();
 
-            HttpResponse<String> refused = NodeIT.send(client, "POST", inPort, "/in", InvoiceAsyncIT.invoice("INV-1", "S1"), "application/xml");
+            HttpResponse<String> refused = NodeIT.send(client, "POST", node.httpPort(), "/http/in", InvoiceAsyncIT.invoice("INV-1", "S1"), "application/xml");
             assertEquals(503, refused.statusCode(), "an enqueue that fails is a retryable Nack: " + refused.body());
             assertEquals(0, count("select count(*) from messages"), "no ingress row: the record rolled back with the item");
             assertEquals(0, count("select count(*) from body_refs"), "no body ref: it rolled back with the item (CORE-4c2: a ref, no bodies row)");
@@ -172,7 +172,7 @@ class AtLeastOnceIntakeIT {
             assertEquals(0L, NodeIT.health(node.adminPort(), 200).getLong("snapshotWriteFailures"), "a failed intake is no snapshot write failure");
 
             db.query("drop trigger refuse_work on work").execute().await();
-            HttpResponse<String> accepted = NodeIT.send(client, "POST", inPort, "/in", InvoiceAsyncIT.invoice("INV-1", "S1"), "application/xml");
+            HttpResponse<String> accepted = NodeIT.send(client, "POST", node.httpPort(), "/http/in", InvoiceAsyncIT.invoice("INV-1", "S1"), "application/xml");
             assertEquals(202, accepted.statusCode(), "the retry is accepted once the enqueue succeeds: " + accepted.body());
             String id = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow();
             assertEquals(1, count("select count(*) from messages where id = $1 and step = 0", id), "its ingress row is committed at the 202");
@@ -194,13 +194,12 @@ class AtLeastOnceIntakeIT {
             env.put("RAIL8_PG_HOST", "127.0.0.1");
             env.put("RAIL8_PG_PORT", String.valueOf(wire.port()));
             Node node = startNode(env);
-            int inPort = NodeIT.freePort();
             try {
-                InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + partnerPort)));
+                InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partnerPort)));
 
                 int mark = wire.mark();
                 for (int i = 1; i <= 9; i++) {
-                    HttpResponse<String> accepted = NodeIT.send(client, "POST", inPort, "/in", InvoiceAsyncIT.invoice("INV-P" + i, "S1"), "application/xml");
+                    HttpResponse<String> accepted = NodeIT.send(client, "POST", node.httpPort(), "/http/in", InvoiceAsyncIT.invoice("INV-P" + i, "S1"), "application/xml");
                     assertEquals(202, accepted.statusCode(), "fixture: save " + i + " accepted: " + accepted.body());
                 }
                 List<PgWire.Sent> sent = wire.since(mark);
@@ -262,15 +261,14 @@ class AtLeastOnceIntakeIT {
             env.put("RAIL8_JOURNAL_SWEEP_INTERVAL", "PT1S");
             env.put("RAIL8_JOURNAL_SWEEP_GRACE", "PT1S");
             Node node = startNode(env);
-            int inPort = NodeIT.freePort();
-            InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + partnerPort)));
+            InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partnerPort)));
             Path segments = data.resolve("node-a").resolve("journal").resolve("segments");
 
             PgWire.Held commit = wire.holdNextAfter(m -> m.sql() != null && m.sql().contains("insert into work("), PgWire.query("COMMIT"));
             CompletableFuture<HttpResponse<String>> post = new CompletableFuture<>();
             Thread.ofVirtual().start(() -> {
                 try {
-                    post.complete(NodeIT.send(client, "POST", inPort, "/in", InvoiceAsyncIT.invoice("INV-DOUBT", "S1"), "application/xml"));
+                    post.complete(NodeIT.send(client, "POST", node.httpPort(), "/http/in", InvoiceAsyncIT.invoice("INV-DOUBT", "S1"), "application/xml"));
                 } catch (Throwable t) {
                     post.completeExceptionally(t);
                 }

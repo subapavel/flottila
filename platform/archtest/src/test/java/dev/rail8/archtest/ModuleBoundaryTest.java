@@ -29,7 +29,7 @@ class ModuleBoundaryTest {
 
     /** The two plugin rules check the contract, not an empty set. */
     @Test void thePluginContractIsOnTheArchtestClasspath() {
-        for (String c : List.of("dev.rail8.api.plugin.Plugin", "dev.rail8.api.plugin.ComponentContext")) {
+        for (String c : List.of("dev.rail8.api.plugin.Plugin", "dev.rail8.api.plugin.ComponentContext", "dev.rail8.api.plugin.HttpIngress")) {
             assertTrue(tree.contain(c), "the production tree holds " + c);
         }
     }
@@ -38,6 +38,7 @@ class ModuleBoundaryTest {
     @Test void componentsDependOnApiOnly() { Rules.COMPONENTS_DEPEND_ON_API_ONLY.check(tree); }
     @Test void stepsDependOnApiOnly() { Rules.STEPS_DEPEND_ON_API_ONLY.check(tree); }
     @Test void testkitDoesNotDependOnRuntimeComponentsStepsOrCli() { Rules.TESTKIT_DEPENDS_ON_CORE_AND_API.check(tree); }
+    @Test void theSharedHttpPortDependsOnApiOnly() { Rules.INGRESS_DEPENDS_ON_API_ONLY.check(tree); }
     @Test void nothingDependsOnCli() { Rules.NOTHING_DEPENDS_ON_CLI.check(tree); }
     @Test void simDependsOnApiCoreTestkitOnly() { Rules.SIM_DEPENDS_ON_API_CORE_TESTKIT.check(tree); }
     @Test void nothingDependsOnSim() { Rules.NOTHING_DEPENDS_ON_SIM.check(tree); }
@@ -69,7 +70,7 @@ class ModuleBoundaryTest {
      * platform, not an empty set: all are on the archtest classpath.
      */
     @Test void theEntryPointTheCliAndTheShippedModulesAreOnTheArchtestClasspath() {
-        for (String c : List.of("dev.rail8.runtime.Main", "dev.rail8.runtime.plugin.Plugins", "dev.rail8.cli.Cli",
+        for (String c : List.of("dev.rail8.runtime.Main", "dev.rail8.runtime.plugin.Plugins", "dev.rail8.cli.Cli", "dev.rail8.ingress.SharedHttpPort",
                 "dev.rail8.components.direct.DirectPlugin", "dev.rail8.components.http.HttpPlugin", "dev.rail8.components.sftp.SftpPlugin",
                 "dev.rail8.steps.jq.JqPlugin", "dev.rail8.steps.mapping.MappingPlugin", "dev.rail8.steps.validate.XsdPlugin",
                 "dev.rail8.steps.xslt.XsltPlugin")) {

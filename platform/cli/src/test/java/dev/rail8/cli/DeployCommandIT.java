@@ -4,7 +4,6 @@ import dev.rail8.cli.CliRuns.Ran;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.plugin.Plugins;
-import dev.rail8.testkit.Ports;
 import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
@@ -16,7 +15,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -53,8 +51,9 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * {@code rail8 deploy} against a real node — started in this JVM over the modules on its class path ({@link Plugins}), on a
  * Postgres of its own (Testcontainers, a database per case, as runtime's QuickstartIT), its admin API on port 0 behind a bearer
- * token. The demo deploys (200, exit 0) and the node holds exactly its files at their package-relative paths; a package whose
- * stylesheet does not compile is refused (422, exit 1) and nothing is deployed; without the token the node refuses (401, exit 1).
+ * token, its HTTP port on port 0 too. The demo deploys (200, exit 0) and the node holds exactly its files at their
+ * package-relative paths; a package whose stylesheet does not compile is refused (422, exit 1) and nothing is deployed; without
+ * the token the node refuses (401, exit 1).
  */
 class DeployCommandIT {
 
@@ -92,6 +91,7 @@ class DeployCommandIT {
         env.put("RAIL8_NODE_ID", "cli-deploy-it");
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", Files.createDirectories(work.resolve("data")).toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -139,23 +139,6 @@ class DeployCommandIT {
         }
     }
 
-    static int freePort() throws IOException {
-        return Ports.free();
-    }
-
-    /** A copy of {@code from} whose http-in listens on a free loopback port (the demo's 0.0.0.0:8080 may be taken). */
-    Path withFreeInPort(Path from, String as) throws IOException {
-        Path copy = CliRuns.copy(from, work.resolve(as));
-        CliRuns.rewrite(copy.resolve("endpoints/http-in.yaml"), Map.of("host: 0.0.0.0", "host: 127.0.0.1", "port: 8080", "port: " + freePort()));
-        if (Files.exists(copy.resolve("endpoints/http-in-async.yaml"))) {   // the demo's second door (P2-06) has a port of its own
-            CliRuns.rewrite(copy.resolve("endpoints/http-in-async.yaml"), Map.of("host: 0.0.0.0", "host: 127.0.0.1", "port: 8082", "port: " + freePort()));
-        }
-        if (Files.exists(copy.resolve("endpoints/http-in-order.yaml"))) {   // the demo's jq door has a port of its own
-            CliRuns.rewrite(copy.resolve("endpoints/http-in-order.yaml"), Map.of("host: 0.0.0.0", "host: 127.0.0.1", "port: 8084", "port: " + freePort()));
-        }
-        return copy;
-    }
-
     String adminUrl() {
         return "http://127.0.0.1:" + node.adminPort();
     }
@@ -185,7 +168,7 @@ class DeployCommandIT {
 
     @Test
     void theDemoDeploysWith200AndExits0() throws Exception {
-        Path demo = withFreeInPort(DEMO, "demo");
+        Path demo = DEMO;
 
         Ran ran = run(Map.of("RAIL8_ADMIN_TOKEN", TOKEN), "deploy", demo.toString(), "--admin", adminUrl());
 
@@ -202,7 +185,7 @@ class DeployCommandIT {
 
     @Test
     void aBrokenPackageIs422AndExits1() throws Exception {
-        Path broken = withFreeInPort(FIXTURES.resolve("broken-xslt"), "broken");
+        Path broken = FIXTURES.resolve("broken-xslt");
 
         Ran ran = run(Map.of("RAIL8_ADMIN_TOKEN", TOKEN), "deploy", broken.toString(), "--admin", adminUrl());
 
@@ -214,7 +197,7 @@ class DeployCommandIT {
 
     @Test
     void withoutTheTokenTheNodeRefusesAndTheDeployExits1() throws Exception {
-        Path demo = withFreeInPort(DEMO, "demo");
+        Path demo = DEMO;
 
         Ran ran = run(Map.of(), "deploy", demo.toString(), "--admin", adminUrl());
 

@@ -9,6 +9,8 @@ import dev.rail8.api.Health;
 import dev.rail8.api.Pipeline;
 import dev.rail8.api.Producer;
 import dev.rail8.components.http.HttpComponent;
+import dev.rail8.ingress.SharedHttpPort;
+import dev.rail8.runtime.time.VertxTimer;
 import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.FlowDefinition;
 import dev.rail8.core.record.InMemoryMessageStore;
@@ -73,13 +75,14 @@ class InvoiceSyncHttpTest {
     /** Every wait in this test: well under the class timeout, so a stuck wait fails with what it waited for. */
     static final long BOUND_SECONDS = 10;
     static Vertx vertx;
+    static SharedHttpPort httpPort;
     static HttpClientAgent caller;
     static Buffer invoice;
     static Buffer ack;
     static JsonObject flowDoc;
 
     final FakeRuntime rt = FakeRuntime.create();
-    final HttpComponent http = new HttpComponent(vertx, rt.blobs(), rt.ids());
+    final HttpComponent http = new HttpComponent(vertx, rt.blobs(), rt.ids(), new VertxTimer(vertx), httpPort);
     final InMemoryMessageStore store = new InMemoryMessageStore();
     final List<String> partnerSaw = new CopyOnWriteArrayList<>();
     /** Every failed partner send, in order, and the first one as soon as it is recorded. */
@@ -95,6 +98,7 @@ class InvoiceSyncHttpTest {
     static void start() throws IOException {
         vertx = Vertx.vertx();
         caller = vertx.createHttpClient();
+        httpPort = SharedHttpPort.loopback(vertx, Map.of("http", HttpComponent.PREFIX)).await();
         invoice = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")));
         ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         flowDoc = Documents.read(DEMO.resolve("flows/invoice-sync.yaml"));
@@ -103,6 +107,7 @@ class InvoiceSyncHttpTest {
     @AfterAll
     static void stop() {
         within(caller.close(), "the caller's close");
+        within(httpPort.close(), "the HTTP port's close");
         within(vertx.close(), "Vert.x's close");
     }
 
@@ -163,7 +168,7 @@ class InvoiceSyncHttpTest {
         SaxonXml xml = new SaxonXml();
         Pipeline pipeline = new FlowBuilder(rt.runtime(), Stream.concat(new XsdValidate().steps().stream(), xml.steps().stream()).toList(), xml.languages(), endpoints).recording(store, Meter.system()).build(def, DEMO);
         // the consumer's handler: the sync flow's reply is the ACK (ARCHITECTURE §4); the delivery-mode wrapper proper is P1-08
-        EndpointConfig httpIn = new EndpointConfig("http-in", URI.create("http://127.0.0.1:0/in"), Map.of("host", "127.0.0.1", "port", 0, "path", "/in", "flow", def.id(), "maxBodyBytes", def.maxBodyBytes(), "shutdownTimeoutMs", 5_000));
+        EndpointConfig httpIn = new EndpointConfig("http-in", URI.create("http://127.0.0.1:0/in"), Map.of("address", "/in", "flow", def.id(), "maxBodyBytes", def.maxBodyBytes()));
         HttpComponent.HttpConsumer consumer = (HttpComponent.HttpConsumer) http.consumer(httpIn, e -> {
             running.add(Thread.currentThread());
             try {
@@ -176,7 +181,7 @@ class InvoiceSyncHttpTest {
         });
         within(consumer.start(), "the consumer's start");
         in = consumer;
-        port = consumer.port();
+        port = httpPort.port();
     }
 
     @AfterEach
@@ -201,7 +206,7 @@ class InvoiceSyncHttpTest {
      * no answer within {@link #BOUND_SECONDS}.
      */
     Answer post(Buffer body) {
-        CompletableFuture<Answer> answer = caller.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + "/in"))
+        CompletableFuture<Answer> answer = caller.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + "/http/in"))
                 .compose(req -> { req.putHeader("content-type", "application/xml"); req.putHeader("x-request-id", "r-42"); return req.send(body); })
                 .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.getHeader("content-type"), b.toString())))
                 .toCompletionStage().toCompletableFuture();

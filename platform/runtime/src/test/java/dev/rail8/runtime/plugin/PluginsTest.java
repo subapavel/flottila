@@ -5,6 +5,7 @@ import dev.rail8.api.Envelope;
 import dev.rail8.api.Expressions;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.plugin.ComponentContext;
+import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.api.plugin.Plugin;
 import dev.rail8.runtime.plugin.fixture.PluginFixtures;
 import dev.rail8.testkit.FakeRuntime;
@@ -63,7 +64,7 @@ class PluginsTest {
     }
 
     static ComponentContext context() {
-        return new ComponentContext(vertx, RT.blobs(), RT.ids(), RT.timer(), RT.clock());
+        return new ComponentContext(vertx, RT.blobs(), RT.ids(), RT.timer(), RT.clock(), HttpIngress.NONE);
     }
 
     /** {@code dir/<entry>}: a jar of every fixture class whose service file names {@code providers}. */
@@ -303,7 +304,7 @@ class PluginsTest {
                     () -> Plugins.load(rail8, Optional.empty(), Map.of()));
         }
         try (URLClassLoader next = classPath(moduleJar("next.jar", PluginFixtures.NextMinor.class))) {
-            assertRefused("module " + PluginFixtures.NextMinor.class.getName() + ": built against api 0.3, which a node of api " + Plugin.API + " does not load",
+            assertRefused("module " + PluginFixtures.NextMinor.class.getName() + ": built against api 0.4, which a node of api " + Plugin.API + " does not load",
                     () -> Plugins.load(next, Optional.empty(), Map.of()));
         }
         try (URLClassLoader failing = classPath(moduleJar("failing.jar", PluginFixtures.FailingSteps.class))) {
@@ -407,7 +408,7 @@ class PluginsTest {
     @Test
     void aPluginBuiltAgainstAnotherApiIsRefused() throws IOException {
         Path next = jar("next.jar", PluginFixtures.NextMinor.class);
-        assertRefused("plugin next.jar: built against api 0.3, which a node of api " + Plugin.API + " does not load", this::load);
+        assertRefused("plugin next.jar: built against api 0.4, which a node of api " + Plugin.API + " does not load", this::load);
         Files.delete(next);
         jar("latest.jar", PluginFixtures.NoVersion.class);
         assertRefused("plugin latest.jar: built against api latest, which a node of api " + Plugin.API + " does not load", this::load);

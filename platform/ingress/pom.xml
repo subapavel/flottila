@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>dev.rail8</groupId>
+    <artifactId>rail8-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath>..</relativePath>
+  </parent>
+
+  <artifactId>rail8-ingress</artifactId>
+  <packaging>jar</packaging>
+  <name>Rail8 :: ingress</name>
+  <description>The node's shared HTTP port: one Vert.x server, the in endpoints of every component with a prefix mounted on it by path. The node runs it; a component's own tests run it on a free port.</description>
+
+  <dependencies>
+    <!-- api only: the node and the tests of HTTP-based components both use it -->
+    <dependency>
+      <groupId>dev.rail8</groupId>
+      <artifactId>rail8-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>dev.rail8</groupId>
+      <artifactId>rail8-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

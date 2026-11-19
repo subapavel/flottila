@@ -9,6 +9,7 @@ import dev.rail8.api.Envelope;
 import dev.rail8.api.Health;
 import dev.rail8.api.settings.Direction;
 import dev.rail8.api.settings.Settings;
+import dev.rail8.ingress.SharedHttpPort;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
@@ -43,11 +44,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * D-056, the http consumer stopped mid-delivery: {@code stop()} reports health DOWN at once, answers a request whose body
- * completes after the stop began with 503 + {@code retry-after} without calling the handler, lets the deliveries in flight
- * answer, and closes through {@code HttpServer.shutdown} with the endpoint option {@code shutdownTimeoutMs} (finite,
- * positive, default 30 000) as the transport's backstop. The contract cases (the stop waits, a cancel is a retryable NACK)
- * run in {@link HttpComponentContractTest}.
+ * The http consumer stopped mid-delivery: {@code stop()} reports health DOWN at once, answers a request whose body completes
+ * after the stop began with 503 + {@code retry-after} without calling the handler, lets the deliveries in flight answer, and
+ * closes its mount on the node's HTTP port, whose drain deadline is the backstop for a delivery that never answers. The
+ * contract cases (the stop waits, a cancel is a retryable NACK) run in {@link HttpComponentContractTest}.
  */
 @Timeout(30)
 class HttpConsumerStopTest {
@@ -57,9 +57,10 @@ class HttpConsumerStopTest {
 
     static Vertx vertx;
     static HttpClientAgent raw;
+    static SharedHttpPort port;
     final FakeRuntime rt = FakeRuntime.create();
     final GatedBlobs blobs = new GatedBlobs(rt.blobs());
-    final HttpComponent http = new HttpComponent(vertx, blobs, rt.ids());
+    final HttpComponent http = new HttpComponent(vertx, blobs, rt.ids(), rt.timer(), port);
     HttpComponent.HttpConsumer consumer;
 
     /**
@@ -98,11 +99,13 @@ class HttpConsumerStopTest {
     static void start() {
         vertx = Vertx.vertx();
         raw = vertx.createHttpClient();
+        port = SharedHttpPort.loopback(vertx, Map.of("http", HttpComponent.PREFIX)).await();
     }
 
     @AfterAll
     static void stop() {
         raw.close().await();
+        port.close().await();
         vertx.close().await();
     }
 
@@ -112,21 +115,29 @@ class HttpConsumerStopTest {
     }
 
     static EndpointConfig endpoint(Map<String, Object> extra) {
-        Map<String, Object> options = new HashMap<>(Map.of("host", "127.0.0.1", "port", 0, "path", "/in", "flow", "orders", "maxBodyBytes", 1024));
+        Map<String, Object> options = new HashMap<>(Map.of("address", "/in", "flow", "orders", "maxBodyBytes", 1024));
         options.putAll(extra);
-        return new EndpointConfig("http-in", URI.create("http://127.0.0.1:0/in"), options);
+        return new EndpointConfig("http-in", URI.create("http://in"), options);
     }
 
     HttpComponent.HttpConsumer listen(Map<String, Object> extra, Function<Envelope, Future<Ack>> handler) {
-        consumer = (HttpComponent.HttpConsumer) http.consumer(endpoint(extra), handler);
-        consumer.start().await();   // port 0: the port the server got (FIX-8)
+        return listen(http, extra, handler);
+    }
+
+    HttpComponent.HttpConsumer listen(HttpComponent on, Map<String, Object> extra, Function<Envelope, Future<Ack>> handler) {
+        consumer = (HttpComponent.HttpConsumer) on.consumer(endpoint(extra), handler);
+        consumer.start().await();
         return consumer;
     }
 
     record Answer(int status, MultiMap headers, String body) {}
 
     Future<Answer> send(String body) {
-        return raw.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + consumer.port() + "/in"))
+        return sendTo(consumer.url().orElseThrow().toString(), body);
+    }
+
+    Future<Answer> sendTo(String url, String body) {
+        return raw.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI(url))
                 .compose(req -> req.send(Buffer.buffer(body)))
                 .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.headers(), b.toString())));
     }
@@ -178,13 +189,14 @@ class HttpConsumerStopTest {
             return n == 1 ? answer.future() : Future.succeededFuture(new Ack.Accepted(e.id()));
         });
         assertEquals(Health.Status.UP, http.health().await().status(), "a consumer listens");
+        String inFlightUrl = consumer.url().orElseThrow().toString();
         Future<Answer> inFlight = send("<in-flight/>");
         reached(invoked, "the handler was invoked");
 
         Future<Void> stopped = consumer.stop();
         assertEquals(Health.Status.DOWN, http.health().await().status(), "DOWN as soon as the stop began, with a delivery still in flight");
-        Future<Answer> late = within(send("<late/>"));   // by the time a new request is refused the stop has acted
-        assertTrue(late.failed() || late.result().status() == 503, "a new request after stop began is refused: " + late);
+        Answer late = within(sendTo(inFlightUrl, "<late/>")).result();
+        assertEquals(404, late.status(), "a new request after stop began finds no mount (the node answers 503 while the flow is deployed): " + late.body());
         assertEquals(1, handled.get(), "and never reaches the handler");
         assertFalse(inFlight.isComplete(), "the delivery in flight still waits for its answer: " + inFlight);
         assertFalse(stopped.isComplete(), "the stop is under way: a delivery is in flight");
@@ -196,33 +208,33 @@ class HttpConsumerStopTest {
     }
 
     @Test
-    void shutdownTimeoutMsMustBePositive() {
-        Function<Envelope, Future<Ack>> handler = e -> Future.succeededFuture(new Ack.Accepted(e.id()));
-        for (Object bad : List.<Object>of(0, -1, -30_000L)) {
-            IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> http.consumer(endpoint(Map.of("shutdownTimeoutMs", bad)), handler),
-                    "shutdownTimeoutMs " + bad + " is refused: the transport backstop is finite and positive");
-            assertTrue(refused.getMessage().contains("shutdownTimeoutMs"), "names the option: " + refused.getMessage());
-        }
-        HttpComponent.HttpConsumer byDefault = (HttpComponent.HttpConsumer) http.consumer(endpoint(Map.of()), handler);
-        assertEquals(Duration.ofSeconds(30), byDefault.shutdownTimeout(), "absent: the 30 000 ms default");
-        HttpComponent.HttpConsumer oneMilli = (HttpComponent.HttpConsumer) http.consumer(endpoint(Map.of("shutdownTimeoutMs", 1)), handler);
-        assertEquals(Duration.ofMillis(1), oneMilli.shutdownTimeout(), "one millisecond is positive, read as milliseconds");
-        assertEquals(List.of(new Settings.Problem("/shutdownTimeoutMs", "must be a whole number of at least 1")),
-                http.settings().check(Map.of("shutdownTimeoutMs", 0), Direction.IN), "and the description refuses a non-positive value too");
-        assertEquals(List.of(), http.settings().check(Map.of("shutdownTimeoutMs", 1), Direction.IN));
+    void shutdownTimeoutMsIsNoOptionAnyMore() {
+        assertEquals(List.of(new Settings.Problem("/shutdownTimeoutMs", "no such setting")),
+                http.settings().check(Map.of("address", "/in", "shutdownTimeoutMs", 5_000), Direction.IN),
+                "the drain deadline is the node's stop deadline, the same for every endpoint on its HTTP port");
     }
 
     @Test
-    void aStopWhoseDeliveryNeverAnswersEndsAtTheShutdownTimeout() throws Exception {
-        CountDownLatch invoked = new CountDownLatch(1);
-        Promise<Ack> never = Promise.promise();
-        listen(Map.of("shutdownTimeoutMs", 200), e -> { invoked.countDown(); return never.future(); });
-        Future<Answer> inFlight = send("<never-answered/>");
-        reached(invoked, "the handler was invoked");
+    void aStopWhoseDeliveryNeverAnswersEndsAtThePortsDrainDeadline() throws Exception {
+        Duration drain = Duration.ofMillis(200);
+        SharedHttpPort quick = new SharedHttpPort(vertx, rt.timer(), "127.0.0.1", 0, drain);
+        quick.listen(Map.of("http", HttpComponent.PREFIX), path -> false).await();
+        try {
+            CountDownLatch invoked = new CountDownLatch(1);
+            Promise<Ack> never = Promise.promise();
+            HttpComponent onShort = new HttpComponent(vertx, blobs, rt.ids(), rt.timer(), quick);
+            listen(onShort, Map.of(), e -> { invoked.countDown(); return never.future(); });
+            Future<Answer> inFlight = send("<never-answered/>");
+            reached(invoked, "the handler was invoked");
 
-        Future<Void> stopped = consumer.stop();
-        assertTrue(within(stopped).succeeded(), "the transport backstop ends the stop after shutdownTimeoutMs (200 ms), not after the 30 s default: " + stopped.cause());
-        within(inFlight);   // the request is not left hanging once the server closed its connection, whatever it was told
-        assertEquals(Health.Status.DOWN, http.health().await().status());
+            Future<Void> stopped = consumer.stop();
+            assertFalse(stopped.isComplete(), "the stop waits for the delivery in flight");
+            rt.clock().advance(drain);
+            assertTrue(within(stopped).succeeded(), "the port's drain deadline ends the stop: " + stopped.cause());
+            assertTrue(within(inFlight).failed(), "the request still open at the deadline is reset, not left hanging: " + inFlight);
+            assertEquals(Health.Status.DOWN, onShort.health().await().status());
+        } finally {
+            quick.close().await();
+        }
     }
 }

@@ -62,8 +62,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * {@link NodeFailStopIT} starts its child) over one Postgres, each case on a database of its own (FIX-5). Every node runs the
  * package {@code ledger}: an at-least-once flow whose one step is {@code to partner}; the partner is an http server in this JVM
  * that records each call's {@code x-message-id} (first-wins: the distinct ids in arrival order, and every raw call), answers
- * or holds it. Node A and node B share the package and its archive directory but each has its own http door (the in endpoint's
- * host is {@code secret://in-host}: A on 127.0.0.2, B on 127.0.0.3, one port) and its own partner path ({@code /a}, {@code /b}
+ * or holds it. Node A and node B share the package and its archive directory but each has its own HTTP port (A on 127.0.0.2,
+ * B on 127.0.0.3, one port number; the in endpoint is served at {@code /http/in} there) and its own partner path ({@code /a}, {@code /b}
  * through {@code secret://partner-url}), so the partner tells who sent a call. Node leases PT2S renewed every PT0.5S, but in the
  * ledger case (see there). Waits spin on observed state (the partner's, the database's, the child's
  * {@code /proc} state); none sleeps.
@@ -300,6 +300,8 @@ class NodeTakeoverLedgerIT {
         env.put("RAIL8_NODE_ID", id);
         env.put("RAIL8_ADMIN_PORT", String.valueOf(admin));
         env.put("RAIL8_PEER_PORT", "0");   // two nodes on one host: each its own peer port, like its admin port (CORE-5a)
+        env.put("RAIL8_HTTP_HOST", host);   // each node's HTTP port on a loopback address of its own, one port number
+        env.put("RAIL8_HTTP_PORT", String.valueOf(inPort));
         env.put("RAIL8_DATA_DIR", data.toString());
         env.put("RAIL8_ARCHIVE_DIR", dir.resolve("archives").toString());   // shared: B and A's restart restore the package from it
         env.put("RAIL8_PG_HOST", pg.getHost());
@@ -310,7 +312,6 @@ class NodeTakeoverLedgerIT {
         env.put("RAIL8_PG_POOL_SIZE", "4");
         env.put("RAIL8_NODE_LEASE", lease);
         env.put("RAIL8_NODE_LEASE_RENEW", renew);
-        env.put("RAIL8_SECRET_IN_HOST", host);
         env.put("RAIL8_SECRET_PARTNER_URL", "http://127.0.0.1:" + partnerServer.actualPort() + partnerPath);
         TestJournalKey.with(env);
         List<String> command = new ArrayList<>();
@@ -356,7 +357,7 @@ class NodeTakeoverLedgerIT {
         Map<String, JsonObject> files = new TreeMap<>();
         files.put("package.yaml", doc("package").put("name", "ledger").put("version", "0.1.0"));
         files.put("endpoints/in.yaml", doc("endpoint").put("id", "in").put("scheme", "http").put("direction", "in")
-                .put("config", new JsonObject().put("host", "secret://in-host").put("port", inPort).put("path", "/in")));
+                .put("config", new JsonObject().put("address", "/in")));
         files.put("endpoints/partner.yaml", doc("endpoint").put("id", "partner").put("scheme", "http").put("direction", "out")
                 .put("config", new JsonObject().put("url", "secret://partner-url").put("maxBodyBytes", 65536).put("timeoutMs", 300_000).put("poolSize", 8)));
         files.put("flows/ledger.yaml", doc("flow").put("id", "ledger").put("version", "0.1.0").put("from", new JsonObject().put("endpoint", "in"))
@@ -414,7 +415,7 @@ class NodeTakeoverLedgerIT {
         long deadline = System.nanoTime() + ACK_RETRY.toNanos();
         long backoffMs = 10;
         while (true) {
-            HttpResponse<String> r = http.send(HttpRequest.newBuilder(URI.create("http://" + host + ":" + inPort + "/in")).timeout(Duration.ofSeconds(60))
+            HttpResponse<String> r = http.send(HttpRequest.newBuilder(URI.create("http://" + host + ":" + inPort + "/http/in")).timeout(Duration.ofSeconds(60))
                     .header("content-type", "application/xml").POST(HttpRequest.BodyPublishers.ofString("<Invoice><Id>" + i + "</Id></Invoice>")).build(),
                     HttpResponse.BodyHandlers.ofString());
             if (r.statusCode() == 202) return r.headers().firstValue("x-message-id").orElseThrow(() -> new AssertionError("a 202 without x-message-id"));

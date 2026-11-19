@@ -134,8 +134,8 @@ class PgPromotionLedgerIT {
         Node node = startNode(env);
         List<String> ledger = new ArrayList<>();
         try (HttpClient client = NodeIT.http()) {
-            int inPort = deploy(client, node);
-            for (int i = 1; i <= 20; i++) ledger.add(accept(client, inPort, "INV-H" + i));
+            int httpPort = deploy(client, node);
+            for (int i = 1; i <= 20; i++) ledger.add(accept(client, httpPort, "INV-H" + i));
         }
         close(node);
         killThePrimaryAndPromote();
@@ -163,17 +163,17 @@ class PgPromotionLedgerIT {
         env.put("RAIL8_PG_DURABILITY", "ha");
         Node node = startNode(env);
         try (HttpClient client = NodeIT.http()) {
-            int inPort = deploy(client, node);
+            int httpPort = deploy(client, node);
             for (String ddl : List.of("create table commit_settings(st text, sc text)",
                     "create function note_settings() returns trigger language plpgsql as $$ begin insert into commit_settings values "
                             + "(current_setting('statement_timeout'), current_setting('synchronous_commit')); return new; end $$",
                     "create trigger note_settings before insert on messages for each row execute function note_settings()")) {
                 execute(primaryUrl(DB), INTAKE, INTAKE, ddl);
             }
-            accept(client, inPort, "INV-T1");   // fixture: the standby streams, a save commits
+            accept(client, httpPort, "INV-T1");   // fixture: the standby streams, a save commits
 
             String conninfo = stopReceipt();
-            HttpResponse<String> waited = NodeIT.send(client, "POST", inPort, "/in", InvoiceAsyncIT.invoice("INV-T2", "S1"), "application/xml");
+            HttpResponse<String> waited = NodeIT.send(client, "POST", httpPort, "/http/in", InvoiceAsyncIT.invoice("INV-T2", "S1"), "application/xml");
             assertEquals(503, waited.statusCode(), "the save waited for the standby until saveTimeout, never cut short to a 202 by the role's "
                     + "statement timeout: " + waited.statusCode() + " " + waited.body());
             assertTrue(syncRepWaiters(INTAKE) >= 1, "the node did not cancel the commit: it still waits for its standby (SyncRep)");
@@ -251,11 +251,11 @@ class PgPromotionLedgerIT {
         List<String> before = new ArrayList<>();
         List<String> after = new ArrayList<>();
         try (HttpClient client = NodeIT.http()) {
-            int inPort = deploy(client, node);
-            for (int i = 1; i <= 5; i++) before.add(accept(client, inPort, "INV-B" + i));
+            int httpPort = deploy(client, node);
+            for (int i = 1; i <= 5; i++) before.add(accept(client, httpPort, "INV-B" + i));
             until(() -> onStandby(before) == before.size(), () -> "fixture: the standby replayed the first five ids");
             stopReceipt();
-            for (int i = 1; i <= 5; i++) after.add(accept(client, inPort, "INV-A" + i));
+            for (int i = 1; i <= 5; i++) after.add(accept(client, httpPort, "INV-A" + i));
         }
         close(node);
         killThePrimaryAndPromote();
@@ -278,6 +278,7 @@ class PgPromotionLedgerIT {
         env.put("RAIL8_NODE_ID", id);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", Files.createDirectories(data.resolve(id)).toString());
         env.put("RAIL8_PG_HOST", primary.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(primary.getMappedPort(5432)));
@@ -292,7 +293,7 @@ class PgPromotionLedgerIT {
     Node startNode(Map<String, String> env) throws Exception {
         SaxonXml xml = new SaxonXml();
         NodeConfig config = NodeConfig.from(env);
-        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())),
                 Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
         nodes.add(node);
         return node;
@@ -314,20 +315,19 @@ class PgPromotionLedgerIT {
         OnVirtualThread.call(() -> { node.close(); return null; });
     }
 
-    /** Deploys invoice-async (at-least-once, saveTimeout 5 s) with a partner answering at once; returns its in port. */
+    /** Deploys invoice-async (at-least-once, saveTimeout 5 s) with a partner answering at once; returns the node's HTTP port, where it is served at /http/in. */
     int deploy(HttpClient client, Node node) throws Exception {
         Buffer ack = Buffer.buffer(Files.readAllBytes(InvoiceAsyncIT.DEMO.resolve("fixtures/partner-ack.xml")));
         HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b ->
                 req.response().putHeader("content-type", "application/xml").end(ack))).listen(0, "127.0.0.1").await();
         servers.add(partner);
-        int inPort = NodeIT.freePort();
-        InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + partner.actualPort())));
-        return inPort;
+        InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partner.actualPort())));
+        return node.httpPort();
     }
 
     /** POSTs invoice {@code id}; asserts the 202 and returns the message id it names. */
-    static String accept(HttpClient client, int inPort, String id) throws Exception {
-        HttpResponse<String> r = NodeIT.send(client, "POST", inPort, "/in", InvoiceAsyncIT.invoice(id, "S1"), "application/xml");
+    static String accept(HttpClient client, int httpPort, String id) throws Exception {
+        HttpResponse<String> r = NodeIT.send(client, "POST", httpPort, "/http/in", InvoiceAsyncIT.invoice(id, "S1"), "application/xml");
         assertEquals(202, r.statusCode(), "invoice " + id + " accepted: " + r.body());
         String messageId = r.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElse(null);
         assertNotNull(messageId, "the 202 names its message id: " + r.headers());

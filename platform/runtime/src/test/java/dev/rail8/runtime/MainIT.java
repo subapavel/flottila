@@ -121,6 +121,7 @@ class MainIT {
         env.put("RAIL8_NODE_ID", "main-it");
         env.put("RAIL8_ADMIN_PORT", String.valueOf(adminPort));
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", data.toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -182,8 +183,9 @@ class MainIT {
     }
 
     /**
-     * The node's close throws when its admin verticle is gone already (Vert.x refuses to undeploy an unknown deployment, the
-     * node's close rethrows it): the stopper still closes Vert.x, and the failure is not swallowed.
+     * The node's close throws when its verticles, its admin server's and its HTTP port's, are gone already (Vert.x refuses to
+     * undeploy an unknown deployment, the node's close rethrows it, the admin server's last): the stopper still closes Vert.x, and
+     * the failure is not swallowed.
      */
     @Test
     void theStopperStillClosesVertxWhenTheNodeFailsToClose() throws Exception {
@@ -194,9 +196,10 @@ class MainIT {
         Node node = started.node().orElseThrow();
         Vertx main = started.vertx().orElseThrow();
         Set<String> deployed = main.deploymentIDs();
-        assertEquals(1, deployed.size(), "the admin server is the started Vert.x's only verticle: " + deployed);
-        main.undeploy(deployed.iterator().next()).await();
+        assertEquals(2, deployed.size(), "the admin server and the node's HTTP port are the started Vert.x's only verticles: " + deployed);
+        for (String id : List.copyOf(deployed)) main.undeploy(id).await();
         NodeIT.until(() -> NodeIT.refuses(port), "the admin verticle is gone under the node");
+        NodeIT.until(() -> NodeIT.refuses(node.httpPort()), "the HTTP port's verticle is gone under the node");
 
         witness = new Witness();
         main.deployVerticle(witness).await();

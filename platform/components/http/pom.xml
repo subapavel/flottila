@@ -25,5 +25,11 @@
       <artifactId>rail8-testkit</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- the consumer's tests mount it on a shared port of their own -->
+    <dependency>
+      <groupId>dev.rail8</groupId>
+      <artifactId>rail8-ingress</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>
