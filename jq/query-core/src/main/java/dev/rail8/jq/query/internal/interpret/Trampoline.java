@@ -1,6 +1,8 @@
 package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.FilterException;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
@@ -17,21 +19,29 @@ import dev.rail8.jq.query.run.Sink;
  * result and hands it back. The starter emits that result from its own frame, with no driver live, and resumes the
  * driver at the form that produced it with the emit's answer or with the error the emit raised. A Termination ends
  * the run wherever it is thrown.
+ *
+ * <p>A path variant's actions carry a path besides: a path start starts an op's path variant at a path, and a path emit
+ * sends a result and its path into a path sink. {@link #runPath} is the starter of a path variant.
  */
 public final class Trampoline {
   private static final int START = 0;
   private static final int EMIT = 1;
-  private static final int ANSWER = 2;
-  private static final int RAISE = 3;
-  private static final int HANDED_BACK = 4;
-  private static final int ENDED = 5;
-  private static final int FAILED = 6;
+  private static final int START_PATH = 2;
+  private static final int EMIT_PATH = 3;
+  private static final int ANSWER = 4;
+  private static final int RAISE = 5;
+  private static final int HANDED_BACK = 6;
+  private static final int ENDED = 7;
+  private static final int FAILED = 8;
 
   /** The form main starts under: its answer ends the run, and an error raised at it leaves the run. */
   private static final HeapForm BASE = new Base();
 
   /** Main's sink: it hands each result back to the starter with the form that produced it. */
-  private static final HeapSink HAND_BACK = (t, under, v) -> t.handBack(under, v);
+  private static final HeapSink HAND_BACK = (t, under, v) -> t.handBack(under, v, null);
+
+  /** Main's sink in a path variant: it hands each result and its path back to the starter. */
+  private static final HeapPathSink HAND_BACK_PATH = (t, under, v, p) -> t.handBack(under, v, p);
 
   /** The run this driver belongs to: the heap forms tick, charge and count on it. */
   final RunState state;
@@ -53,6 +63,12 @@ public final class Trampoline {
 
   /** The sink a start sends results to, or the sink an emit sends its result into. */
   private HeapSink sink;
+
+  /** A path start's path, or the path a path emit or a hand-back carries. */
+  private Path path;
+
+  /** The sink a path start sends results to, or the sink a path emit sends its result into. */
+  private HeapPathSink pathSink;
 
   /** An answer's value, or the run's answer once it ended. */
   private boolean more;
@@ -89,6 +105,29 @@ public final class Trampoline {
   }
 
   /**
+   * {@link #run} for a path variant: {@code body}'s path variant runs on a new driver for {@code in} at {@code at},
+   * and each result is emitted into {@code out} with its path from this frame.
+   *
+   * @throws FilterException the error that left the body
+   */
+  public static boolean runPath(RunState state, Op body, Object[] frame, Object in, Path at, PathSink out) {
+    Trampoline t = new Trampoline(state);
+    t.startPath(body, BASE, frame, in, at, HAND_BACK_PATH);
+    while (t.drive()) {
+      HeapForm producer = t.form;
+      try {
+        t.answer(producer, out.emit(t.value, t.path));
+      } catch (FilterException e) {
+        t.raise(producer, e);
+      }
+    }
+    if (t.action == FAILED) {
+      throw t.error;
+    }
+    return t.more;
+  }
+
+  /**
    * Runs actions until the run ends or a result is handed back: true at a hand-back. A FilterException out of a start,
    * an emit or a resume is raised at that action's form, where the push form's exception goes: the form the op started
    * under, the form that produced the result, or the resumed form, whose own code threw it and which passes it on (no
@@ -105,6 +144,8 @@ public final class Trampoline {
         switch (action) {
           case START -> op.start(this, at, slots, value, sink);
           case EMIT -> sink.accept(this, at, value);
+          case START_PATH -> op.startPath(this, at, slots, value, path, pathSink);
+          case EMIT_PATH -> pathSink.accept(this, at, value, path);
           default -> at.resume(this, more);
         }
       } catch (FilterException e) {
@@ -132,6 +173,29 @@ public final class Trampoline {
     value = v;
   }
 
+  /**
+   * The next action: the path variant of {@code op} starts under {@code under}, for {@code in} at {@code at} with
+   * {@code slots}, into {@code out}.
+   */
+  void startPath(Op op, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    action = START_PATH;
+    this.op = op;
+    form = under;
+    this.slots = slots;
+    value = in;
+    path = at;
+    pathSink = out;
+  }
+
+  /** The next action: {@code out} takes the result {@code v} at {@code p} of the form {@code under}. */
+  void emitPath(HeapPathSink out, HeapForm under, Object v, Path p) {
+    action = EMIT_PATH;
+    pathSink = out;
+    form = under;
+    value = v;
+    path = p;
+  }
+
   /** The next action: {@code form} resumes with {@code more}, what it waits for answered. */
   void answer(HeapForm form, boolean more) {
     action = ANSWER;
@@ -146,11 +210,12 @@ public final class Trampoline {
     error = e;
   }
 
-  /** The driver stops: the starter emits the result {@code v} of the form {@code under}. */
-  private void handBack(HeapForm under, Object v) {
+  /** The driver stops: the starter emits the result {@code v}, at {@code p} in a path variant, of the form {@code under}. */
+  private void handBack(HeapForm under, Object v, Path p) {
     action = HANDED_BACK;
     form = under;
     value = v;
+    path = p;
   }
 
   /** The form under main: main's answer is the run's, and an error at it leaves the run. */

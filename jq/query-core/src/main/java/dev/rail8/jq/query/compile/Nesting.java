@@ -54,6 +54,11 @@ import java.util.Map;
  * body's root to its own, its rise {@code T} and the node's rise. A ParamCall's are its descent and rise; the closure it
  * runs adds its own leaf-emit depth at run time. {@code D_f} is the deepest frame of any body, main's over the run
  * entry's two frames.
+ *
+ * <p>In a program that holds a PathOf or an Update every node may also run by its path variant, which nests as its
+ * {@code run} does for a kind that passes paths on. A kind that keeps the default path variant runs its {@code run}
+ * under it and emits through one more sink: two frames more under its parts and over its emits. Each node is counted
+ * by the larger of the two.
  */
 public final class Nesting {
   /** The frames under main's root: the two {@code Executable.run}s. */
@@ -90,27 +95,31 @@ public final class Nesting {
 
   private long callFreeDepth;
 
+  /** Whether the program holds a PathOf or an Update, so that every node may run by its path variant. */
+  private final boolean paths;
+
   /** A node's emit height, leaf-emit height and depth, each from its own frame, which is 1. */
   private record Facts(long emit, long leaf, long depth) {}
 
   /** A node to place: its base and its rise. */
   private record Place(Node node, long base, long rise) {}
 
-  private Nesting(int functions, long starter) {
+  private Nesting(int functions, long starter, boolean paths) {
     this.functions = new long[functions];
     this.charged = new long[functions];
     this.starter = starter;
+    this.paths = paths;
   }
 
   /**
    * The nesting of {@code program}, whose IR the verifier passed, with {@link StackUnits#STARTER} as {@code T}: its
    * recursive groups {@code graph} and its Call kinds {@code kinds}. A jump keeps the units of its activation, so a
    * Call into a group with a TAIL_GROUP call is charged the largest leaf-emit depth of the group's functions, whose bodies
-   * may all run in that activation.
+   * may all run in that activation. {@code paths} says whether the program holds a PathOf or an Update.
    */
-  static Nesting of(Program program, CallGraph graph, CallKinds kinds) {
+  static Nesting of(Program program, CallGraph graph, CallKinds kinds, boolean paths) {
     List<Function> functions = program.functions();
-    Nesting n = new Nesting(functions.size(), StackUnits.STARTER);
+    Nesting n = new Nesting(functions.size(), StackUnits.STARTER, paths);
     List<Node> roots = new ArrayList<>();
     roots.add(program.main());
     for (Function f : functions) {
@@ -195,7 +204,7 @@ public final class Nesting {
   }
 
   /** The parts of {@code node} that run in its body's frames; a Call's closure arguments are bodies of their own. */
-  private static List<Node> parts(Node node) {
+  static List<Node> parts(Node node) {
     return switch (node) {
       case Pipe p -> List.of(p.left(), p.right());
       case Comma c -> List.of(c.left(), c.right());
@@ -222,6 +231,8 @@ public final class Nesting {
       case Reduce r -> List.of(r.init(), r.each());
       case Foreach f -> List.of(f.init(), f.each());
       case Advance a -> List.of(a.update());
+      case PathOf p -> List.of(p.body());
+      case Update u -> List.of(u.lhs(), u.rhs());
       // Leaves, and an Intrinsic's or a Call's atomic arguments, which hold no frame.
       default -> List.of();
     };
@@ -236,8 +247,25 @@ public final class Nesting {
     return Math.max(NONE, leaf);
   }
 
-  /** {@code node}'s facts from its parts', each frame as the push form's {@code run} nests it. */
+  /**
+   * {@code node}'s facts from its parts', each frame as the push form's {@code run} nests it, or in a program with
+   * paths as its path variant nests it where that is more.
+   */
   private Facts measure(Node node) {
+    Facts run = measureRun(node);
+    return paths && untracked(node) ? new Facts(run.emit() + 2, none(run.leaf() + 2), Math.max(1 + run.depth(), run.emit() + 2)) : run;
+  }
+
+  /**
+   * Whether {@code node}'s op keeps the default path variant, which runs its {@code run} and emits each result through
+   * one more sink.
+   */
+  private static boolean untracked(Node node) {
+    return node instanceof Const || node instanceof Break || node instanceof Collect || node instanceof PathOf || node instanceof Update;
+  }
+
+  /** {@code node}'s facts from its parts', each frame as the push form's {@code run} nests it. */
+  private Facts measureRun(Node node) {
     return switch (node) {
       // run calls the sink: one frame. A Break emits nothing; one is an upper bound.
       case Identity _ -> LEAF;
@@ -287,9 +315,17 @@ public final class Nesting {
         Facts u = of(a.update());
         yield new Facts(u.emit() + 1 + SINK, none(u.leaf() + 1 + SINK), 1 + u.depth());
       }
-      // The interpreter has no push form for path mode, so no frames to count.
-      case PathOf p -> throw Compiler.noPathMode(p);
-      case Update u -> throw Compiler.noPathMode(u);
+      // The body's results pass the path sink, which emits.
+      case PathOf p -> {
+        Facts b = of(p.body());
+        yield new Facts(b.emit() + 2, none(b.leaf() + 2), Math.max(1 + b.depth(), b.emit() + 2));
+      }
+      // The update emits from its run; the rhs runs in the lhs's path sink, its result into the same sink.
+      case Update u -> {
+        Facts l = of(u.lhs());
+        Facts r = of(u.rhs());
+        yield new Facts(1, 1, Math.max(1 + l.depth(), 2 + l.emit() + Math.max(r.depth(), r.emit() + 1)));
+      }
     };
   }
 
@@ -384,7 +420,7 @@ public final class Nesting {
       case Foreach f -> chain(base, rise, f.init(), f.each());
       case Comma c -> List.of(new Place(c.left(), base + 1, rise), new Place(c.right(), base + 1, rise));
       case Binds b -> binds(b, base, rise);
-      case Collect c -> List.of(new Place(c.body(), base + 1, 0));
+      case Collect c -> List.of(new Place(c.body(), base + under(), 0));
       case If i -> {
         boolean tail = Compiler.tail(i.cond());
         long branches = Math.max(of(i.then()).emit(), of(i.otherwise()).emit());
@@ -399,9 +435,19 @@ public final class Nesting {
       case Advance a -> List.of(new Place(a.update(), base + 1, SINK + rise));
       // Leaves: no part to place. An Intrinsic's arguments are atomic and hold no frame.
       case Identity _, Const _, Var _, Intrinsic _, Break _ -> List.of();
-      case PathOf p -> throw Compiler.noPathMode(p);
-      case Update u -> throw Compiler.noPathMode(u);
+      // The body's results pass the path sink, and in a path variant the default's sink after it.
+      case PathOf p -> List.of(new Place(p.body(), base + under(), under() + rise));
+      // The lhs's results go into its path sink, which runs the rhs; neither's results lead to the update's emit.
+      case Update u -> List.of(new Place(u.lhs(), base + under(), 0), new Place(u.rhs(), base + under() + of(u.lhs()).emit() + 1, 0));
     };
+  }
+
+  /**
+   * The frames between the own frame of a node whose op keeps the default path variant and its parts': its {@code
+   * run}'s, 1, and in a program with paths the path variant's under it.
+   */
+  private long under() {
+    return paths ? 2 : 1;
   }
 
   /** The most units any occurrence of {@code site} holds, should the IR share it. */

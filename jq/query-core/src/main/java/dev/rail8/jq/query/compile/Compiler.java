@@ -31,9 +31,12 @@ import dev.rail8.jq.query.internal.interpret.LiftedFunction;
 import dev.rail8.jq.query.internal.interpret.Op;
 import dev.rail8.jq.query.internal.interpret.OuterVarOp;
 import dev.rail8.jq.query.internal.interpret.ParamCallOp;
+import dev.rail8.jq.query.internal.interpret.PathOfOp;
 import dev.rail8.jq.query.internal.interpret.PipeOp;
 import dev.rail8.jq.query.internal.interpret.ReduceOp;
+import dev.rail8.jq.query.internal.interpret.ResultPath;
 import dev.rail8.jq.query.internal.interpret.TryOp;
+import dev.rail8.jq.query.internal.interpret.UpdateOp;
 import dev.rail8.jq.query.internal.interpret.VarOp;
 import dev.rail8.jq.query.ir.Advance;
 import dev.rail8.jq.query.ir.Alt;
@@ -57,7 +60,9 @@ import dev.rail8.jq.query.ir.ParamCall;
 import dev.rail8.jq.query.ir.PathOf;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
+import dev.rail8.jq.query.ir.PathRule;
 import dev.rail8.jq.query.ir.Reduce;
+import dev.rail8.jq.query.ir.Tracking;
 import dev.rail8.jq.query.ir.Try;
 import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
@@ -66,6 +71,9 @@ import dev.rail8.jq.query.run.Fn1;
 import dev.rail8.jq.query.run.Fn2;
 import dev.rail8.jq.query.run.FnN;
 import dev.rail8.jq.query.run.Many;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -78,6 +86,10 @@ import java.util.Map;
  * cells. A closure argument that binds no slot runs in the frame it was written in, its defining frame,
  * and compiles there; one that binds slots runs in a frame of its own, cell 0 the link to its defining frame and its
  * slots from cell 1, so a slot of a frame further out is read through as many links as there are closures between.
+ *
+ * <p>A program that holds a PathOf or an Update has hidden cells besides, after a frame's other cells: in a function's
+ * frame first the cell of its input's path, then in every frame one cell per ITEM bind that runs in it, which keeps the
+ * path of the bind's slot. A program that holds neither has none.
  */
 public final class Compiler {
   /** The shell of each function of the program, made before any body is built, so a call links to its callee. */
@@ -91,9 +103,10 @@ public final class Compiler {
 
   /**
    * A frame the nodes run in: a body's, whose slot s is cell s and whose closure parameter j is cell {@code base + j},
-   * or a closure's, with the cell of each slot it binds and the region it was written in.
+   * or a closure's, with the cell of each slot it binds and the region it was written in. {@code items} gives the
+   * hidden cell of each slot an ITEM bind of the frame binds.
    */
-  private record Region(Region outer, Map<Integer, Integer> cells, int base) {}
+  private record Region(Region outer, Map<Integer, Integer> cells, int base, Map<Integer, Integer> items) {}
 
   /** Where a slot or closure parameter is: {@code level} links out from the running frame, at {@code cell}. */
   private record At(int level, int cell) {}
@@ -113,7 +126,11 @@ public final class Compiler {
   /** The body the node being built is in: -1 for the main tree, a function's place otherwise. */
   private int body;
 
-  private Compiler(LiftedFunction[] shells, Map<Node, List<Integer>> closures, Nesting nesting, Numbering numbering, Facts facts, CallKinds kinds) {
+  /** Whether the program holds a PathOf or an Update, so that its frames have hidden cells. */
+  private final boolean paths;
+
+  private Compiler(LiftedFunction[] shells, Map<Node, List<Integer>> closures, Nesting nesting, Numbering numbering, Facts facts, CallKinds kinds, boolean paths) {
+    this.paths = paths;
     this.shells = shells;
     this.closures = closures;
     this.nesting = nesting;
@@ -126,7 +143,7 @@ public final class Compiler {
    * Compiles {@code root}, which has no parameter slot, in {@code mode}: {@link #compile(Node, int, CompileMode)} with
    * none.
    *
-   * @throws IllegalStateException when the tree breaks a rule of the IR, or holds a PathOf or an Update
+   * @throws IllegalStateException when the tree breaks a rule of the IR
    */
   public static Executable compile(Node root, CompileMode mode) {
     return compile(root, 0, mode);
@@ -136,7 +153,7 @@ public final class Compiler {
    * Compiles {@code root} in {@code mode}, with slots {@code 0 .. parameters - 1} its parameter slots: the
    * program of {@code root} and no function, {@link #compile(Program, int, CompileMode)}.
    *
-   * @throws IllegalStateException when the tree breaks a rule of the IR, or holds a PathOf or an Update
+   * @throws IllegalStateException when the tree breaks a rule of the IR
    */
   public static Executable compile(Node root, int parameters, CompileMode mode) {
     return compile(new Program(root, List.of()), parameters, mode);
@@ -147,7 +164,7 @@ public final class Compiler {
    * slots: in scope everywhere in the main tree, bound by no node, and set by each run from its parameters.
    * {@link #compile(Program, int, CompileMode, int)} under {@link Specialiser#SPECIALISE_CAP}.
    *
-   * @throws IllegalStateException when the program breaks a rule of the IR, or holds a PathOf or an Update
+   * @throws IllegalStateException when the program breaks a rule of the IR
    */
   public static Executable compile(Program program, int parameters, CompileMode mode) {
     return compile(program, parameters, mode, Specialiser.SPECIALISE_CAP);
@@ -163,7 +180,7 @@ public final class Compiler {
    * only the optimised compile stores. The executable runs the frozen program and carries it
    * ({@link Frozen}).
    *
-   * @throws IllegalStateException when the program breaks a rule of the IR, or holds a PathOf or an Update
+   * @throws IllegalStateException when the program breaks a rule of the IR
    */
   static Executable compile(Program program, int parameters, CompileMode mode, int cap) {
     IrVerifier.Layout verified = IrVerifier.verify(program, parameters);
@@ -176,21 +193,59 @@ public final class Compiler {
     CallKinds kinds = mode == CompileMode.OPTIMISED ? CallKinds.optimised(numbering, graph, facts) : CallKinds.conservative(numbering, graph);
     int[] slots = layout.slots();
     List<Function> functions = frozen.functions();
+    boolean paths = holdsPaths(numbering, functions.size());
     LiftedFunction[] shells = new LiftedFunction[functions.size()];
+    List<Map<Integer, Integer>> items = new ArrayList<>();
     for (int i = 0; i < shells.length; i++) {
-      shells[i] = new LiftedFunction(slots[i + 1], functions.get(i).closures());
+      Function f = functions.get(i);
+      Map<Integer, Integer> own = paths ? items(f.body(), slots[i + 1] + f.closures() + 1) : Map.of();
+      items.add(own);
+      shells[i] = new LiftedFunction(slots[i + 1], f.closures(), paths ? 1 + own.size() : 0);
     }
-    Nesting nesting = Nesting.of(frozen, graph, kinds);
-    Compiler compiler = new Compiler(shells, layout.closures(), nesting, numbering, facts, kinds);
+    Nesting nesting = Nesting.of(frozen, graph, kinds, paths);
+    Compiler compiler = new Compiler(shells, layout.closures(), nesting, numbering, facts, kinds, paths);
     for (int i = 0; i < shells.length; i++) {
-      compiler.region = new Region(null, null, slots[i + 1]);
+      compiler.region = new Region(null, null, slots[i + 1], items.get(i));
       compiler.body = i;
       shells[i].define(compiler.interpreter(functions.get(i).body()));
     }
-    compiler.region = new Region(null, null, slots[0]);
+    Map<Integer, Integer> main = paths ? items(frozen.main(), slots[0]) : Map.of();
+    compiler.region = new Region(null, null, slots[0], main);
     compiler.body = -1;
     Frozen record = new Frozen(frozen, numbering, graph, pass.origin(), pass.specialised(), pass.refused());
-    return new Executable(compiler.interpreter(frozen.main()), slots[0], parameters, facts, kinds, nesting, record);
+    return new Executable(compiler.interpreter(frozen.main()), slots[0] + main.size(), parameters, facts, kinds, nesting, record);
+  }
+
+  /** Whether any body of the program {@code numbering} numbers, with {@code functions} functions, holds a PathOf or an Update. */
+  private static boolean holdsPaths(Numbering numbering, int functions) {
+    for (int body = -1; body < functions; body++) {
+      for (Node node : numbering.nodes(body)) {
+        if (node instanceof PathOf || node instanceof Update) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * The hidden cell of each slot an ITEM bind of the frame of {@code root} binds, from {@code first} on in the walk's
+   * order; a Call's closure arguments have frames of their own, and are not walked.
+   */
+  private static Map<Integer, Integer> items(Node root, int first) {
+    Map<Integer, Integer> cells = new HashMap<>();
+    Deque<Node> pending = new ArrayDeque<>();
+    pending.push(root);
+    while (!pending.isEmpty()) {
+      Node node = pending.pop();
+      if (node instanceof Bind b && b.tracking() == Tracking.ITEM) {
+        cells.put(b.slot(), first + cells.size());
+      }
+      for (Node part : Nesting.parts(node)) {
+        pending.push(part);
+      }
+    }
+    return cells;
   }
 
   /** The op of {@code node}, built in its run form. */
@@ -201,7 +256,7 @@ public final class Compiler {
       case Const c -> new ConstOp(value, c.value());
       case Pipe p -> new PipeOp(value, interpreter(p.left()), interpreter(p.right()));
       case Comma c -> new CommaOp(value, interpreter(c.left()), interpreter(c.right()));
-      case Bind b -> new BindOp(value, interpreter(b.value()), frameCell(b.slot()), interpreter(b.body()));
+      case Bind b -> new BindOp(value, interpreter(b.value()), b.tracking() != Tracking.VALUE, frameCell(b.slot()), region.items().getOrDefault(b.slot(), -1), interpreter(b.body()));
       case Binds b -> binds(value, b);
       case Var v -> variable(value, v);
       case Intrinsic i -> intrinsic(value, i);
@@ -223,14 +278,12 @@ public final class Compiler {
         At at = parameter(p.param());
         yield new ParamCallOp(at.level(), at.cell(), nesting.units(p), nesting.starterUnits());
       }
-      case PathOf p -> throw noPathMode(p);
-      case Update u -> throw noPathMode(u);
+      case PathOf p -> new PathOfOp(value, interpreter(p.body()), p.paths());
+      case Update u ->
+          u.kind() == Update.Kind.MODIFY
+              ? UpdateOp.modify(value, interpreter(u.lhs()), interpreter(u.rhs()), u.paths())
+              : UpdateOp.assign(value, interpreter(u.lhs()), argument(u.rhs()), u.paths());
     };
-  }
-
-  /** The error for a PathOf or an Update: the interpreter has no path mode, so it has no op for either. */
-  static IllegalStateException noPathMode(Node node) {
-    return new IllegalStateException("the interpreter has no path mode, so it cannot run the " + node.getClass().getSimpleName() + " at bytes " + node.source());
   }
 
   /** The cell of {@code slot}, which a node of the running frame binds (the verifier keeps a loop's Advance in it). */
@@ -264,10 +317,26 @@ public final class Compiler {
     return new At(level, r.base() + param);
   }
 
-  /** A Var in the run form {@code value}: its slot in the running frame, or in a frame further out. */
+  /**
+   * The hidden cell that keeps the path of {@code slot}, in scope here, in the frame {@link #at} finds it in: the cell of
+   * the ITEM bind that binds it, or -1 for a slot no ITEM bind binds.
+   */
+  private int pathCell(int slot) {
+    Region r = region;
+    while (r.cells() != null && !r.cells().containsKey(slot)) {
+      r = r.outer();
+    }
+    return r.items().getOrDefault(slot, -1);
+  }
+
+  /**
+   * A Var in the run form {@code value}: its slot in the running frame, or in a frame further out, and the cell of its
+   * path when an ITEM bind binds it.
+   */
   private Op variable(boolean value, Var v) {
     At at = at(v.slot());
-    return at.level() == 0 ? new VarOp(value, at.cell()) : new OuterVarOp(value, at.level(), at.cell());
+    int path = pathCell(v.slot());
+    return at.level() == 0 ? new VarOp(value, at.cell(), path) : new OuterVarOp(value, at.level(), at.cell(), path);
   }
 
   /**
@@ -289,7 +358,7 @@ public final class Compiler {
       closures[j] = closure(written.get(j), jump);
     }
     if (jump) {
-      return new JumpOp(value, shells[c.fn()], closures, values);
+      return new JumpOp(value, shells[c.fn()], closures, values, shells[body].pathCell());
     }
     return new CallOp(value, shells[c.fn()], closures, values, nesting.units(c), nesting.starterUnits());
   }
@@ -306,7 +375,7 @@ public final class Compiler {
     }
     List<Integer> own = closures.get(body);
     long emitDepth = nesting.emitDepth(body);
-    int cells = own.isEmpty() ? 0 : own.size() + 1;
+    int cells = 0;
     Op op;
     if (own.isEmpty()) {
       op = interpreter(body);
@@ -315,8 +384,10 @@ public final class Compiler {
       for (int slot : own) {
         at.put(slot, at.size() + 1);
       }
+      Map<Integer, Integer> items = paths ? items(body, own.size() + 1) : Map.of();
+      cells = own.size() + 1 + items.size();
       Region outer = region;
-      region = new Region(outer, at, 0);
+      region = new Region(outer, at, 0, items);
       op = interpreter(body);
       region = outer;
     }
@@ -335,7 +406,11 @@ public final class Compiler {
       ops[k] = interpreter(values.get(k));
       tails[k] = tail(values.get(k));
     }
-    return new BindsOp(value, ops, tails, frameCells(b.slots()), interpreter(b.body()));
+    boolean[] tracked = new boolean[ops.length];
+    for (int k = 0; k < ops.length; k++) {
+      tracked[k] = b.trackings().get(k) != Tracking.VALUE;
+    }
+    return new BindsOp(value, ops, tails, tracked, frameCells(b.slots()), interpreter(b.body()));
   }
 
   /**
@@ -379,7 +454,7 @@ public final class Compiler {
         }
       }
     }
-    return new AltBindOp(interpreter(a.value()), frameCell(a.slot()), matches, from, frameCells(a.slots()), interpreter(a.body()));
+    return new AltBindOp(interpreter(a.value()), a.tracking() != Tracking.VALUE, frameCell(a.slot()), matches, from, frameCells(a.slots()), interpreter(a.body()));
   }
 
   /** The cells of {@code slots}, each bound by a node of the running frame. */
@@ -401,12 +476,24 @@ public final class Compiler {
     for (int k = 0; k < args.length; k++) {
       args[k] = argument(nodes.get(k));
     }
+    PathRule path = i.op().facts().path();
+    ResultPath rule = resultPath(path);
     return switch (i.op().form()) {
-      case Fn0 fn -> new IntrinsicOp(value, fn);
-      case Fn1 fn -> new Intrinsic1Op(value, fn, args[0]);
-      case Fn2 fn -> new Intrinsic2Op(value, fn, args[0], args[1]);
-      case FnN fn -> new IntrinsicNOp(value, fn, args);
-      case Many many -> new IntrinsicManyOp(many, args);
+      case Fn0 fn -> new IntrinsicOp(value, fn, rule);
+      case Fn1 fn -> new Intrinsic1Op(value, fn, args[0], rule);
+      case Fn2 fn -> new Intrinsic2Op(value, fn, args[0], args[1], rule);
+      case FnN fn -> new IntrinsicNOp(value, fn, args, path == PathRule.SAME);
+      case Many many -> new IntrinsicManyOp(many, args, rule);
+    };
+  }
+
+  /** The result path of an operation's path rule {@code rule}: every rule that adds a key to the input's path steps. */
+  private static ResultPath resultPath(PathRule rule) {
+    return switch (rule) {
+      case NONE -> ResultPath.UNTRACKED;
+      case SAME -> ResultPath.SAME;
+      case KEY, INDEX, ALL, DYNAMIC, SLICE -> ResultPath.STEP;
+      case KEY_LIST -> ResultPath.KEY_LIST;
     };
   }
 

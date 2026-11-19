@@ -1,6 +1,8 @@
 package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.CallForm;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
@@ -11,6 +13,9 @@ import dev.rail8.jq.query.run.Sink;
  * value runs the rest, the later values and the body, inside its emit, as a BindOp does. So the stack grows by one
  * recursion per generator value, not per value. Each value and the body run on the Binds' own input; no step of its
  * own. Its heap form keeps no state: each value's sink starts what comes after it.
+ *
+ * <p>In a path variant the body runs at the Binds' own path, an untracked value as above and a tracked one in path mode,
+ * its paths dropped: a value-form or tail one into the holder, any other with the rest in its emit.
  */
 public final class BindsOp extends Op {
   private final Op[] values;
@@ -21,15 +26,25 @@ public final class BindsOp extends Op {
    */
   private final boolean[] tails;
 
+  /** Whether each value runs in path mode in a path variant. */
+  private final boolean[] tracked;
+
   /** The slot each value sets. */
   private final int[] targets;
 
   private final Op body;
 
+  /** A Binds whose values run in value mode in a path variant too. */
   public BindsOp(boolean valueForm, Op[] values, boolean[] tails, int[] targets, Op body) {
+    this(valueForm, values, tails, new boolean[values.length], targets, body);
+  }
+
+  /** A Binds whose value {@code k} runs in path mode in a path variant when {@code tracked[k]}. */
+  public BindsOp(boolean valueForm, Op[] values, boolean[] tails, boolean[] tracked, int[] targets, Op body) {
     super(valueForm);
     this.values = values;
     this.tails = tails;
+    this.tracked = tracked;
     this.targets = targets;
     this.body = body;
   }
@@ -143,6 +158,97 @@ public final class BindsOp extends Op {
         (d, producer, v) -> {
           slots[targets[k]] = v;
           from(k + 1, d, producer, slots, in, out);
+        });
+  }
+
+  @Override
+  public boolean runPath(RunState state, Object[] slots, Object in, Path at, PathSink out) {
+    return fromPath(0, state, slots, in, at, out, new Holder());
+  }
+
+  /** {@link #from} in the path variant: the body runs at {@code at}, and each tracked value in path mode. */
+  private boolean fromPath(int first, RunState state, Object[] slots, Object in, Path at, PathSink out, Holder holder) {
+    for (int k = first; k < values.length; k++) {
+      int slot = targets[k];
+      Op value = values[k];
+      int next = k + 1;
+      if (tracked[k] && !value.valueForm && !tails[k]) {
+        return value.runPath(
+            state,
+            slots,
+            in,
+            at,
+            (v, p) -> {
+              slots[slot] = v;
+              return fromPath(next, state, slots, in, at, out, holder);
+            });
+      }
+      if (tracked[k]) {
+        // One result at most, and it never breaks out: the holder's stop is that result, as for a tail value.
+        if (value.runPath(state, slots, in, at, holder)) {
+          return true;
+        }
+        slots[slot] = holder.take();
+        continue;
+      }
+      if (value.valueForm) {
+        Object v = value.eval(state, slots, in);
+        if (v == CallForm.NONE) {
+          return true;
+        }
+        slots[slot] = v;
+        continue;
+      }
+      if (!tails[k]) {
+        return value.run(
+            state,
+            slots,
+            in,
+            v -> {
+              slots[slot] = v;
+              return fromPath(next, state, slots, in, at, out, holder);
+            });
+      }
+      if (value.run(state, slots, in, holder)) {
+        return true;
+      }
+      slots[slot] = holder.take();
+    }
+    return body.runPath(state, slots, in, at, out);
+  }
+
+  @Override
+  void startPath(Trampoline t, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    fromPath(0, t, under, slots, in, at, out);
+  }
+
+  /** {@link #from}'s heap form in the path variant: each tracked value's path variant starts, and the body at {@code at}. */
+  private void fromPath(int k, Trampoline t, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    if (k == values.length) {
+      t.startPath(body, under, slots, in, at, out);
+      return;
+    }
+    if (tracked[k]) {
+      t.startPath(
+          values[k],
+          under,
+          slots,
+          in,
+          at,
+          (d, producer, v, p) -> {
+            slots[targets[k]] = v;
+            fromPath(k + 1, d, producer, slots, in, at, out);
+          });
+      return;
+    }
+    t.start(
+        values[k],
+        under,
+        slots,
+        in,
+        (d, producer, v) -> {
+          slots[targets[k]] = v;
+          fromPath(k + 1, d, producer, slots, in, at, out);
         });
   }
 }

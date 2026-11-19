@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 import dev.rail8.jq.query.ir.Call;
+import dev.rail8.jq.query.ir.Const;
 import dev.rail8.jq.query.ir.Function;
 import dev.rail8.jq.query.ir.Identity;
 import dev.rail8.jq.query.ir.Intrinsic;
@@ -17,7 +18,6 @@ import dev.rail8.jq.query.ir.Source;
 import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.run.FilterException;
 import dev.rail8.jq.query.run.Fn0;
-import dev.rail8.jq.query.run.InertPaths;
 import dev.rail8.jq.query.run.RunState;
 import java.util.ArrayList;
 import java.util.List;
@@ -285,24 +285,23 @@ class CompilerTest {
   }
 
   @Test
-  void aPathOfOrAnUpdateIsRefusedUntilTheInterpreterHasAPathMode() {
-    // The IR holds both kinds, but the interpreter has no op for either: compile refuses them in main and in a function,
-    // in both modes, naming the kind and its place.
-    List<Node> kinds = List.of(new PathOf(AT, new Identity(AT), new InertPaths()), new Update(AT, Update.Kind.MODIFY, new Identity(AT), new Identity(AT), new InertPaths()));
+  void aPathOfAndAnUpdateCompileAndRunInMainAndInAFunction() {
+    // path(.a) gives the path of a; .a |= "x" gives the input with "x" at a: in main and in a function, in both modes.
+    ListPaths paths = new ListPaths();
+    Object in = ListPaths.object("a", "old");
     for (CompileMode mode : CompileMode.values()) {
-      for (Node node : kinds) {
-        String kind = node.getClass().getSimpleName();
-        assertThatIllegalStateException()
-            .as("compile of a %s in main, %s", kind, mode)
-            .isThrownBy(() -> Compiler.compile(node, mode))
-            .withMessage("the interpreter has no path mode, so it cannot run the %s at bytes Source[start=0, end=1]", kind);
-        Program inFunction = new Program(new Call(AT, 0, List.of(), List.of()), List.of(new Function(AT, 0, 0, node)));
-        assertThatIllegalStateException()
-            .as("compile of a %s in a function, %s", kind, mode)
-            .isThrownBy(() -> Compiler.compile(inFunction, 0, mode))
-            .withMessageContaining("no path mode")
-            .withMessageContaining(kind);
+      for (boolean inFunction : new boolean[] {false, true}) {
+        Node pathOf = new PathOf(AT, ListPaths.field("a"), paths);
+        Node update = new Update(AT, Update.Kind.MODIFY, ListPaths.field("a"), new Const(AT, "x"), paths);
+        assertThat(results(Compiler.compile(program(pathOf, inFunction), 0, mode), in)).as("path(.a), %s, in a function %s", mode, inFunction).containsExactly(List.of("a"));
+        assertThat(results(Compiler.compile(program(update, inFunction), 0, mode), in)).as(".a |= \"x\", %s, in a function %s", mode, inFunction).containsExactly(ListPaths.object("a", "x"));
       }
     }
   }
+
+  /** A program of {@code node}: its main tree, or the body of a function main calls. */
+  private static Program program(Node node, boolean inFunction) {
+    return inFunction ? new Program(new Call(AT, 0, List.of(), List.of()), List.of(new Function(AT, 0, 0, node))) : new Program(node, List.of());
+  }
+
 }

@@ -1,6 +1,8 @@
 package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.CallForm;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
@@ -55,20 +57,41 @@ public final class CommaOp extends Op {
 
   @Override
   void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
-    t.start(left, new Left(under, slots, in, out), slots, in, out);
+    t.start(left, new Left(under, slots, in, out, null, null), slots, in, out);
   }
 
-  /** The heap form while the left side runs: what the right side then runs on. */
+  @Override
+  public boolean runPath(RunState state, Object[] slots, Object in, Path at, PathSink out) {
+    if (!left.runPath(state, slots, in, at, out)) {
+      return false;
+    }
+    state.tick();
+    return right.runPath(state, slots, in, at, out);
+  }
+
+  @Override
+  void startPath(Trampoline t, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    t.startPath(left, new Left(under, slots, in, null, at, out), slots, in, at, out);
+  }
+
+  /**
+   * The heap form while the left side runs: what the right side then runs on, into {@code out}, or in a path variant
+   * at {@code at} into {@code paths}.
+   */
   private final class Left extends HeapForm {
     private final Object[] slots;
     private final Object in;
     private final HeapSink out;
+    private final Path at;
+    private final HeapPathSink paths;
 
-    Left(HeapForm under, Object[] slots, Object in, HeapSink out) {
+    Left(HeapForm under, Object[] slots, Object in, HeapSink out, Path at, HeapPathSink paths) {
       super(under);
       this.slots = slots;
       this.in = in;
       this.out = out;
+      this.at = at;
+      this.paths = paths;
     }
 
     /** The left side ran out: one step, then the right side in its place; a false passes at once, without the step. */
@@ -79,7 +102,11 @@ public final class CommaOp extends Op {
         return;
       }
       t.state.tick();
-      t.start(right, under, slots, in, out);
+      if (paths != null) {
+        t.startPath(right, under, slots, in, at, paths);
+      } else {
+        t.start(right, under, slots, in, out);
+      }
     }
   }
 }

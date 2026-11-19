@@ -1,6 +1,8 @@
 package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.CallForm;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
@@ -15,21 +17,33 @@ import dev.rail8.jq.query.run.Sink;
  * <p>The frame tells the jump's activation apart from any other: a call that is a tail call's left context, at most one,
  * runs the tail call inside its own result's emit, so its entry loop sees the jump first and must leave it to the
  * activation it came from.
+ *
+ * <p>In a path variant the jump first writes its input's path into the running frame's input-path cell, where the
+ * entry loop reads it to run the callee's path variant at that path.
  */
 public final class JumpOp extends Op {
   private final LiftedFunction fn;
   private final ClosureArgument[] closures;
   private final Argument[] values;
 
+  /** The running frame's input-path cell, or -1 when it has none. */
+  private final int pathCell;
+
   /**
    * A jump to {@code fn}, its value arguments {@code values} and its closure arguments {@code closures}, each a closure
    * parameter passed on or {@link ClosureArgument#closed}.
    */
   public JumpOp(boolean valueForm, LiftedFunction fn, ClosureArgument[] closures, Argument[] values) {
+    this(valueForm, fn, closures, values, -1);
+  }
+
+  /** As {@link #JumpOp(boolean, LiftedFunction, ClosureArgument[], Argument[])}, from a frame whose input-path cell is {@code pathCell}. */
+  public JumpOp(boolean valueForm, LiftedFunction fn, ClosureArgument[] closures, Argument[] values, int pathCell) {
     super(valueForm);
     this.fn = fn;
     this.closures = closures;
     this.values = values;
+    this.pathCell = pathCell;
   }
 
   @Override
@@ -54,6 +68,22 @@ public final class JumpOp extends Op {
     t.answer(under, true);
   }
 
+  @Override
+  public boolean runPath(RunState state, Object[] slots, Object in, Path at, PathSink out) {
+    state.tick();
+    slots[pathCell] = at;
+    state.jump(this, slots, in);
+    return true;
+  }
+
+  @Override
+  void startPath(Trampoline t, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    t.state.tick();
+    slots[pathCell] = at;
+    t.state.jump(this, slots, in);
+    t.answer(under, true);
+  }
+
   /** The function the jump enters. */
   LiftedFunction fn() {
     return fn;
@@ -62,5 +92,15 @@ public final class JumpOp extends Op {
   /** The callee's frame: its value parameters read on {@code in} and its closures, bound in {@code from}, the jump's frame. */
   Object[] frame(Object[] from, Object in) {
     return fn.frame(values, closures, from, in);
+  }
+
+  /**
+   * The callee's frame for the path variant, as {@link #frame}, its input-path cell holding the path the jump wrote
+   * into {@code from}'s.
+   */
+  Object[] framePath(Object[] from, Object in) {
+    Object[] frame = fn.frame(values, closures, from, in);
+    frame[fn.pathCell()] = from[pathCell];
+    return frame;
   }
 }

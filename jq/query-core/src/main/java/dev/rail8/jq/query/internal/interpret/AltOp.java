@@ -1,6 +1,8 @@
 package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.CallForm;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 import dev.rail8.jq.query.run.Truth;
@@ -34,7 +36,7 @@ public final class AltOp extends Op {
         return out.emit(v);
       }
     } else {
-      Truthy found = new Truthy(truth, out);
+      Truthy found = new Truthy(truth, out, null);
       if (!left.run(state, slots, in, found)) {
         return false;
       }
@@ -65,28 +67,52 @@ public final class AltOp extends Op {
 
   @Override
   void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
-    Left left = new Left(under, slots, in, out);
+    Left left = new Left(under, slots, in, out, null, null);
     t.start(this.left, left, slots, in, left);
+  }
+
+  /** Both sides at the Alt's own path, each result passed on with its own. */
+  @Override
+  public boolean runPath(RunState state, Object[] slots, Object in, Path at, PathSink out) {
+    Truthy found = new Truthy(truth, null, out);
+    if (!left.runPath(state, slots, in, at, found)) {
+      return false;
+    }
+    if (found.any) {
+      return true;
+    }
+    return right.runPath(state, slots, in, at, out);
+  }
+
+  @Override
+  void startPath(Trampoline t, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    Left left = new Left(under, slots, in, null, at, out);
+    t.startPath(this.left, left, slots, in, at, left);
   }
 
   /**
    * The heap form while the left side runs, and its sink: it passes on the results the truth holds for, above the form
    * that produced them, and answers the others to go on; when the left side ran out with none passed, the right side
-   * runs in its place.
+   * runs in its place. In a path variant it passes them into {@code paths} with their paths, and the right side runs
+   * at {@code at}.
    */
-  private final class Left extends HeapForm implements HeapSink {
+  private final class Left extends HeapForm implements HeapSink, HeapPathSink {
     private final Object[] slots;
     private final Object in;
     private final HeapSink out;
+    private final Path at;
+    private final HeapPathSink paths;
 
     /** Whether a result passed. */
     private boolean any;
 
-    Left(HeapForm under, Object[] slots, Object in, HeapSink out) {
+    Left(HeapForm under, Object[] slots, Object in, HeapSink out, Path at, HeapPathSink paths) {
       super(under);
       this.slots = slots;
       this.in = in;
       this.out = out;
+      this.at = at;
+      this.paths = paths;
     }
 
     @Override
@@ -100,26 +126,45 @@ public final class AltOp extends Op {
     }
 
     @Override
+    public void accept(Trampoline t, HeapForm producer, Object v, Path p) {
+      if (!truth.test(v)) {
+        t.answer(producer, true);
+        return;
+      }
+      any = true;
+      t.emitPath(paths, producer, v, p);
+    }
+
+    @Override
     void resume(Trampoline t, boolean more) {
       if (!more || any) {
         t.answer(under, more);
         return;
       }
-      t.start(right, under, slots, in, out);
+      if (paths != null) {
+        t.startPath(right, under, slots, in, at, paths);
+      } else {
+        t.start(right, under, slots, in, out);
+      }
     }
   }
 
-  /** The left side's sink: it passes on the results the truth holds for and drops the others. */
-  private static final class Truthy implements Sink {
+  /**
+   * The left side's sink: it passes on the results the truth holds for and drops the others, into {@code out}, or with
+   * their paths into {@code paths}.
+   */
+  private static final class Truthy implements Sink, PathSink {
     private final Truth truth;
     private final Sink out;
+    private final PathSink paths;
 
     /** Whether a result passed. */
     private boolean any;
 
-    Truthy(Truth truth, Sink out) {
+    Truthy(Truth truth, Sink out, PathSink paths) {
       this.truth = truth;
       this.out = out;
+      this.paths = paths;
     }
 
     @Override
@@ -129,6 +174,15 @@ public final class AltOp extends Op {
       }
       any = true;
       return out.emit(v);
+    }
+
+    @Override
+    public boolean emit(Object v, Path p) {
+      if (!truth.test(v)) {
+        return true;
+      }
+      any = true;
+      return paths.emit(v, p);
     }
   }
 }

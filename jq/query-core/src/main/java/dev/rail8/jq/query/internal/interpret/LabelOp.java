@@ -1,6 +1,8 @@
 package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.CallForm;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
@@ -54,6 +56,21 @@ public final class LabelOp extends Op {
     long token = t.state.label();
     slots[slot] = token;
     t.start(body, new Body(under, token), slots, in, out);
+  }
+
+  /** The body at the Label's own path, in either run form: a Break to the token ends it as if it ran out. */
+  @Override
+  public boolean runPath(RunState state, Object[] slots, Object in, Path at, PathSink out) {
+    long token = state.label();
+    slots[slot] = token;
+    return body.runPath(state, slots, in, at, out) || state.caught(token);
+  }
+
+  @Override
+  void startPath(Trampoline t, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    long token = t.state.label();
+    slots[slot] = token;
+    t.startPath(body, new Body(under, token), slots, in, at, out);
   }
 
   /** The heap form while the body runs: a false that is a Break to its token answers as if the body ran out. */

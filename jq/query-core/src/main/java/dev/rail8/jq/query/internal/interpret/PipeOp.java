@@ -1,6 +1,8 @@
 package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.CallForm;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
@@ -62,5 +64,16 @@ public final class PipeOp extends Op {
   @Override
   void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
     t.start(left, under, slots, in, (d, producer, v) -> d.start(right, producer, slots, v, out));
+  }
+
+  /** Each result of the left side runs the right side at its path. */
+  @Override
+  public boolean runPath(RunState state, Object[] slots, Object in, Path at, PathSink out) {
+    return left.runPath(state, slots, in, at, (v, p) -> right.runPath(state, slots, v, p, out));
+  }
+
+  @Override
+  void startPath(Trampoline t, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    t.startPath(left, under, slots, in, at, (d, producer, v, p) -> d.startPath(right, producer, slots, v, p, out));
   }
 }
