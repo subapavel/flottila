@@ -1,9 +1,10 @@
-# `rail8 test` across calls between flows: order (sync, http) calls check (sync, direct /check), which calls archive
-# (at-least-once, direct /archive). The callees send to the mocked partner and archive. archive's run tries the archive three
-# times (100 + 200 + 400 ms), reruns once after 1 s (delivery.retries) and then parks the message.
+# `rail8 test` across calls between flows: order (sync, http) calls check (sync, direct /check), which answers with the
+# partner's reply, then hands that answer to archive (at-least-once, direct /archive), which sends it to the archive. A failing
+# archive is tried again three times (100 + 200 + 400 ms), archive's run reruns once after 1 s (delivery.retries), then the
+# message parks.
 schemaVersion: 1
 kind: package
 name: calls
 version: 0.1.0
-description: An order flow that calls a check flow, which calls an archive flow.
+description: An order flow that calls a check flow, then hands its answer to an archive flow.
 dependencies: []
