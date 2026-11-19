@@ -45,11 +45,11 @@ same name from another repository is refused until the first is undeployed.
 
 | Setting | What it is |
 | --- | --- |
-| `RAIL8_GIT_BASE` | The URI the pool's repositories live under, such as `https://gitlab.example.com/integration/`. `https://` in a deployed environment; `file://` also in `dev` and `ci`. A URI with user information (`https://user:token@host/…`) is refused at the node's start. Without this setting the node refuses every deploy and lists every recorded package `FAILED`. |
+| `RAIL8_GIT_BASE` | The URI the pool's repositories live under, such as `https://gitlab.example.com/integration/`. `https://` in a deployed environment; `file://` also in `dev` and `ci`. A URI with user information (`https://user:token@host/…`) is refused at the node's start, and the refusal does not repeat the URI. Without this setting the node refuses every deploy and lists every recorded package `FAILED`. |
 | `RAIL8_GIT_PATH` | The package's folder in each repository, relative, with no `..`; the root by default. |
-| `RAIL8_GIT_REF` | A branch or tag name, such as `refs/heads/release`, the same in every repository. Required in a deployed environment, optional in `dev` and `ci`. When it is set, every commit a deploy fetches must be reachable from it in its repository. |
+| `RAIL8_GIT_REF` | A branch or tag name, such as `refs/heads/release`, the same in every repository. Required in a deployed environment that sets a base, optional in `dev` and `ci`. When it is set, every commit a deploy fetches must be reachable from it in its repository. |
 | `RAIL8_GIT_USER`, `RAIL8_GIT_TOKEN` | The user name and a read-only access token for every repository under an `https://` base; both or neither. |
-| `RAIL8_GIT_TIMEOUT` | The longest a fetch may take; 60 s by default, 1 s to 10 min. |
+| `RAIL8_GIT_TIMEOUT` | The longest the fetches of one deploy, or of one package's restore, may take together; 60 s by default, 1 s to 10 min. It runs on the node's injected timer. |
 | `RAIL8_GIT_MAX_BYTES` | The largest the node's git cache may grow; 1 GiB by default, 1 MiB to 64 GiB. |
 
 The node keeps a bare repository per package repository as its cache, under `<dataDir>/git`, read and
@@ -57,8 +57,13 @@ written with JGit (pure Java, Eclipse Distribution Licence 1.0, a BSD-3-Clause l
 needs no git binary. A fetch brings the full history of what it fetches, never a shallow copy, and a
 source whose history is shallow is refused as such. The cache keeps a reference to every commit a
 record or a pin names, so a force-push on the server or a cleanup of the cache never drops one. Its
-size is checked before a fetch and while the fetch receives; a fetch that would pass the limit stops
+size is checked before a fetch and while the fetch receives. When it is full, the node first deletes
+the cached repositories that no record and no pin names; a fetch that would still pass the limit stops
 and names the setting.
+
+A commit is fetched by fetching the pool's ref, or every branch and tag when no ref is set, and then
+looked up: a server need not serve a commit by its id. `PackageRepositories` lives in the runtime, and
+JGit stays out of `api` and `core`.
 
 A commit stays deployable and restorable only while its repository holds it. The pool's ref is a
 protected branch: nobody force-pushes it or deletes it, and a deployed commit is never rewritten out of
@@ -85,7 +90,12 @@ its history.
 - The content digest is computed as today, over the files the commit holds under the package's folder,
   with the bytes git stores. Untracked files and `.git` never count.
 - A repository of packages carries a `.gitattributes` holding `* -text`, so git never changes line
-  endings and a working folder holds the committed bytes.
+  endings and a working folder holds the committed bytes. The rule is not checked: what counts is that
+  the working folder holds the committed bytes, which Rail8's own repository gets from
+  `* text=auto eol=lf`.
+- `.git` at the root of a package's folder is not part of the package. `Package.load`,
+  `Package.content` and the copies `rail8 test` makes all skip it, so a package at the root of its
+  clone validates and tests as one in any folder does.
 
 ## Dependencies
 
@@ -97,8 +107,8 @@ them is refused, naming `rail8 lock`.
 - `rail8 lock` finds a dependency among the working folder's package folders by its manifest's name, as
   today. It takes the repository from the name of the dependency's git working tree, the commit from its
   `HEAD`, and the content from that commit. A dependency whose files differ from its `HEAD` is refused:
-  commit it first. So is one whose `origin` remote ends in another name than its folder's, since the
-  pin would name a repository the pool does not have.
+  commit it first. The command line reads no pool settings, so a dependency must lie at the root of
+  its working tree; one that does not is refused.
 - A deploy resolves each dependency of the closure from the repository and commit its lock pins, never
   from a version found by name. A directory the node keeps with that content is used as it is;
   otherwise the commit is fetched, under the same rule of reachability as the package's own, written,
@@ -117,7 +127,8 @@ them is refused, naming `rail8 lock`.
 
 `POST /admin/deploy` with the body `{"repository": "<name>", "commit": "<40 hex>"}`. In `dev` and `ci`
 the commit may also be a ref (`HEAD`, `main`, `refs/tags/v1`), resolved in the repository at the fetch.
-With `?check=true` the node answers what the deploy would do and every problem, and changes nothing.
+With `?check=true` the node answers what the deploy would do and every problem; nothing that runs
+changes and no record is written, though the fetch fills the cache and the folders it wrote are deleted.
 The actor is the request's `X-Rail8-Actor` header, as for every audited act.
 
 `rail8 deploy <repository> <commit|ref> [--check]` sends it and prints the answer.
@@ -130,9 +141,10 @@ The order:
 2. **Fetch.** The commit is fetched within the timeout and the cache's size. When `RAIL8_GIT_REF` is
    set, the ref is fetched too, its tip resolved once, and the commit proved an ancestor of that tip
    (422 otherwise; history the cache lacks is refused as incomplete, never as unapproved).
-3. **Write.** The package's folder is written to `<dataDir>/packages/<name>/<content hex>/`, unless
-   that directory is one the node keeps and its files are intact. A package of the same name recorded
-   from another repository is refused (409).
+3. **Write.** The package's folder is written under `<dataDir>/.incoming` first. Its manifest's name
+   is checked against the package-name pattern before it names a directory; then the folder moves to
+   `<dataDir>/packages/<name>/<content hex>/`, unless that directory is one the node keeps and its
+   files are intact. A package of the same name recorded from another repository is refused (409).
 4. **Dependencies.** Every pin of the closure is resolved, fetched and written as "Dependencies" says.
 5. **Check.** The package is checked whole with today's checks: schemas, components, endpoints,
    dependencies, listeners, calls between flows, and the queue of each at-least-once flow it removes.
@@ -147,8 +159,9 @@ the archive.
 A listener or a node-local address that moves from one package to another takes two deploys: first
 the one that removes it, then the one that adds it.
 
-**Undeploy** stays `DELETE /admin/packages/{name}`, with today's checks: a package another package's
-record pins, or whose at-least-once flows hold queued items, is not undeployed. **Rollback** is a
+**Undeploy** stays `DELETE /admin/packages/{name}`. A package whose at-least-once flows hold queued
+items is not undeployed, as today. Today's refusal of a package another record pins goes: a pin brings
+its own files from its own commit, so a dependent runs on after its dependency is undeployed. **Rollback** is a
 deploy of an earlier commit of the same repository.
 
 ## The record
@@ -174,14 +187,17 @@ At its start, before its admin port opens, a node installs each record:
   written from the pin's repository and commit and checked against the pin. The package is installed
   as today.
 - A package that cannot be fetched, or whose content differs from its record (a node configured with
-  another base or path), is listed `FAILED` with the reason; the node starts, and the others run.
+  another base or path), is listed `FAILED` with the reason; the node starts, and the others run. Once a
+  fetch fails because the base's host cannot be reached or timed out, the restore tries no further
+  fetch: every package still needing one is listed `FAILED` at once, so the admin port is not held
+  back for a timeout per record.
   Until following is built, the next start is the next try.
 
 ## Several nodes
 
 This part is agreed in outline. Its stage designs it in full first, as hard work of its own: where the
-mark of a retiring flow lives in Postgres, the connection that holds the advisory lock, and a node that
-dies while a flow drains.
+mark of a retiring flow lives in Postgres, the connection that holds the advisory lock, a node that
+dies while a flow drains, and how long a drain may take.
 
 - **One deploy at a time in a pool.** A deploy or an undeploy holds a Postgres advisory lock for its
   whole length; a second one on any node of the pool is 409.
@@ -224,11 +240,13 @@ overlays and `secret://` names, read from each node's own environment.
   deploy.
 - A repository in the working folder is a full clone with its `.git` folder; a worktree or a copy
   whose `.git` points outside the mount is not supported.
-- `bin/run-adapter` reads the adapter's own repository, with `RAIL8_GIT_PATH` set to its package
-  folder, and deploys its `HEAD`. It prints one line when that folder differs from `HEAD`: uncommitted
+- `rail8 new-adapter` writes the adapter as a git repository, with the `.gitattributes` above and a
+  first commit. `bin/run-adapter` reads the adapter's own repository, with `RAIL8_GIT_PATH` set to its
+  package folder, and deploys its `HEAD`. It prints one line when that folder differs from `HEAD`: uncommitted
   changes are not deployed.
 - `deploy/compose` and CI mount the Rail8 repository as the repository `rail8` under a `file://` base,
-  with `RAIL8_GIT_PATH` set to `examples/demo`. The checkout they mount has the full history.
+  with `RAIL8_GIT_PATH` set to `examples/demo`. The checkout they mount has the full history: CI's
+  checkout sets `fetch-depth: 0`, and a shallow clone or a worktree of Rail8 does not serve.
 
 ## `rail8 test` and `rail8 validate`
 
@@ -276,15 +294,15 @@ public interface Commit {
 
 - `PUT /admin/packages/{name}`; the deploy is `POST /admin/deploy`.
 - `ArchiveStore`, `S3ArchiveStore`, `DirArchiveStore`, `PackageArchive` and `ArchiveName`.
-- The settings `RAIL8_ARCHIVE_*` and `RAIL8_S3_*`, and the AWS SDK in the runtime: nothing else uses
-  them. The body tier planned for S3 brings what it needs.
+- The settings `RAIL8_ARCHIVE_*` and `RAIL8_S3_*`, and the AWS SDK in the runtime, once the bench
+  deploys from git too: nothing else uses them. The body tier planned for S3 brings what it needs.
 - `deploy/quickstart/deploy.sh`, and the zip code of `rail8 deploy`.
 
 ## Limits
 
 | Limit | Value |
 | --- | --- |
-| One fetch | `RAIL8_GIT_TIMEOUT`, 60 s by default |
+| The fetches of one deploy or one package's restore | `RAIL8_GIT_TIMEOUT` together, 60 s by default; `rail8 deploy` waits longer than that |
 | The git cache | `RAIL8_GIT_MAX_BYTES`, 1 GiB by default |
 | One package | `RAIL8_MAX_PACKAGE_BYTES` in all, 10 000 files |
 | One deploy | the package and at most 100 packages in its dependency closure |
@@ -296,19 +314,23 @@ public interface Commit {
 - The contract suite of `PackageRepositories`, run on the fake and on JGit over `file://` repositories
   the test builds: the package folder found at the path, a folder with no `package.yaml`, symbolic links
   and submodules refused, the limits, reachability from the ref, a commit on another branch refused, a
-  shallow source refused as incomplete, a ref refused in a deployed environment, a recorded commit read
+  shallow source refused as incomplete, a ref refused in a deployed environment, a fetch timed out on a
+  fake clock, a full cache freed of unnamed repositories, a recorded commit read
   from the cache with the source gone and fetched when the cache lacks it, and the token rules (user
   information refused, the formatter never showing credentials or the transport's message, an
   authentication failure, a redirect to another host refused).
 - `rail8 lock`: a dependency pinned by repository and commit; a dependency with uncommitted changes
-  refused; a lock without repository or commit refused at a deploy.
+  refused; a dependency not at the root of its working tree refused; a lock without repository or
+  commit refused at a deploy. `rail8 validate` and `rail8 test` on a package at the root of its clone.
 - Deploys over JGit `file://` repositories, with a fake clock: a first deploy; a redeploy that swaps only
   the changed flows; a dependency fetched from its pinned commit while another version of it runs; a
-  rollback by an earlier commit; a package name from a second repository refused; an undeploy refused
-  while pinned and while its queue holds items; `?check=true` changing nothing.
+  rollback by an earlier commit; a package name from a second repository refused; a manifest name that
+  is not a package name refused before any directory is made; an undeploy, after which a restart does
+  not install the package; an undeploy refused while its queue holds items; a dependent running on after
+  its dependency is undeployed; `?check=true` writing no record.
 - Restore: from a warm cache with the repositories gone; with a commit fetched; a pin restored from its
-  own commit while its package runs a newer one; with the server unreachable (`FAILED`); with another
-  base (`FAILED`).
+  own commit while its package runs a newer one; with the server unreachable (`FAILED`, the later
+  packages without a fetch each); with another base (`FAILED`).
 - Several nodes over one Postgres, on a fake clock: a second deploy refused while one runs; a node
   behind the generation reconciling before it plans; the other node installing and undeploying at its
   next tick; a `FAILED` package restored at a later tick once its repository answers; a removed flow
@@ -348,16 +370,19 @@ These were decided on the owner's behalf, and stand until the owner says otherwi
    folders in process. Nothing changes for a caller.
 3. **A lock that pins commits.** `package.lock` pins each dependency's repository and commit;
    `rail8 lock` fills them in, and `rail8 validate` and `rail8 test` read dependencies from their pinned
-   commits. The node reads the new lock and goes on resolving by content until the next stage.
+   commits; `.git` at a package's root is skipped. The node reads the new lock and goes on resolving by
+   content until the next stage.
 4. **Deploy and restore from git.** The record and its migration, `POST /admin/deploy` with its order,
    dependencies from their pins, the restore from git, directories keyed by content digest, and
    `PUT /admin/packages/{name}` removed. Every caller in the repository moves in the same change, so
-   that each keeps working: `rail8 deploy` sends a repository and a commit, and CI, both compose files,
-   `bin/run-adapter` and the quickstart deploy from git, as "The local run and the quickstart" says. A
-   deployed environment still refuses deploys.
+   that each keeps working: `rail8 deploy` sends a repository and a commit; `rail8 new-adapter` writes a
+   repository; CI, both compose files, `bin/run-adapter`, the quickstart and the bench (its harness and
+   its restore test) deploy from git, as "The local run and the quickstart" says. ARCHITECTURE
+   ("Deployment", "The command line", the admin API), QUICKSTART, ADAPTERS and the compose README
+   describe it. A deployed environment still refuses deploys.
 5. **The archive goes.** What the previous stage left unused is deleted: the archive store and its
-   settings, the AWS SDK in the runtime, `deploy/quickstart/deploy.sh` and the zip code of
-   `rail8 deploy`.
+   settings (the bench's included), the AWS SDK in the runtime and the bench,
+   `deploy/quickstart/deploy.sh` and the zip code of `rail8 deploy`.
 6. **Several nodes.** Designed in full first, then built: the pool's lock, the catching up before a
    plan, the generation, following and retiring; a deployed environment then takes deploys of commits
-   reachable from its ref, and undeploys.
+   reachable from its ref, and undeploys. ARCHITECTURE parts 4 and 6 describe it.
