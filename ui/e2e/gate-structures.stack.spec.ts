@@ -6,7 +6,7 @@ import { edit, fieldRow, openStudio, processingLog, result, runTest, type Side }
 // a tall window: the message panes, maximised, show the gate structures without scrolling their virtualised rows
 test.use({ viewport: { width: 1440, height: 1800 } });
 
-// The gate structures of the corpus' structures/gate, read by the real service from its workspace and shown in the
+// The gate structures of the corpus' structures/gate, read by the real node from the working folder and shown in the
 // studio's message panes (Table view), each pane fully open as it opens.
 const PO = 'Q{urn:rail8:corpus:gate:po}';
 const INV = 'Q{urn:rail8:corpus:gate:invoice}';

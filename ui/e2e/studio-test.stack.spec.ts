@@ -9,9 +9,9 @@ const corpus = (path: string) => new URL(`../../mapping/corpus/${path}`, import.
 const input = readFileSync(corpus('cases/fn/removeContexts/001/input.xml'), 'utf8');
 const expected = readFileSync(corpus('cases/fn/removeContexts/001/expected.xml'), 'utf8');
 
-// A concrete corpus mapping runs in the studio's Test tab on the real service. Sku through removeContexts onto All
+// A concrete corpus mapping runs in the studio's Test tab on the real node. Sku through removeContexts onto All
 // (fn/removeContexts/001); the Display Queue of removeContexts shows what the run traced.
-test('@stack the studio runs a corpus mapping on the service: the Result pane shows its output, the queue its trace', async ({ page }) => {
+test('@stack the studio runs a corpus mapping on the node: the Result pane shows its output, the queue its trace', async ({ page }) => {
   const problems = collectProblems(page);
   await openStudio(page, 'mappings/remove-contexts', 'Test');
   await edit(page);

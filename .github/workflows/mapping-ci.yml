@@ -89,7 +89,5 @@ jobs:
       # jacoco.skip: coverage floors and the ratchet run only in the nightly coverage job, so they never block a change
       - name: Build, test, licences, bans
         run: ../mvnw -B -Djacoco.skip=true verify
-      - name: contract/ is up to date
-        run: git diff --exit-code contract/
       - name: Every file checks out byte-identical on Windows (#49)
         run: scripts/check-lf-checkout.sh

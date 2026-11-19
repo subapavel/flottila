@@ -142,8 +142,8 @@ export async function save(page: Page, name: string) {
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 }
 
-/** Saves over the service and returns its answer to the PUT. */
-export async function saveOverService(page: Page, name: string) {
+/** Saves through the API and returns its answer to the PUT. */
+export async function saveThroughApi(page: Page, name: string) {
   const put = page.waitForResponse((response) => response.request().method() === 'PUT');
   await save(page, name);
   return put;

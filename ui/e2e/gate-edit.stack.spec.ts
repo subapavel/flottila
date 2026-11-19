@@ -3,11 +3,11 @@ import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { collectProblems } from './problems';
 import { stackWorkspace } from './stack-workspace';
-import { canvas, dropFunction, edit, fieldRow, link, node, nodeId, nodeMenu, openStudio, result, runTest, saveOverService, selectTarget, setParameters } from './studio';
+import { canvas, dropFunction, edit, fieldRow, link, node, nodeId, nodeMenu, openStudio, result, runTest, saveThroughApi, selectTarget, setParameters } from './studio';
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-// Editing in the studio over the real service, and an attribute field mapped and run.
+// Editing in the studio over the real node, and an attribute field mapped and run.
 // Both mappings are workspace copies of order-id-copy without target field mappings, made by the server command.
 const ORDER = '/Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `${ORDER}/OrderId`;
@@ -47,9 +47,9 @@ test('@stack a field link by drag and drop, a function and a constant are saved 
   await expect(node(page, /^Target field OrderId\. Complete/)).toBeVisible();
   await expect(node(page, /^Node function concat\. Complete/)).toBeVisible();
 
-  const answer = await saveOverService(page, 'e2e-edit');
+  const answer = await saveThroughApi(page, 'e2e-edit');
 
-  // the file on disk is the canonical form the service answered the save with, and the one it serves
+  // the file on disk is the canonical form the node answered the save with, and the one the API serves
   const saved = readFileSync(file);
   expect(answer.status()).toBe(200);
   expect(Buffer.from(await answer.body()).equals(saved)).toBe(true);

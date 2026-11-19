@@ -3,14 +3,14 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { collectProblems } from './problems';
 import { stackWorkspace } from './stack-workspace';
-import { edit, fields, link, node, openStudio, result, runTest, saveOverService } from './studio';
+import { edit, fields, link, node, openStudio, result, runTest, saveThroughApi } from './studio';
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
 const ORDER_ID = '/Q{urn:rail8:corpus:skeleton}Order/OrderId';
 const input = readFileSync(new URL('../../mapping/corpus/cases/link/direct-copy/001/input.xml', import.meta.url), 'utf8');
 
-test('@stack the real service: open, link, save, run a test, and the saved file is canonical', async ({ page, request }) => {
+test('@stack the real node: open, link, save, run a test, and the saved file is canonical', async ({ page, request }) => {
   const problems = collectProblems(page);
 
   await openStudio(page, 'mappings/order-id-copy', 'Definition');
@@ -20,7 +20,7 @@ test('@stack the real service: open, link, save, run a test, and the saved file 
   await edit(page);
   await link(page, ORDER_ID, ORDER_ID);
   await expect(node(page, /^Source field OrderId\. Complete/)).toBeVisible();
-  expect((await saveOverService(page, 'order-id-copy')).status()).toBe(200);
+  expect((await saveThroughApi(page, 'order-id-copy')).status()).toBe(200);
   await runTest(page, input);
 
   await expect(result(page)).toContainText('<OrderId>PO 4711</OrderId>');

@@ -28,7 +28,8 @@ test('@stack a mapping with a context function opens, saves through the API byte
 
   const loaded = await request.get(`/api/mappings/${MAPPING}`);
   expect(loaded.ok()).toBe(true);
-  const saved = await request.put(`/api/mappings/${MAPPING}`, { data: await loaded.json() });
+  // The development server takes a write only from its own pages, as a browser marks them.
+  const saved = await request.put(`/api/mappings/${MAPPING}`, { data: await loaded.json(), headers: { 'sec-fetch-site': 'same-origin' } });
   expect(saved.ok()).toBe(true);
   expect(readFileSync(file).equals(original)).toBe(true);
   expect(Buffer.from(await (await request.get(`/api/mappings/${MAPPING}`)).body()).equals(original)).toBe(true);
