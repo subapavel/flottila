@@ -26,12 +26,14 @@ export interface FoundFile {
 }
 
 /**
- * The files under `root` whose name `takes`, in path order, read as text, and whether the walk stopped at
- * {@link MAX_FILES}. Hidden folders and files, `node_modules`, `target`, symbolic links, folders more than 16 deep and
- * files over {@link MAX_FILE_BYTES} are passed over.
+ * The files under `root` whose name `takes`, in path order, read as text; the paths of those over
+ * {@link MAX_FILE_BYTES}, which are not read, in path order too; and whether the walk stopped at {@link MAX_FILES} of
+ * them. Hidden folders and files, `node_modules`, `target`, symbolic links and folders more than 16 deep are passed
+ * over.
  */
-export async function walk(root: string, takes: (name: string) => boolean): Promise<{ files: FoundFile[]; truncated: boolean }> {
+export async function walk(root: string, takes: (name: string) => boolean): Promise<{ files: FoundFile[]; large: string[]; truncated: boolean }> {
   const files: FoundFile[] = [];
+  const large: string[] = [];
   let seen = 0;
   let truncated = false;
   const visit = async (dir: string, depth: number) => {
@@ -47,14 +49,16 @@ export async function walk(root: string, takes: (name: string) => boolean): Prom
           truncated = true;
           continue;
         }
-        if ((await stat(full)).size > MAX_FILE_BYTES) continue;
-        files.push({ path: relative(root, full).split(sep).join('/'), text: await readFile(full, 'utf8') });
+        const path = relative(root, full).split(sep).join('/');
+        if ((await stat(full)).size > MAX_FILE_BYTES) large.push(path);
+        else files.push({ path, text: await readFile(full, 'utf8') });
       }
     }
   };
   await visit(root, 0);
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return { files, truncated };
+  large.sort();
+  return { files, large, truncated };
 }
 
 /** The ETag of a file's bytes. */

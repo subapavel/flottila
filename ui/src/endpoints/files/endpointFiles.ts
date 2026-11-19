@@ -2,9 +2,9 @@ import { readFile, realpath } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { foreign } from '../../../server/adminProxy.ts';
 import { EndpointFileError, readEndpoint, writeConfig, type EndpointDocument } from './endpointYaml.ts';
-import { createFile, etagOf, jsonBody, locate, MAX_FILE_BYTES, Refusal, replaceFile, send, sendFailure, walk } from './workingFolder.ts';
+import { createFile, etagOf, jsonBody, locate, MAX_FILE_BYTES, Refusal, replaceFile, send, sendFailure, walk } from '../../../server/workingFolder.ts';
 
-export { etagOf, MAX_FILE_BYTES, MAX_FILES } from './workingFolder.ts';
+export { etagOf, MAX_FILE_BYTES, MAX_FILES } from '../../../server/workingFolder.ts';
 
 /** The working folder whose endpoint files the settings form reads and writes, and who may reach them. */
 export interface EndpointFilesOptions {
