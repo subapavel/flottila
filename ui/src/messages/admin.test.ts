@@ -31,6 +31,19 @@ describe('httpAdminApi', () => {
     ]);
   });
 
+  it('counts the messages of a time range by status, of a flow when one is given', async () => {
+    const counts = { completed: 3, failed: 1, running: 0, cancelled: 2 };
+    const { send, calls } = fakeFetch(json(200, counts), json(200, counts));
+    const api = httpAdminApi(send);
+    const range = { from: '2026-11-19T07:00:00.000Z', to: '2026-11-19T08:00:00.000Z' };
+    expect(await api.counts(range)).toEqual(counts);
+    expect(await api.counts({ ...range, flow: 'demo/order-jq' })).toEqual(counts);
+    expect(calls.map((c) => c.url)).toEqual([
+      '/admin/message-counts?from=2026-11-19T07%3A00%3A00.000Z&to=2026-11-19T08%3A00%3A00.000Z',
+      '/admin/message-counts?from=2026-11-19T07%3A00%3A00.000Z&to=2026-11-19T08%3A00%3A00.000Z&flow=demo%2Forder-jq',
+    ]);
+  });
+
   it('lists the ids of the deployed flows', async () => {
     const { send, calls } = fakeFetch(json(200, { items: [{ id: 'demo/invoice', state: 'RUNNING' }, { id: 'demo/order-jq', state: 'FAILED' }] }));
     expect(await httpAdminApi(send).flows()).toEqual(['demo/invoice', 'demo/order-jq']);

@@ -50,6 +50,7 @@ function fakeApi(overrides: Partial<AdminApi> = {}): AdminApi {
         ? { items: [row('m-1', { status: 'failed', startedAt: '2026-11-19T07:50:00Z', keys: { order: 'A-7' } })], next: 'page-2' }
         : { items: [row('m-2')], next: null },
     ),
+    counts: vi.fn(async () => ({ completed: 12, failed: 2, running: 1, cancelled: 0 })),
     flows: vi.fn(async () => ['demo/invoices', 'demo/orders']),
     timeline: vi.fn(async (id: string) => byId.get(id) ?? null),
     payload: vi.fn(async () => ({ contentType: 'application/json', text: '{"order":7}', complete: true })),
@@ -135,6 +136,38 @@ describe('Messages', () => {
     await page.getByRole('textbox', { name: 'Step name' }).fill('send');
     await page.getByRole('button', { name: 'Search', exact: true }).click();
     await vi.waitFor(() => expect(api.list).toHaveBeenLastCalledWith({ ...keyed, step: 'send' }));
+    await expect.element(page.getByRole('button', { name: 'm-1' })).toBeVisible();
+  });
+
+  test('counts the messages of the time range and flow by status above the list; a count narrows the list to its status', async () => {
+    const api = fakeApi();
+    render(api);
+    const strip = page.getByRole('group', { name: 'Messages by status' });
+    await expect.element(strip.getByRole('button', { name: 'Completed 12' })).toBeVisible();
+    await expect.element(strip.getByRole('button', { name: 'Running 1' })).toBeVisible();
+    await expect.element(strip.getByRole('button', { name: 'Cancelled 0' })).toBeVisible();
+    expect(api.counts).toHaveBeenCalledWith(lastHour);
+
+    await strip.getByRole('button', { name: 'Failed 2' }).click();
+    await vi.waitFor(() => expect(api.list).toHaveBeenLastCalledWith({ ...lastHour, status: 'failed' }));
+    await expect.element(strip.getByRole('button', { name: 'Failed 2' })).toHaveAttribute('aria-pressed', 'true');
+    await expect.element(page.getByRole('combobox', { name: 'Status' })).toHaveValue('failed');
+    await expect.element(page.getByRole('grid', { name: 'Messages' }).getByRole('button', { name: 'm-1' })).toBeVisible();
+
+    await page.getByRole('combobox', { name: 'Flow' }).selectOptions('demo/orders');
+    await vi.waitFor(() => expect(api.counts).toHaveBeenLastCalledWith({ ...lastHour, flow: 'demo/orders' }));
+    await vi.waitFor(() => expect(api.list).toHaveBeenLastCalledWith({ ...lastHour, flow: 'demo/orders', status: 'failed' }));
+
+    await strip.getByRole('button', { name: 'Failed 2' }).click();
+    await vi.waitFor(() => expect(api.list).toHaveBeenLastCalledWith({ ...lastHour, flow: 'demo/orders' }));
+    await expect.element(strip.getByRole('button', { name: 'Failed 2' })).toHaveAttribute('aria-pressed', 'false');
+    await expect.element(page.getByRole('combobox', { name: 'Status' })).toHaveValue('');
+  });
+
+  test("shows the node's error when the messages cannot be counted, and the list still", async () => {
+    render(fakeApi({ counts: async () => Promise.reject(new AdminError(400, 'the time range is longer than 31 days')) }));
+    await expect.element(page.getByText('The messages could not be counted by status', { exact: false })).toBeVisible();
+    await expect.element(page.getByText('the time range is longer than 31 days')).toBeVisible();
     await expect.element(page.getByRole('button', { name: 'm-1' })).toBeVisible();
   });
 

@@ -751,6 +751,7 @@ class AdminServerTest {
         start();
         assertJsonError(400, admin("/admin/messages?from=2026-11-19T07:00:00Z&to=2026-11-19T08:00:00Z"), "no list of recent messages here");
         assertJsonError(400, admin("/admin/messages?to=2026-11-19T08:00:00Z&key=invoiceId:4711"), "to alone asks for the list too");
+        assertJsonError(400, admin("/admin/message-counts?from=2026-11-19T07:00:00Z&to=2026-11-19T08:00:00Z"), "no counts by status here");
     }
 
     @Test

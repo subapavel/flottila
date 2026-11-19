@@ -1,5 +1,6 @@
 import {
   Alert,
+  Badge,
   Button,
   EmptyState,
   EmptyStateBody,
@@ -13,13 +14,15 @@ import {
   StackItem,
   TextInput,
   Title,
+  ToggleGroup,
+  ToggleGroupItem,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import type { AdminApi, Listed, ListQuery, Status } from './admin';
+import type { AdminApi, Counts, Listed, ListQuery, Status } from './admin';
 import { duration } from './progress';
 
 export interface MessageListProps {
@@ -70,6 +73,9 @@ interface Shown {
 
 type Result = { kind: 'loading' } | { kind: 'failed'; message: string } | { kind: 'shown'; shown: Shown };
 
+/** The counts by status of the list's time range and flow: being read, refused, or read. */
+type Counted = { kind: 'loading' } | { kind: 'failed'; message: string } | { kind: 'counted'; counts: Counts };
+
 const BROWSER_CLOCK = () => new Date();
 
 const reason = (failed: unknown) => (failed instanceof Error ? failed.message : String(failed));
@@ -87,22 +93,35 @@ function queryOf(filters: Filters, now: Date): ListQuery {
 /**
  * The recent messages on the node, newest first, a page at a time: each with its start, flow, status, duration and
  * business keys. It opens on the last hour of every flow; the time range, the flow and the status apply when chosen, the
- * business key and the step name with Search, which also reads the list again up to now. Choosing a message's id opens
- * it in a tab of its own, as does Open with an id typed in.
+ * business key and the step name with Search, which also reads the list again up to now. Above the list, a strip counts
+ * the messages of the time range and flow in each status; choosing a count narrows the list to that status, and choosing
+ * it again shows every status. Choosing a message's id opens it in a tab of its own, as does Open with an id typed in.
  */
 export function MessageList({ api, onOpen, now = BROWSER_CLOCK }: MessageListProps) {
   const [filters, setFilters] = useState<Filters>(DEFAULTS);
   const [flows, setFlows] = useState<Flows>({ kind: 'loading' });
   const [result, setResult] = useState<Result>({ kind: 'loading' });
+  const [counted, setCounted] = useState<Counted>({ kind: 'loading' });
   const [id, setId] = useState('');
-  // only the answer to the latest read is shown
+  // only the answers to the latest read of the list and of the counts are shown
   const latest = useRef(0);
+  const latestCounts = useRef(0);
 
-  // reads the first page of what `chosen` names and shows it, unless a later read began meanwhile
+  // reads the first page of what `chosen` names and the counts of its time range and flow, and shows them, unless a later
+  // read began meanwhile
   const read = useCallback(
     (chosen: Filters) => {
       const asked = ++latest.current;
+      const askedCounts = ++latestCounts.current;
       const query = queryOf(chosen, now());
+      api.counts({ from: query.from, to: query.to, flow: query.flow }).then(
+        (counts) => {
+          if (askedCounts === latestCounts.current) setCounted({ kind: 'counted', counts });
+        },
+        (failed: unknown) => {
+          if (askedCounts === latestCounts.current) setCounted({ kind: 'failed', message: reason(failed) });
+        },
+      );
       api.list(query).then(
         (page) => {
           if (asked === latest.current) setResult({ kind: 'shown', shown: { query, items: page.items, next: page.next, more: false } });
@@ -128,6 +147,7 @@ export function MessageList({ api, onOpen, now = BROWSER_CLOCK }: MessageListPro
 
   const readAgain = (chosen: Filters) => {
     setResult({ kind: 'loading' });
+    setCounted({ kind: 'loading' });
     read(chosen);
   };
 
@@ -234,6 +254,9 @@ export function MessageList({ api, onOpen, now = BROWSER_CLOCK }: MessageListPro
           </Form>
         </StackItem>
         <StackItem>
+          <StatusCounts counted={counted} status={filters.status} onChoose={(status) => choose({ status })} />
+        </StackItem>
+        <StackItem>
           <Results result={result} onOpen={onOpen} onMore={loadMore} />
         </StackItem>
       </Stack>
@@ -244,6 +267,37 @@ export function MessageList({ api, onOpen, now = BROWSER_CLOCK }: MessageListPro
 function StatusLabel({ status }: { status: Status }) {
   const shown = STATUSES.find((s) => s.value === status) ?? { value: status, label: status };
   return shown.status === undefined ? <Label color="grey">{shown.label}</Label> : <Label status={shown.status}>{shown.label}</Label>;
+}
+
+/** The strip of counts by status; choosing a count narrows the list to its status, choosing the chosen one again shows every status. */
+function StatusCounts({ counted, status, onChoose }: { counted: Counted; status: Status | ''; onChoose: (status: Status | '') => void }) {
+  switch (counted.kind) {
+    case 'loading':
+      return <Spinner size="md" aria-label="Counting the messages by status" />;
+    case 'failed':
+      return (
+        <Alert variant="danger" isInline title="The messages could not be counted by status">
+          {counted.message}
+        </Alert>
+      );
+    case 'counted':
+      return (
+        <ToggleGroup aria-label="Messages by status">
+          {STATUSES.map((shown) => (
+            <ToggleGroupItem
+              key={shown.value}
+              text={
+                <>
+                  {shown.label} <Badge isRead={counted.counts[shown.value] === 0}>{counted.counts[shown.value]}</Badge>
+                </>
+              }
+              isSelected={status === shown.value}
+              onChange={(_event, selected) => onChoose(selected ? shown.value : '')}
+            />
+          ))}
+        </ToggleGroup>
+      );
+  }
 }
 
 function Results({ result, onOpen, onMore }: { result: Result; onOpen: (id: string) => void; onMore: (shown: Shown) => void }) {

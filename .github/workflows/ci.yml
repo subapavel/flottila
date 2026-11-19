@@ -223,7 +223,7 @@ jobs:
         run: docker compose --profile history --profile kafka down -v
 
   quickstart:
-    name: "nightly · quickstart (docs/QUICKSTART.md: first-run commands, node, mapping service and UI started, an invoice found and listed)"
+    name: "nightly · quickstart (docs/QUICKSTART.md: first-run commands, node, mapping service and UI started, an invoice found, listed and counted)"
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
@@ -272,7 +272,7 @@ jobs:
               sleep 2
             done
           done
-      - name: An invoice is sent in, found and listed through the UI's server
+      - name: An invoice is sent in, found, listed and counted through the UI's server
         run: |
           set -euo pipefail
           reply=$(curl -sf -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/in)
@@ -290,6 +290,11 @@ jobs:
           echo "$listed"
           echo "$listed" | grep -q '"flow":"demo/invoice-sync","status":"completed"' && echo "$listed" | grep -q '"keys":{"invoiceId":"4711"}' \
             || { echo "::error::the invoice is not in the list of recent messages through the UI's /admin: $listed"; exit 1; }
+          # the strip of counts above the list: the invoice among the completed ones, none failed
+          counted=$(curl -sf -H 'Sec-Fetch-Site: same-origin' "localhost:5173/admin/message-counts?from=$(date -u -d '1 hour ago' +%FT%TZ)&to=$(date -u -d '1 minute' +%FT%TZ)" || true)
+          echo "$counted"
+          echo "$counted" | grep -Eq '"completed":[1-9]' && echo "$counted" | grep -q '"failed":0' \
+            || { echo "::error::the invoice is not counted as completed through the UI's /admin: $counted"; exit 1; }
       - name: Logs on failure
         if: failure()
         run: |

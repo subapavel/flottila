@@ -55,6 +55,16 @@ export interface ListQuery {
   step?: string;
 }
 
+/** How many messages are in each status. */
+export type Counts = Record<Status, number>;
+
+/** What the counts by status count: the messages of the list over `from` and `to`, of `flow` when it is given. */
+export interface CountsQuery {
+  from: string;
+  to: string;
+  flow?: string;
+}
+
 /** One page of a list, and the cursor of the next page, or null on the last one. */
 export interface Page<T> {
   items: T[];
@@ -81,6 +91,8 @@ export interface AdminApi {
    * and `<call>/<step>` for a step of a local process.
    */
   list(query: ListQuery, after?: string): Promise<Page<Listed>>;
+  /** How many of the messages `query` names are in each status. */
+  counts(query: CountsQuery): Promise<Counts>;
   /** The ids of the flows deployed on the node, sorted by id. */
   flows(): Promise<string[]>;
   /** The message's recorded steps, or null when the node recorded no message with that id. */
@@ -158,6 +170,12 @@ export function httpAdminApi(send: typeof fetch = (input, init) => fetch(input, 
       if (step !== undefined) query.set('step', step);
       if (after !== undefined) query.set('after', after);
       return json<Page<Listed>>(`/admin/messages?${query}`);
+    },
+
+    counts({ from, to, flow }) {
+      const query = new URLSearchParams({ from, to });
+      if (flow !== undefined) query.set('flow', flow);
+      return json<Counts>(`/admin/message-counts?${query}`);
     },
 
     async flows() {

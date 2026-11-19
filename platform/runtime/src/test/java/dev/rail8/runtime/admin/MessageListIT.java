@@ -103,7 +103,7 @@ class MessageListIT {
         assertEquals(1, node.worker.poll().await(BOUND.toMillis(), TimeUnit.MILLISECONDS), "fixture: its attempt 2 runs and completes");
         node.rt.clock().set(T0.plus(Duration.ofMinutes(5).plusSeconds(30)));
         String running = node.accepted();   // the last one queued: nothing claims it
-        String sync = syncFailed(T0.plus(Duration.ofMinutes(6)));
+        String sync = syncFailed(node, T0.plus(Duration.ofMinutes(6)));
         node.messages.flush().await();
 
         JsonObject all = list("");
@@ -156,8 +156,8 @@ class MessageListIT {
         assertTrue(a.json().getString("error").contains(says), path + ": " + a.body());
     }
 
-    /** A sync message of {@value #SYNC} as its run records it: its arrival at {@code at}, then its step {@code send} failing a second later. */
-    String syncFailed(Instant at) {
+    /** A sync message of {@value #SYNC} as its run records it through {@code node}: its arrival at {@code at}, then its step {@code send} failing a second later. */
+    static String syncFailed(AdminPgFixture node, Instant at) {
         String id = node.rt.ids().next();
         Keys keys = new Keys(Map.of("invoiceId", "4711"));
         node.messages.record(new Snapshot(id, SYNC, 0, 1, "ingress", Snapshot.Outcome.OK, Optional.empty(), at, 1_000_000, Snapshot.CPU_UNKNOWN,
