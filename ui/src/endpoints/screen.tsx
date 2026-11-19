@@ -64,6 +64,7 @@ export function flowTab(flows: FlowsApi, endpoints: EndpointsApi, path: string, 
         endpointForm={(file) => <EndpointForm key={file} api={shown} path={file} />}
         openEndpoint={(file) => open(endpointTab(endpoints, file, idOf(file)))}
         openFlow={(file) => open(flowTab(flows, endpoints, file, idOf(file)))}
+        createEndpoint={(file, text) => endpoints.create(file, text)}
         guardClose={guardClose}
       />
     ),

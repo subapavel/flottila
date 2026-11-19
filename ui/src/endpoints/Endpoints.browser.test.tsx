@@ -56,6 +56,7 @@ function fakeApi(files: EndpointFile[] = [inbox], overrides: Partial<EndpointsAp
     })),
     read: vi.fn(async (path: string) => ({ file: byPath.get(path)!, etag: '"v1"' })),
     save: vi.fn(async (path: string, config) => ({ file: { ...byPath.get(path)!, config }, etag: '"v2"' })),
+    create: vi.fn(),
     components: vi.fn(async () => components),
     ...overrides,
   };

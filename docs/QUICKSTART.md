@@ -69,6 +69,17 @@ problems are found again after every change; Check lists them, and they do not s
 Deploy it with `deploy/quickstart/deploy.sh ~/rail8-workspace/demo`. A flow written in a form the editor does not keep,
 such as its steps on one line, opens read-only and says why.
 
+While a flow is edited, the rules of a `route` and the endpoints of a `to` by prop are tables: Add a row, change a row's
+values in place, move a rule up or down, remove a row, and rename an endpoint's value in its first column. With no node
+chosen, the drawer is a form of the flow's own settings, such as its `delivery.mode`, and Add a process adds a process
+with its first step as a lane of its own. Choose a lane to rename its process, which renames every call of it too, or to
+delete it once no step calls it; the drawer of a step moves it to the end of another lane with Move to. The + on an edge
+also offers Call a flow: choose `order-partner`, and the step sends to `order-partner-call`, the `direct` endpoint whose
+address that flow serves. A flow whose address no endpoint of the package names gets one, `call-<flow id>.yaml`, written
+before the step is added; Cancel leaves it in place. New flow, on the Flows screen, writes a new flow file with one step,
+such as `demo/flows/audit.yaml` arriving at `http-in` and sending to `partner-domestic`, and opens it; it never writes
+over an existing file.
+
 The node migrates its database itself and serves `/health` on `localhost:8081`. Postgres is published on the host's
 loopback port 5432; if that is taken, prefix the `up` with `RAIL8_PG_HOST_PORT=55432`. Without a token the node exits
 with "the admin API on 0.0.0.0 is not loopback-only: it needs a token" (`docker compose logs rail8`).

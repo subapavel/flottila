@@ -2,7 +2,7 @@ import { isSeq } from 'yaml';
 import { matching, placeOf } from './edit';
 import { readFlow, yamlFindings } from './flowYaml';
 import { layout, type Block } from './layout';
-import { BUILT_IN, checkStep, checkStepTab, describeSchema, settingsOf, UNDESCRIBED, type StepType } from './steps';
+import { BUILT_IN, checkFields, checkStep, checkStepTab, describeSchema, FLOW_FIELDS, settingsOf, UNDESCRIBED, type StepType } from './steps';
 import type { FlowContext, FlowEdge, FlowNode, FlowProblem, FlowView, Path, StepField, StepForm } from './types';
 
 /** The most nodes drawn, rules listed on a route's node, names listed in `runsAs`, processes inside each other, and the deepest path. */
@@ -245,6 +245,12 @@ export function view(text: string, context: FlowContext, types: Readonly<Record<
 
   const served = Array.isArray(context.steps) ? new Map(context.steps.map((s) => [s.type, s.configSchema])) : null;
   const outEndpoints = context.endpoints.filter((e) => e.direction === 'out').map((e) => e.id);
+
+  // the flow's own settings, checked as a form checks them, but a value whose YAML is a problem already
+  const flowFields = FLOW_FIELDS.map((f) => (f.name === 'from.endpoint' ? { ...f, choices: context.endpoints.filter((e) => e.direction === 'in').map((e) => e.id) } : f));
+  const settings: StepForm = { path: [], settings: settingsOf(flowFields), values: flow };
+  const found = new Set(problems.map((p) => pointer(p.path)));
+  problems.push(...checkFields(flowFields, flow, []).filter((p) => !found.has(pointer(p.path))));
   const endpointOf = (id: unknown) => (typeof id === 'string' ? context.endpoints.find((e) => e.id === id) : undefined);
 
   /** The flow a `to` of the endpoint `id` calls, through a direct endpoint, with a problem when the call cannot be followed. */
@@ -498,7 +504,7 @@ export function view(text: string, context: FlowContext, types: Readonly<Record<
   // a frame is listed before the nodes drawn in it, so that it is drawn below them
   const order = (n: FlowNode) => (n.kind === 'lane' ? 0 : n.kind === 'group' ? 1 : 2);
   const sorted = nodes.map((n, i) => ({ n, i })).sort((a, b) => order(a.n) - order(b.n) || a.i - b.i).map(({ n }) => n);
-  return { readable: true, nodes: sorted, edges, problems, ...(readOnly === undefined ? {} : { readOnly }) };
+  return { readable: true, nodes: sorted, edges, problems, settings, ...(readOnly === undefined ? {} : { readOnly }) };
 }
 
 function tooDeep(chain: string[]): string {

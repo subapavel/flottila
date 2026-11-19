@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { edit, editor, EditRefused, follow, spanOf, stepLists, type Op } from './edit';
-import { addStep, deleteStep, moveStep, setField, setKeys } from './ops';
+import { addRow, addStep, deleteStep, moveStep, renameProcess, setField, setKeys } from './ops';
 import { BUILT_IN, type StepType } from './steps';
 import type { FlowContext, FlowView, Path } from './types';
 import { pointer, view } from './view';
@@ -110,7 +110,11 @@ function cases(text: string): [string, Op[]][] {
   if (processes.length > 0) {
     list.push(['move the first step into the first process', moveStep(['steps', 0], ['processes', processes[0]!, 'steps', 0])]);
     list.push(['add a step to the first process', addStep(drawn, ['processes', processes[0]!, 'steps', 1], 'validate', { required: 'true()' })]);
+    const renamed = attempt(() => JSON.stringify(renameProcess(drawn, value, processes[0]!, 'renamed')));
+    if (typeof renamed === 'string') list.push(['rename the first process', JSON.parse(renamed) as Op[]]);
   }
+  const route = steps.findIndex((step) => isRecord(step) && step.type === 'route');
+  if (route >= 0) list.push(['add a rule to the first route', addRow(['steps', route], steps[route] as Record<string, unknown>, 'routes', { when: 'true()', set: 'other' })]);
   return list;
 }
 

@@ -43,6 +43,8 @@ export interface EndpointsApi {
   read(path: string): Promise<StoredEndpoint>;
   /** Writes `config` into the file, on condition that it is still at `etag`; a 412 refusal means it changed since. */
   save(path: string, config: Options, etag: string): Promise<StoredEndpoint>;
+  /** Creates the file at `path` holding `text`; a 412 refusal means a file of that name exists. */
+  create(path: string, text: string): Promise<StoredEndpoint>;
   /** The components the node serves, from its admin API. */
   components(): Promise<ComponentSettings[]>;
 }
@@ -102,6 +104,10 @@ export function httpEndpointsApi(send: typeof fetch = (input, init) => fetch(inp
     },
     async save(path, config, etag) {
       const init = { method: 'PUT', headers: { 'content-type': 'application/json', 'if-match': etag }, body: JSON.stringify({ config }) };
+      return stored(await call(fileUrl(path), init));
+    },
+    async create(path, text) {
+      const init = { method: 'PUT', headers: { 'content-type': 'application/json', 'if-none-match': '*' }, body: JSON.stringify({ text }) };
       return stored(await call(fileUrl(path), init));
     },
     async components() {

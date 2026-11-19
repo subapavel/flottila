@@ -197,7 +197,7 @@ describe('flowFiles', () => {
     it('refuses a save on a read-only server, without If-Match, or of a file changed since it was read', async () => {
       expect((await put(await serve({ editable: false }), edited)).status).toBe(403);
       const base = await serve();
-      expect(await put(base, edited, null)).toMatchObject({ status: 428, body: { error: 'a save names the version it changes in If-Match' } });
+      expect(await put(base, edited, null)).toMatchObject({ status: 428, body: { error: 'a save names the version it changes in If-Match, or creates the file with If-None-Match: *' } });
       expect(await put(base, edited, etagOf('something else'))).toMatchObject({ status: 412, body: { error: 'the file changed since it was read; nothing was saved' } });
       expect(await onDisk()).toBe(caller);
     });
@@ -224,6 +224,53 @@ describe('flowFiles', () => {
       const [first, second] = await Promise.all([put(base, edited), put(base, edited.replace('caller', 'other'))]);
       expect([first.status, second.status]).toEqual([200, 412]);
       expect(await onDisk()).toBe(edited);
+    });
+  });
+
+  describe('a create', () => {
+    const fresh = caller.replace('id: caller', 'id: fresh');
+    const create = (base: string, path: string, text: unknown = fresh, headers: Record<string, string> = { ...page, 'if-none-match': '*' }) =>
+      call(`${base}/files/flows/${path}`, 'PUT', headers, JSON.stringify({ text }));
+
+    it('writes a new flow file and answers as GET, with its ETag', async () => {
+      const base = await serve();
+      const answer = await create(base, 'demo/flows/fresh.yaml');
+      expect(answer.status).toBe(201);
+      expect(answer.etag).toBe(etagOf(fresh));
+      expect(answer.body).toMatchObject({ path: 'demo/flows/fresh.yaml', text: fresh, editable: true, context: { endpoints: expect.any(Array) } });
+      expect(await readFile(join(root, 'demo', 'flows', 'fresh.yaml'), 'utf8')).toBe(fresh);
+      expect((await readdir(join(root, 'demo', 'flows'))).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+      expect((await call(`${base}/files/flows`)).body.items).toContainEqual({ path: 'demo/flows/fresh.yaml', id: 'fresh' });
+    });
+
+    it('refuses to write over a file that exists, a link included', async () => {
+      const base = await serve();
+      expect(await create(base, 'demo/flows/caller.yaml')).toMatchObject({ status: 412, body: { error: 'the file exists already; nothing was written' } });
+      expect((await create(base, 'demo/flows/linked.yaml')).status).toBe(412);
+      expect(await readFile(join(root, 'demo', 'flows', 'caller.yaml'), 'utf8')).toBe(caller);
+      expect(await readFile(join(outside, 'secret.yaml'), 'utf8')).toBe(caller);
+    });
+
+    it('keeps the guards of a save: read-only, the working folder, its folders, yaml or yml, a flow', async () => {
+      await symlink(outside, join(root, 'demo', 'away'));
+      expect((await create(await serve({ editable: false }), 'demo/flows/fresh.yaml')).status).toBe(403);
+      const base = await serve();
+      expect((await create(base, 'demo/away/fresh.yaml')).status).toBe(403);
+      expect((await create(base, 'demo/missing/fresh.yaml')).status).toBe(404);
+      expect((await create(base, 'demo/flows/fresh.json')).status).toBe(400);
+      expect((await create(base, 'demo/%2E%2E%2Ffresh.yaml')).status).toBe(400);
+      expect((await create(base, '.git/fresh.yaml')).status).toBe(400);
+      expect((await create(base, 'demo/flows/fresh.yaml', 'kind: endpoint\nid: x\n')).status).toBe(422);
+      expect((await create(base, 'demo/flows/fresh.yaml', `${fresh}#${'x'.repeat(MAX_FILE_BYTES)}\n`)).status).toBe(413);
+      expect((await create(base, 'demo/flows/fresh.yaml', fresh, { ...page, 'if-none-match': '"v1"' })).status).toBe(428);
+      expect((await create(base, 'demo/flows/fresh.yaml', fresh, { ...page, 'if-none-match': '*', 'if-match': etagOf(caller) })).status).toBe(400);
+      expect(await readdir(outside)).toEqual(['secret.yaml']);
+      expect(await readdir(join(root, 'demo', 'flows'))).not.toContain('fresh.yaml');
+    });
+
+    it('accepts a request from elsewhere never', async () => {
+      const answer = await create(await serve(), 'demo/flows/fresh.yaml', fresh, { 'sec-fetch-site': 'cross-site', origin: 'http://evil.example', 'if-none-match': '*' });
+      expect(answer.status).toBe(403);
     });
   });
 

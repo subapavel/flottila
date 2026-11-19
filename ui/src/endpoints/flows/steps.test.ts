@@ -1,11 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN, checkStep, checkStepTab, describeSchema, KEY_NAME, settingsOf, STEP_NAME } from './steps';
+import { BUILT_IN, checkFields, checkStep, checkStepTab, describeSchema, FLOW_FIELDS, FLOW_PARTS, KEY_NAME, settingsOf, STEP_NAME } from './steps';
 import type { StepField } from './types';
 
 const platform = join(__dirname, '..', '..', '..', '..', 'platform');
 const schema = JSON.parse(readFileSync(join(platform, 'schemas', 'src', 'main', 'resources', 'schemas', 'flow.schema.json'), 'utf8')) as {
+  required: string[];
+  properties: Record<string, Record<string, unknown> & { required?: string[]; properties?: Record<string, Record<string, unknown>> }>;
   $defs: Record<string, { pattern?: string; properties?: Record<string, unknown>; allOf?: unknown[] }>;
 };
 
@@ -78,6 +80,39 @@ describe('the built-in steps the UI describes', () => {
     const set = (route.find((f) => f.name === 'routes') as Extract<StepField, { type: 'list' }>).item.find((f) => f.name === 'set')!;
     expect(set).toMatchObject({ emptyAllowed: true });
     expect(route.find((f) => f.name === 'otherwise')).toMatchObject({ emptyAllowed: true });
+  });
+});
+
+describe('the flow’s own settings', () => {
+  /** The schema's property of a dotted name, and whether the schema requires it. */
+  const property = (name: string) => {
+    const [top, inner] = name.split('.') as [string, string | undefined];
+    const outer = schema.properties[top]!;
+    const resolved = typeof outer.$ref === 'string' ? (schema.$defs[outer.$ref.replace('#/$defs/', '')] as typeof outer) : outer;
+    if (inner === undefined) return { at: outer, required: schema.required.includes(top) };
+    return { at: resolved.properties![inner]!, required: schema.required.includes(top) && (resolved.required ?? []).includes(inner) };
+  };
+
+  it('describe every key of the flow schema but its parts', () => {
+    const tops = new Set(FLOW_FIELDS.map((f) => f.name.split('.')[0]));
+    expect([...tops, ...FLOW_PARTS].sort()).toEqual(Object.keys(schema.properties).sort());
+  });
+
+  it.each(FLOW_FIELDS.map((f) => [f.name, f] as const))('describe %s as the flow schema does', (name, f) => {
+    const { at, required } = property(name);
+    expect(at, name).toBeDefined();
+    expect(f.required, `${name} required`).toBe(required);
+    const pattern = patternOf(at);
+    if (pattern !== undefined && f.type === 'text') expect(`^${f.pattern}$`, `${name} pattern`).toBe(pattern);
+    if (Array.isArray(at.enum)) expect(f).toMatchObject({ type: 'choice', choices: at.enum });
+    if (at.type === 'integer') expect(f).toMatchObject({ type: 'integer', min: at.minimum });
+  });
+
+  it('are judged key inside key, a required one left out at its own path', () => {
+    expect(checkFields(FLOW_FIELDS, { id: 'a', version: '1.0.0', from: { endpoint: 'in' }, delivery: { mode: 'sync', timeout: '30 s' }, limits: {} }, [])).toEqual([
+      { path: ['delivery', 'timeout'], message: expect.stringContaining('must match') },
+      { path: ['limits', 'maxBodyBytes'], message: 'is required' },
+    ]);
   });
 });
 

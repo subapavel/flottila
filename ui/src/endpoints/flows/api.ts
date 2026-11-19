@@ -22,8 +22,11 @@ export interface StoredFlow {
 export interface FlowsApi {
   list(): Promise<FlowList>;
   read(path: string): Promise<StoredFlow>;
-  /** Writes `text` over the file, on condition that it is still at `etag`; a 412 refusal means it changed since. */
-  save(path: string, text: string, etag: string): Promise<StoredFlow>;
+  /**
+   * Writes `text` over the file, on condition that it is still at `etag`; a 412 refusal means it changed since. With
+   * `etag` null it creates the file, and a 412 refusal means a file of that name exists.
+   */
+  save(path: string, text: string, etag: string | null): Promise<StoredFlow>;
   /** The step types of the node's modules and plugins, from its admin API, or why they could not be read. */
   steps(): Promise<ServedSteps>;
 }
@@ -82,7 +85,8 @@ export function httpFlowsApi(send: typeof fetch = (input, init) => fetch(input, 
       return stored(await call(fileUrl(path)));
     },
     async save(path, text, etag) {
-      return stored(await call(fileUrl(path), { method: 'PUT', headers: { 'content-type': 'application/json', 'if-match': etag }, body: JSON.stringify({ text }) }));
+      const precondition: Record<string, string> = etag === null ? { 'if-none-match': '*' } : { 'if-match': etag };
+      return stored(await call(fileUrl(path), { method: 'PUT', headers: { 'content-type': 'application/json', ...precondition }, body: JSON.stringify({ text }) }));
     },
     async steps() {
       try {

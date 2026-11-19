@@ -76,3 +76,9 @@
 {"op":"add","path":["steps",0,"note"],"value":"yes"}
 @@ line 34
 +    note: "yes"
+
+=== add a rule to the first route
+{"op":"add","path":["steps",2,"routes",1],"value":{"when":"true()","set":"other"}}
+@@ line 44
++      - when: true()
++        set: other

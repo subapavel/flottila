@@ -25,6 +25,16 @@ describe('httpFlowsApi', () => {
     await expect(changed.save('demo/flows/a.yaml', 'y', '"e1"')).rejects.toEqual(new FlowsError(412, 'the file changed since it was read; nothing was saved'));
   });
 
+  it('creates a file with If-None-Match: * when no ETag is given', async () => {
+    const send = vi.fn(async () => answer(201, { path: 'demo/flows/b.yaml', text: 'z', editable: true, context: {} }, { etag: '"e3"' }));
+    expect((await httpFlowsApi(send).save('demo/flows/b.yaml', 'z', null)).etag).toBe('"e3"');
+    expect(send).toHaveBeenCalledWith('/files/flows/demo/flows/b.yaml', {
+      method: 'PUT',
+      headers: { accept: 'application/json', 'content-type': 'application/json', 'if-none-match': '*' },
+      body: JSON.stringify({ text: 'z' }),
+    });
+  });
+
   it('rejects with the error text the server gives', async () => {
     const api = httpFlowsApi(async () => answer(404, { error: 'demo/x.yaml is not a flow file' }));
     await expect(api.read('demo/x.yaml')).rejects.toEqual(new FlowsError(404, 'demo/x.yaml is not a flow file'));
