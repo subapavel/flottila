@@ -12,6 +12,7 @@ import dev.rail8.api.Headers;
 import dev.rail8.api.Health;
 import dev.rail8.api.Key;
 import dev.rail8.api.NackException;
+import dev.rail8.api.Part;
 import dev.rail8.api.Producer;
 import dev.rail8.api.settings.Direction;
 import dev.rail8.testkit.FakeClock;
@@ -155,8 +156,14 @@ class DirectComponentTest {
     @Test
     void aSyncCalleesReplyComesBackAsTheCallersNextStepWithTheBodyCopiedUnderTheCallersNextKey() {
         FakeRuntime callee = FakeRuntime.create();
-        serve("fulfil", a -> Future.succeededFuture(new Ack.Reply(a.next(callee.store(a, Buffer.buffer("confirmed"))).withHeader("x-status", "done"))));
-        Envelope sent = caller("order");
+        serve("fulfil", a -> {
+            Body confirmed = callee.store(a, Buffer.buffer("{\"confirmed\":true}"));
+            Envelope answer = Envelope.ingress(a.id(), a.flow(), Headers.empty().with("content-type", "application/json").with("x-status", "done"), confirmed)
+                    .withAttachment(new Part("receipt", "text/plain", confirmed));
+            return Future.succeededFuture(new Ack.Reply(answer));
+        });
+        Envelope sent = caller("order").withHeader("x-partner", "acme")
+                .withAttachment(new Part("invoice", "text/plain", caller("invoice").body()));
 
         Envelope reply = call.send(sent).await();
 
@@ -165,11 +172,12 @@ class DirectComponentTest {
         assertEquals(sent.step() + 1, reply.step());
         assertEquals(sent.props(), reply.props(), "the caller's props");
         assertEquals(sent.keys().with("rail8.ref", sent.id()), reply.keys(), "the caller's keys, plus the reference of the chain");
-        assertEquals(Map.of("content-type", "text/plain", "x-message-id", sent.id(), "x-status", "done"), reply.headers().asMap(), "the reply's headers");
+        assertEquals(Map.of("content-type", "application/json", "x-status", "done"), reply.headers().asMap(),
+                "the reply's headers replace the caller's");
         assertEquals(sent.nextKey(), reply.body().key(), "the reply's body under the caller's next key");
         assertSame(rt.blobs(), reply.body().store(), "copied into the component's store");
-        assertEquals("confirmed", reply.body().whole().toString());
-        assertEquals(sent.attachments(), reply.attachments());
+        assertEquals("{\"confirmed\":true}", reply.body().whole().toString());
+        assertEquals(sent.attachments(), reply.attachments(), "the caller's attachments, not the reply's");
     }
 
     @Test
