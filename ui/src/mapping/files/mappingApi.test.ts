@@ -500,6 +500,14 @@ describe('creating a mapping', () => {
     expectProblem(await call('POST', '/api/mappings', '{"id": "mappings/compile"}'), 400, `${STUDIO}invalid-workspace-path`);
   });
 
+  test('checks the id and its folder before it asks the node', async () => {
+    handler = () => studioProblem(422, 'refused');
+
+    expectProblem(await call('POST', '/api/mappings', '{"id": "none/new", "description": 1}'), 404, `${STUDIO}not-found`);
+    expectProblem(await call('POST', '/api/mappings', '{"id": "mappings/test", "description": 1}'), 400, `${STUDIO}invalid-workspace-path`);
+    expect(calls).toEqual([]);
+  });
+
   test("passes on the node's refusal of the request", async () => {
     handler = () => studioProblem(400, 'invalid-request');
 
@@ -541,6 +549,14 @@ describe('the bundle files a call sends', () => {
       calls = [];
       expect(await sent('mappings/m', '../structures/a.xsd', escaping, '../structures/a2.xsd'), escaping).toEqual({ files: { '../structures/a.xsd': 'A' }, escaping: [escaping] });
     }
+  });
+
+  test('refuses a path that leaves the working folder, even through a link outside that leads back in', async () => {
+    await put('structures/a.xsd', 'A');
+    await mkdir(join(root, 'mappings'));
+    await symlink(join(root, 'structures'), join(temp, 'back'));
+
+    expect(await sent('mappings/m', '../../back/a.xsd')).toEqual({ files: {}, escaping: ['../../back/a.xsd'] });
   });
 
   test("keeps a mapping's files inside its package: it cannot read another package's", async () => {
@@ -614,8 +630,11 @@ describe('the bundle files a call sends', () => {
     expect(loaded.status, loaded.text).toBe(200);
     expect(nodeCall(1)).toMatchObject({ op: 'structure', files: { 'a.xsd': 'A' } });
 
+    calls = [];
+    handler = () => studioProblem(400, 'invalid-request');
     expectProblem(await call('POST', '/api/structures', '{"base": "none", "bundle": ["a.xsd"], "root": {}}'), 404, `${STUDIO}not-found`);
     expectProblem(await call('POST', '/api/structures', '{"base": "../x", "bundle": ["a.xsd"], "root": {}}'), 400, `${STUDIO}invalid-workspace-path`);
+    expect(calls).toEqual([]);
   });
 });
 

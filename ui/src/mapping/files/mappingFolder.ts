@@ -4,25 +4,23 @@ import { walk } from '../../../server/workingFolder.ts';
 
 /**
  * A refused request of the mapping studio's API: an RFC 9457 problem with the HTTP status it is answered with, its
- * type, title and detail, and any members of its own.
+ * type, title and detail.
  */
 export class Problem extends Error {
   readonly status: number;
   readonly type: string;
   readonly title: string;
-  readonly members: Record<string, unknown>;
 
-  constructor(status: number, type: string, title: string, detail: string, members: Record<string, unknown> = {}) {
+  constructor(status: number, type: string, title: string, detail: string) {
     super(detail);
     this.status = status;
     this.type = type;
     this.title = title;
-    this.members = members;
   }
 
   /** The problem as JSON. */
   json(): Record<string, unknown> {
-    return { type: this.type, title: this.title, status: this.status, detail: this.message, ...this.members };
+    return { type: this.type, title: this.title, status: this.status, detail: this.message };
   }
 }
 

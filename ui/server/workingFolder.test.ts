@@ -65,10 +65,12 @@ describe('walk', () => {
   });
 
   it(`stops past ${MAX_FILES} files it takes, large ones among them`, async () => {
-    for (let i = 0; i <= MAX_FILES; i++) await writeFile(join(root, `${String(i).padStart(4, '0')}.json`), '{}');
+    await writeFile(join(root, '0000.json'), ' '.repeat(MAX_FILE_BYTES + 1));
+    for (let i = 1; i <= MAX_FILES; i++) await writeFile(join(root, `${String(i).padStart(4, '0')}.json`), '{}');
     const { files, large, truncated } = await walk(root, isJson);
-    expect(files).toHaveLength(MAX_FILES);
-    expect(large).toEqual([]);
+    expect(large).toEqual(['0000.json']);
+    expect(files).toHaveLength(MAX_FILES - 1);
+    expect(files.at(-1)?.path).toBe('0999.json');
     expect(truncated).toBe(true);
   });
 });
