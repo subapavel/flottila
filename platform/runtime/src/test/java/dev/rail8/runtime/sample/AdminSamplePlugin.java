@@ -24,8 +24,9 @@ import java.util.concurrent.TimeUnit;
  * <li>{@code GET clock}: 200 {@code {"now": <the instant of the call's clock>, "json": <the call's json>}}.</li>
  * <li>{@code POST echo}: 200 with the call's JSON as it came.</li>
  * <li>{@code POST reply}: the reply the call asks for. {@code {"status": n, "json": "<text>"}} answers {@code n} with that
- *     text; {@code {"status": n, "bytes": k}} answers {@code n} with a JSON string of {@code k} bytes;
- *     {@code {"none": true}} answers no reply at all (null).</li>
+ *     text; {@code {"status": n, "bytes": k}} answers {@code n} with a JSON string of {@code k} bytes in UTF-8, of
+ *     {@code a}s, or with {@code "wide": true} mostly of the two-byte {@code é}; {@code {"none": true}} answers no reply at all
+ *     (null).</li>
  * <li>{@code POST fail}: throws.</li>
  * <li>{@code POST hold}: holds the call until the test lets it go, then answers 200 {@code {"held": true}}; interrupted, it
  *     throws the {@link InterruptedException}.</li>
@@ -100,7 +101,11 @@ public final class AdminSamplePlugin implements Plugin {
             JsonObject asked = new JsonObject(request.json());
             if (asked.getBoolean("none", false)) return null;
             int status = asked.getInteger("status");
-            if (asked.containsKey("bytes")) return new AdminReply(status, "\"" + "a".repeat(asked.getInteger("bytes") - 2) + "\"");
+            if (asked.containsKey("bytes")) {
+                int inside = asked.getInteger("bytes") - 2;   // the quotes are a byte each
+                String text = asked.getBoolean("wide", false) ? "a".repeat(inside % 2) + "é".repeat(inside / 2) : "a".repeat(inside);
+                return new AdminReply(status, "\"" + text + "\"");
+            }
             return new AdminReply(status, asked.getString("json"));
         }
     }

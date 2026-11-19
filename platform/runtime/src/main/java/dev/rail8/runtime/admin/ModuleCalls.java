@@ -20,8 +20,6 @@ import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 
 /**
@@ -32,11 +30,12 @@ import java.util.concurrent.Semaphore;
  * is 415, a declared {@code Content-Length} above {@link AdminService#MAX_REQUEST_BYTES} is 413, and a call of a plugin that
  * already runs {@link #CALLS} calls is 503. Then a POST's body is read into memory, 413 at byte max + 1; a GET's body is not
  * read. On the call's own virtual thread: a body that is not UTF-8 is 400, otherwise {@link AdminService#handle} runs and its
- * reply is checked. The call holds its place from before its body is read until that thread has ended; the place is free before
- * the answer is written. A valid reply goes to the client as it is; anything else is a 500, logged with the plugin and the route.
+ * reply is checked. The call holds its place from before its body is read until {@code handle} has returned and its reply is
+ * checked; the place is free before the answer is written. A valid reply goes to the client as it is; anything else is a 500,
+ * logged with the plugin and the route.
  *
- * <p>The thread of a running call is interrupted when its client's connection closes and once {@link #stop()} is called; a
- * client that goes away while its body is read frees the call's place. An answer given before the request's body was read to
+ * <p>The thread of a running call is interrupted when its client's connection closes, and so when the server stops: closing the
+ * server closes every connection. A client that goes away while its body is read frees the call's place. An answer given before the request's body was read to
  * its end closes the connection once written: the rest is never read. The node's own answers are problems (RFC 9457) of type
  * {@code urn:rail8:admin:problem:<slug>}.
  */
@@ -51,8 +50,6 @@ final class ModuleCalls {
 
     private final AdminServer.Modules modules;
     private final Context context;
-    private final Set<Thread> running = ConcurrentHashMap.newKeySet();
-    private boolean stopping;   // on the context only
 
     /** The calls of {@code modules}' services, their answers written on {@code context}: the listener's. */
     ModuleCalls(AdminServer.Modules modules, Context context) {
@@ -71,12 +68,6 @@ final class ModuleCalls {
                 router.route(HttpMethod.valueOf(method), route).handler(ctx -> call(ctx, plugin + " " + method + " " + route, post, service, places));
             }
         });
-    }
-
-    /** On the context: interrupts every call that runs, and every call that starts from now on. */
-    void stop() {
-        stopping = true;
-        running.forEach(Thread::interrupt);
     }
 
     /** On the event loop: the refusals answered at once, else the call takes a place of its plugin's {@code places}. */
@@ -163,9 +154,7 @@ final class ModuleCalls {
                 Answer answer = run();
                 context.runOnContext(v -> answer(ctx, answer));
             });
-            running.add(thread);
             thread.start();
-            if (stopping) thread.interrupt();
         }
 
         /** On the call's thread: the answer to the body read; the place is free once it returns. */
@@ -178,10 +167,12 @@ final class ModuleCalls {
                     return problem(400, "not-utf-8", "Not UTF-8", "the body is not UTF-8");
                 }
                 return valid(service.handle(new AdminRequest(json, modules.clock())));
-            } catch (Throwable failed) {   // the service threw, or was interrupted: a 500, never a hang
+            } catch (InterruptedException interrupted) {   // its client went away, or the server stops: no one reads the answer
+                LOG.log(System.Logger.Level.INFO, "admin service " + what + ": interrupted");
+                return invalidReply();
+            } catch (Throwable failed) {   // the service threw: a 500, never a hang
                 return invalid("failed", failed);
             } finally {
-                running.remove(Thread.currentThread());
                 places.release();
             }
         }
@@ -216,7 +207,7 @@ final class ModuleCalls {
 
         private Answer invalid(String why, Throwable failure) {
             LOG.log(System.Logger.Level.WARNING, "admin service " + what + ": " + why, failure);
-            return problem(500, "invalid-reply", "Invalid reply", "the admin service did not answer as it must; the node's log says why");
+            return invalidReply();
         }
     }
 
@@ -224,6 +215,10 @@ final class ModuleCalls {
 
     /** A status, a content type and the body. */
     private record Answer(int status, String type, Buffer body) {}
+
+    private static Answer invalidReply() {
+        return problem(500, "invalid-reply", "Invalid reply", "the admin service did not answer as it must; the node's log says why");
+    }
 
     private static Answer tooLarge() {
         return problem(413, "too-large", "Request too large", "the body is above " + AdminService.MAX_REQUEST_BYTES + " bytes");
