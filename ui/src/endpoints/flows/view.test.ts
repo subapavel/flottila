@@ -123,6 +123,11 @@ describe('view of awkward files', () => {
   it('finds the problems of each awkward file, each at its path', () => {
     const problems = (name: string) => view(readFileSync(join(fixtures, name), 'utf8'), demo).problems;
     expect(problems('comments.yaml')).toEqual([]);
+    expect(problems('anchors.yaml')).toEqual([
+      { path: ['steps', 1, '<<'], message: 'the node does not merge keys: it reads << as a key of its own' },
+      { path: ['steps', 1, '<<'], message: 'the node reads the alias *check as the text check, not as what &check holds' },
+      { path: ['steps', 1], message: 'a step is a mapping with a text type' },
+    ]);
     expect(problems('one-line.yaml')).toEqual([
       { path: ['steps'], message: 'the list is written on one line ([ … ]): the editor shows this flow read-only', warning: true },
     ]);

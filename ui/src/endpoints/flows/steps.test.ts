@@ -9,7 +9,7 @@ const schema = JSON.parse(readFileSync(join(platform, 'schemas', 'src', 'main', 
   $defs: Record<string, { pattern?: string; properties?: Record<string, unknown>; allOf?: unknown[] }>;
 };
 
-type Then = { required?: string[]; properties?: Record<string, Record<string, unknown>>; anyOf?: Then[] };
+type Then = { required?: string[]; properties?: Record<string, Record<string, unknown>>; anyOf?: Then[]; propertyNames?: { enum: string[] } };
 
 /** What the flow schema says of each step type it knows: its keys and those it requires. */
 const typed = new Map(
@@ -21,10 +21,18 @@ const typed = new Map(
         keys: new Set(parts.flatMap((p) => Object.keys(p.properties ?? {}))),
         required: new Set(then.required ?? []),
         properties: Object.assign({}, ...parts.map((p) => p.properties ?? {})) as Record<string, Record<string, unknown>>,
+        propertyNames: then.propertyNames?.enum,
       },
     ];
   }),
 );
+
+/** The kinds of field that hold what a schema property takes: text or a choice for a string, a list for an array, a map for an object. */
+const kindOf = (property: Record<string, unknown> | undefined): string[] => {
+  const ref = property?.$ref;
+  const type = typeof ref === 'string' ? (schema.$defs[ref.replace('#/$defs/', '')] as { type?: unknown }).type : property?.type;
+  return type === 'array' ? ['list'] : type === 'object' ? ['map'] : type === 'boolean' ? ['boolean'] : ['text', 'choice'];
+};
 
 const patternOf = (property: Record<string, unknown> | undefined): string | undefined => {
   const ref = property?.$ref;
@@ -49,9 +57,15 @@ describe('the built-in steps the UI describes', () => {
     for (const [name, f] of fields) {
       if (!known.keys.has(name)) continue;
       if (BUILT_IN[type]!.rules === undefined) expect(f.required, `${type}.${name} required`).toBe(known.required.has(name));
+      expect(kindOf(known.properties[name]), `${type}.${name} type`).toContain(f.type);
       const pattern = patternOf(known.properties[name]);
       if (pattern !== undefined && f.type === 'text') expect(`^${f.pattern}$`, `${type}.${name} pattern`).toBe(pattern);
     }
+  });
+
+  it('let a process call take the keys the flow schema lets it take, and no other', () => {
+    const keys = typed.get('process')!.propertyNames!;
+    expect(['type', 'name', ...BUILT_IN.process!.fields.map((f) => f.name)].sort()).toEqual([...keys].sort());
   });
 
   it('write key and step names as the flow schema does', () => {
@@ -131,9 +145,16 @@ describe('describeSchema', () => {
       ['mode', 'choice', false],
       ['shape', 'raw', false],
     ]);
-    expect(described?.settings.fields[0]).toMatchObject({ help: 'The jq filter.', pattern: '^\\.' });
+    expect(described?.settings.fields[0]).toMatchObject({ help: 'The jq filter.' });
     expect(described?.settings.fields[1]).toMatchObject({ min: 1, max: 9, default: 4 });
     expect(described?.settings.fields[3]).toMatchObject({ choices: ['a', 'b'] });
+  });
+
+  it('takes a value that a part of matches the schema’s pattern, as JSON Schema does', () => {
+    const [code] = describeSchema({ type: 'object', properties: { code: { type: 'string', pattern: '^[A-Z]' } } })!.settings.fields;
+    const settings = settingsOf([code!]);
+    expect(checkStep(settings, { type: 'x', code: 'ABC' }, ['steps', 0], false)).toEqual([]);
+    expect(checkStep(settings, { type: 'x', code: 'abc' }, ['steps', 0], false)).toHaveLength(1);
   });
 
   it('describes nothing of a schema without properties', () => {

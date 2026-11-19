@@ -2,14 +2,12 @@ import { fieldProblem, type SettingsField, type SettingsRule } from '../settings
 import type { FlowProblem, Path, StepField, StepSettings, ValueField } from './types';
 
 /**
- * A built-in step type as the UI describes it: the fields of its form, its rules, whether it takes no key but its fields
- * and those of the "Step" tab (`closed`), which paths inside it hold lists of steps (`stepLists`, where `*` stands for any
+ * A built-in step type as the UI describes it: the fields of its form, its rules, which paths inside it hold lists of steps (`stepLists`, where `*` stands for any
  * key or index), which key its node shows as its detail, and a check of what its fields alone cannot say.
  */
 export interface StepType {
   fields: StepField[];
   rules?: SettingsRule[];
-  closed?: boolean;
   stepLists?: readonly (readonly string[])[];
   detail?: string;
   check?: (values: Record<string, unknown>) => { key: string; message: string }[];
@@ -94,7 +92,6 @@ export const BUILT_IN: Readonly<Record<string, StepType>> = {
   },
   process: {
     fields: [field('process', 'choice', 'The process of this flow whose steps run here.', { required: true, choices: [], reference: 'process' })],
-    closed: true,
     detail: 'process',
   },
 };
@@ -143,7 +140,8 @@ export function describeSchema(schema: unknown): { settings: StepSettings; close
       extra.choices = p.enum as string[];
     } else if (p.type === 'string') {
       type = 'text';
-      if (typeof p.pattern === 'string') extra.pattern = p.pattern;
+      // a schema's pattern may match any part of the value; a field's pattern matches the whole of it
+      if (typeof p.pattern === 'string') extra.pattern = `[\\s\\S]*(?:${p.pattern})[\\s\\S]*`;
     } else if (p.type === 'integer') {
       type = 'integer';
       if (typeof p.minimum === 'number') extra.min = p.minimum;

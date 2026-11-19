@@ -45,16 +45,18 @@ interface Lock {
 
 /**
  * The locks of the file and the problems of its YAML: anchors, aliases, tags, merge keys, lists on one line, mappings in
- * braces over several lines and complex keys lock the node that holds them; a key used twice is a problem and locks its
- * mapping; a plain value that the node, which reads YAML 1.1 but keeps yes, no, on, off, y and n as text, reads otherwise
- * than the browser is a problem and locks its key.
+ * braces over several lines and complex keys lock the node that holds them. The node reads an alias as the anchor's name,
+ * as text, and a merge key as a key of its own, so each of those is a problem too. A key used twice is a problem and
+ * locks its mapping. The node reads YAML 1.1 but keeps yes, no, on, off, y and n as text, and reads numbers with colons
+ * (1:30) as text too; a plain value it reads otherwise than the browser is a problem and locks its key.
  */
 function yamlFindings(doc: Extract<FlowRead, { kind: 'flow' }>, text: string, problems: FlowProblem[]): Lock[] {
   const locks: Lock[] = [];
-  const other = parseDocument(text, { version: '1.1', uniqueKeys: false, merge: true, logLevel: 'error' });
+  const other = parseDocument(text, { version: '1.1', uniqueKeys: false, merge: false, logLevel: 'error' });
   const visit = (node: unknown, twin: unknown, path: Path) => {
     if (!isNode(node)) return;
     if (isAlias(node)) {
+      problems.push({ path, message: `the node reads the alias *${node.source} as the text ${node.source}, not as what &${node.source} holds` });
       locks.push({ path, reason: `an alias (*${node.source})` });
       return;
     }
@@ -74,9 +76,11 @@ function yamlFindings(doc: Extract<FlowRead, { kind: 'flow' }>, text: string, pr
           locks.push({ path, reason: 'a complex key (? )' });
           return;
         }
-        // a merge key is read as a symbol; its source is <<
-        const key = typeof pair.key.value === 'symbol' ? (pair.key.source ?? '<<') : String(pair.key.value);
-        if (typeof pair.key.value === 'symbol') locks.push({ path, reason: 'a merge key (<<)' });
+        const key = String(pair.key.value);
+        if (key === '<<' && pair.key.type === 'PLAIN') {
+          problems.push({ path: [...path, key], message: 'the node does not merge keys: it reads << as a key of its own' });
+          locks.push({ path, reason: 'a merge key (<<)' });
+        }
         if (seen.has(key)) {
           problems.push({ path: [...path, key], message: `the key ${key} is used twice in one mapping` });
           locks.push({ path, reason: `the key ${key} used twice` });
@@ -88,9 +92,12 @@ function yamlFindings(doc: Extract<FlowRead, { kind: 'flow' }>, text: string, pr
     } else if (isScalar(node) && node.type === 'PLAIN' && isScalar(twin)) {
       const browser = node.value;
       const node11 = twin.value instanceof Date ? node.source : twin.value;
-      const keptAsText = typeof node11 === 'boolean' && typeof browser === 'string' && /^(y|n|yes|no|on|off)$/i.test(browser);
+      const source = node.source ?? String(browser);
+      const keptAsText =
+        typeof browser === 'string' &&
+        ((typeof node11 === 'boolean' && /^(y|n|yes|no|on|off)$/i.test(browser)) || /^[-+]?[0-9][0-9_]*(:[0-5]?[0-9])+(\.[0-9_]*)?$/.test(source));
       if (!keptAsText && !Object.is(browser, node11)) {
-        problems.push({ path, message: `the node reads ${node.source ?? String(browser)} otherwise than the editor: write it in quotes` });
+        problems.push({ path, message: `the node reads ${source} otherwise than the editor: write it in quotes` });
         locks.push({ path, reason: 'a plain value the node reads otherwise' });
       }
     }
@@ -349,7 +356,8 @@ export function view(text: string, context: FlowContext, types: Readonly<Record<
     if (builtIn !== undefined) {
       const fields = builtIn.fields.map((f) => withChoices(f, outEndpoints, processNames));
       const settings = settingsOf(fields, builtIn.rules);
-      problems.push(...checkStep(settings, values, entry.path, builtIn.closed === true && entry.type !== 'process', builtIn.check));
+      // a process call's keys are judged by the rules of calls above
+      problems.push(...checkStep(settings, values, entry.path, false, builtIn.check));
       return { path: entry.path, settings, values };
     }
     if (served === null) {
@@ -483,7 +491,8 @@ export function view(text: string, context: FlowContext, types: Readonly<Record<
         ...base,
         ...(type === 'process' ? { detail: `runs process ${String(value.process ?? '?')}` } : detail === undefined ? {} : { detail }),
       });
-      if (entry.calls !== undefined) edge(n.id, pointer(['processes', entry.calls, 'steps']), 'process');
+      const lane = pointer(['processes', entry.calls ?? '', 'steps']);
+      if (entry.calls !== undefined && lists.some((l) => pointer(l.path) === lane)) edge(n.id, lane, 'process');
       const inner = nested.get(id) ?? [];
       if (inner.length > 0) {
         blocks.push({ kind: 'node', node: n });
