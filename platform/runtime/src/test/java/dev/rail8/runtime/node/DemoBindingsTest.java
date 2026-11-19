@@ -18,17 +18,19 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * P1-09d1a (D-057 amendment, D-059): the demo package deploys to a node with the default configuration, so none of its
- * endpoints listens on or sends to the port the node's admin server binds by default — not in its config, not in an
- * environment's override.
+ * The demo package deploys to a node with the default configuration, so none of its endpoints listens on or sends to a
+ * port the node itself binds by default — the admin server's or the peer link's — not in its config, not in an environment's
+ * override.
  */
 class DemoBindingsTest {
 
     static final Path ENDPOINTS = Path.of("..", "..", "examples", "demo", "endpoints");
 
     @Test
-    void noDemoEndpointUsesTheAdminDefaultPort() throws IOException {
-        int admin = NodeConfig.from(Map.of("RAIL8_ENV", "dev", "HOSTNAME", "node-1")).admin().port();
+    void noDemoEndpointUsesADefaultPortOfTheNode() throws IOException {
+        NodeConfig defaults = NodeConfig.from(Map.of("RAIL8_ENV", "dev", "HOSTNAME", "node-1"));
+        int admin = defaults.admin().port();
+        int peer = defaults.peer().port();
         Map<String, List<Integer>> ports = new TreeMap<>();
         List<Path> files;
         try (Stream<Path> s = Files.list(ENDPOINTS)) {
@@ -52,6 +54,7 @@ class DemoBindingsTest {
         }
         for (Map.Entry<String, List<Integer>> e : ports.entrySet()) {
             assertFalse(e.getValue().contains(admin), "demo endpoint " + e.getKey() + " uses the admin server's default port " + admin + ": " + ports);
+            assertFalse(e.getValue().contains(peer), "demo endpoint " + e.getKey() + " uses the peer link's default port " + peer + ": " + ports);
         }
     }
 

@@ -119,7 +119,7 @@ The `demo/order-jq` flow turns a JSON order with a jq filter: it keeps the order
 partner.
 
 ```sh
-curl -X POST --data-binary @examples/demo/fixtures/sample-order.json -H 'Content-Type: application/json' localhost:8083/order
+curl -X POST --data-binary @examples/demo/fixtures/sample-order.json -H 'Content-Type: application/json' localhost:8084/order
 ```
 
 The reply is the partner's echo of what it was sent: `{"orderId":42,"customer":"Acme Corp","total":50}`. In the UI's
