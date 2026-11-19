@@ -40,9 +40,6 @@ final class Calls {
 
     /** The address a flow serves, if any, and those it calls, sorted, each once. */
     record Links(Optional<Address> serves, List<Address> calls) {
-        /** A flow that serves and calls no node-local address. */
-        static final Links NONE = new Links(Optional.empty(), List.of());
-
         Links {
             calls = List.copyOf(new TreeSet<>(calls));
         }
