@@ -17,6 +17,9 @@ import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.pgclient.PgBuilder;
+import io.vertx.sqlclient.Pool;
+import io.vertx.sqlclient.PoolOptions;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -72,6 +75,9 @@ class CalleeBodyIT {
 
     @TempDir Path tmp;
     CaseDatabase db;
+    /** The node's statements cross this relay, which can hold or cut a COMMIT; the cases' own reads do not. */
+    PgWire wire;
+    Pool relayed;
     JournalWorld a;
     /** Retention's clock: far ahead of the server's, so every row the case wrote is older than the cutoff. */
     FakeClock later;
@@ -91,6 +97,9 @@ class CalleeBodyIT {
     @BeforeEach
     void open() throws Exception {
         db = CaseDatabase.create(pg, vertx, "callee_body_").migrated();
+        wire = new PgWire(pg.getHost(), pg.getMappedPort(5432));
+        relayed = PgBuilder.pool().connectingTo(db.options().setHost("127.0.0.1").setPort(wire.port()))
+                .with(new PoolOptions().setMaxSize(4)).using(vertx).build();
         a = world();
         later = FakeClock.at(Instant.now().plus(Duration.ofDays(400)).truncatedTo(ChronoUnit.SECONDS));
     }
@@ -98,11 +107,13 @@ class CalleeBodyIT {
     @AfterEach
     void close() throws Exception {
         if (a != null) a.close();
+        wire.close();
+        relayed.close().await();
         db.close();
     }
 
     JournalWorld world() throws Exception {
-        return JournalWorld.open(vertx, db.pool(), db.pool(), Files.createDirectories(tmp.resolve("node-a")), "node-a");
+        return JournalWorld.open(vertx, relayed, db.pool(), Files.createDirectories(tmp.resolve("node-a")), "node-a");
     }
 
     // --- the caller and the callee
@@ -118,8 +129,13 @@ class CalleeBodyIT {
 
     /** {@code body} handed to the callee {@code calleeId}: its arrival saved at least once, its flow keeping no input. */
     Future<String> handOver(Body body, String calleeId) {
+        return settled(startHandOver(body, calleeId));
+    }
+
+    /** {@link #handOver}, not waited for. */
+    Future<String> startHandOver(Body body, String calleeId) {
         Envelope callee = Envelope.ingress(calleeId, CALLEE_FLOW, Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"), body);
-        return settled(a.intake.save(callee, JournalWorld.ingress(callee), CALLEE_FLOW, null, false, undecided()));
+        return a.intake.save(callee, JournalWorld.ingress(callee), CALLEE_FLOW, null, false, undecided());
     }
 
     void handedOver(Body body, String calleeId) {
@@ -130,7 +146,7 @@ class CalleeBodyIT {
 
     /** {@code id}'s work item of {@code flow} claimed and completed through a queue that tells {@code store} (its index forgets). */
     void completed(TieredBlobStore store, String flow, String id) {
-        PgWorkQueue queue = new PgWorkQueue(db.pool(), a.node, store);
+        PgWorkQueue queue = new PgWorkQueue(relayed, a.node, store);
         List<WorkQueue.Item> items = queue.claim("node-a", flow, 16, LEASE).await();
         WorkQueue.Item item = items.stream().filter(i -> i.messageId().equals(id)).findFirst()
                 .orElseThrow(() -> new AssertionError("fixture: " + id + "'s item claimed, among " + items));
@@ -247,6 +263,51 @@ class CalleeBodyIT {
 
         readable(a.blobs, key, bytes(3_000, 5), "after the restart");
         assertEquals(1, count(db.pool(), "select count(*) from work where id = 'm-callee'"), "the callee's item waits for its run");
+    }
+
+    @Test
+    void twoCalleesSavingOneDurableBodyAtOnceBothReferToIt() throws Exception {
+        Envelope caller = callerSaved("m-caller", 8);
+        JournalWorld.Ref place = workRef(db.pool(), "m-caller");
+        PgWire.Held commit = wire.holdNext(PgWire.query("COMMIT"));
+        Future<String> first = startHandOver(caller.body(), "m-callee-1");
+        commit.awaitReached();   // the first save's kept ref is written, its transaction not yet committed
+        Future<String> second = startHandOver(caller.body(), "m-callee-2");
+        SegmentSweepIT.until(() -> count(db.pool(), "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'") > 0,
+                () -> "the second save waits for the first one's kept ref");
+
+        commit.release();
+
+        for (Future<String> save : List.of(first, second)) {
+            assertTrue(settled(save).succeeded(), "both saves succeed: " + (save.failed() ? causes(save.cause()) : ""));
+        }
+        assertEquals(place, workRef(db.pool(), "m-callee-1"), "the first callee's item points at the caller's place");
+        assertEquals(place, workRef(db.pool(), "m-callee-2"), "and so does the second's");
+        assertEquals(1, refs(caller.body().key()), "one kept ref");
+    }
+
+    @Test
+    void aSavedBodyWhoseCommitReplyWasLostStaysOpenUntilItsOutcomeIsKnown() throws Exception {
+        BlobKey key = BlobKey.body("m-sync", 2);
+        Body body = settled(a.blobs.write(key, bytes(3_000, 9), JournalWorld.MAX)).result();
+        PgWire.Held commit = wire.holdNext(PgWire.query("COMMIT"));
+        Future<String> save = startHandOver(body, "m-callee");
+        commit.awaitReached();
+        commit.cut();
+        assertTrue(settled(save).failed(), "fixture: the save whose commit reply was lost fails");
+
+        assertEquals(1, List.copyOf(a.intake.openSaves()).size(), "its outcome unknown: the record it forced stays an open save, kept from the sweeper");
+        assertTrue(a.blobs.location(key).isPresent(), "its body stays local meanwhile");
+
+        commit.commitAfterCut();
+        SegmentSweepIT.until(() -> count(db.pool(), "select count(*) from work where id = 'm-callee'") == 1
+                        && count(db.pool(), "select count(*) from pg_stat_activity where datname = current_database() and state like 'idle in transaction%'") == 0,
+                () -> "the COMMIT visible and its session gone");
+
+        assertEquals(List.of(), List.copyOf(a.intake.openSaves()), "the commit landed: no open save left");
+        assertTrue(a.blobs.location(key).isEmpty(), "committed: the local copy is gone");
+        assertEquals(bodyRef(db.pool(), key), workRef(db.pool(), "m-callee"), "the kept ref and the callee's item name one place");
+        readable(a.restartedStore(), key, bytes(3_000, 9), "by key, with no location index");
     }
 
     @Test
