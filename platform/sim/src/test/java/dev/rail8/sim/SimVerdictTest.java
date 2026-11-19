@@ -54,7 +54,7 @@ class SimVerdictTest {
                 + "m-3 reached the partner before m-2 of key k1"), () -> String.join("\n", lines));
         assertTrue(lines.contains("SIM FAIL seed=0xfedcba9876543210 config=V1 ticks=1000 world=reordering-fast-path check=PREDICTED tick=7: "
                 + "expected Accepted, was Nack"), () -> String.join("\n", lines));
-        String replay = "mvn -B -ntp -q -pl :rail8-sim -am test -Dtest=SimReplayTest -Dsurefire.failIfNoSpecifiedTests=false"
+        String replay = "./mvnw -B -ntp -q -pl :rail8-sim -am test -Dtest=SimReplayTest -Dsurefire.failIfNoSpecifiedTests=false"
                 + " -Dsim.seed=0xfedcba9876543210 -Dsim.config=V1 -Dsim.ticks=1000 -Dsim.world=reordering-fast-path";
         assertEquals(1, lines.stream().filter(replay::equals).count(), () -> "one replay command in:\n" + String.join("\n", lines));
 

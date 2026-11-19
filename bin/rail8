@@ -1,6 +1,6 @@
 #!/bin/sh
 # rail8: the command line: runs the packaged cli jar, platform/cli/target/rail8-cli-<version>.jar, whose manifest
-# names dev.rail8.cli.Cli and its class path in platform/cli/target/lib. Build it first: bin/install-jq && bin/install-mapping && mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-cli -am
+# names dev.rail8.cli.Cli and its class path in platform/cli/target/lib. Build it first, from the repository's root: ./mvnw -B -ntp -q package -DskipTests -pl :rail8-cli -am
 # Usage: bin/rail8 help
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -12,7 +12,7 @@ for candidate in "$root"/platform/cli/target/rail8-cli-*.jar; do
   esac
 done
 if [ -z "$jar" ] || [ ! -f "$jar" ]; then
-  echo "rail8: no cli jar in $root/platform/cli/target; build it first: bin/install-jq && bin/install-mapping && mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-cli -am" >&2
+  echo "rail8: no cli jar in $root/platform/cli/target; build it first, from $root: ./mvnw -B -ntp -q package -DskipTests -pl :rail8-cli -am" >&2
   exit 2
 fi
 if [ -n "${JAVA_HOME:-}" ]; then java="$JAVA_HOME/bin/java"; else java=java; fi

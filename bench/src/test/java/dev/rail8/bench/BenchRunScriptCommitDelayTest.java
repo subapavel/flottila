@@ -116,7 +116,7 @@ class BenchRunScriptCommitDelayTest {
         BenchRunScriptTest.stub(bin, "java", "printf 'java %s\\n' \"$*\" >> '" + log + "'; exit " + javaExit);
         BenchRunScriptTest.stub(bin, "psql", "printf 'psql %s\\n' \"$*\" >> '" + log + "'\n"
                 + "case \"$*\" in *\"where name = 'commit_delay'\"*) echo " + shown + " ;; *) echo 1 ;; esac");
-        BenchRunScriptTest.stub(bin, "mvn", "exit 0");
+        BenchRunScriptTest.stub(root, "mvnw", "exit 0");
         BenchRunScriptTest.stub(bin, "git", "echo abc1234");
         BenchRunScriptTest.stub(bin, "python3", "exit 0");
         BenchRunScriptTest.stub(bin, "sleep", "exit 0");

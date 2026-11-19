@@ -135,7 +135,7 @@
         <artifactId>rail8-step-jq</artifactId>
         <version>${project.version}</version>
       </dependency>
-      <!-- The jq engine (Apache-2.0), built from jq/ and installed by bin/install-jq before the platform is built -->
+      <!-- The jq engine (Apache-2.0), built from jq/ in the same build when the platform is built from the root -->
       <dependency>
         <groupId>dev.rail8.jq</groupId>
         <artifactId>rail8-jq-core</artifactId>
@@ -146,8 +146,8 @@
         <artifactId>rail8-step-mapping</artifactId>
         <version>${project.version}</version>
       </dependency>
-      <!-- The mapping engine's embedding API (Apache-2.0), built from mapping/ and installed by bin/install-mapping before the
-           platform is built; the engine's licences are checked by the mapping's own build -->
+      <!-- The mapping engine's embedding API (Apache-2.0), built from mapping/ in the same build when the platform is built
+           from the root; the engine's licences are checked by the mapping's own build -->
       <dependency>
         <groupId>dev.rail8.mapping</groupId>
         <artifactId>rail8-mapping-embed</artifactId>
@@ -436,7 +436,8 @@
             <configuration>
               <rules>
                 <requireJavaVersion><version>[25,26)</version></requireJavaVersion>
-                <requireMavenVersion><version>[3.9,)</version></requireMavenVersion>
+                <!-- the floor of the jq and mapping builds too, which the platform is built with; ./mvnw brings it -->
+                <requireMavenVersion><version>[3.9.11,4)</version></requireMavenVersion>
               </rules>
             </configuration>
           </execution>

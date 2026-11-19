@@ -770,9 +770,9 @@ public final class RunFailure extends Exception {
 The step module `platform/steps/mapping` (`dev.rail8:rail8-step-mapping`) registers the step type
 `mapping`. It depends on `rail8-api` and `rail8-mapping-embed`, and it is the only platform module
 that depends on the mapping, and only on `dev.rail8.mapping.embed`; an architecture test checks both.
-The node and the command line ship it. Every CI job and documented command that builds the platform
-first installs the engine's `embed` module from the same commit with `bin/install-mapping`
-(`./mvnw -f mapping/pom.xml -pl engine/embed -am install -DskipTests`).
+The node and the command line ship it. Every CI job and documented command builds the platform from
+the repository's root with `./mvnw`, where `-am` builds the engine's `embed` module and the engine
+modules under it from the same commit, in the same build.
 
 ```yaml
 steps:
@@ -825,8 +825,8 @@ engine's embedded limits, except two: the bytes it writes are bounded by the flo
 and its recursion depth is the step's `maxRecursionDepth`, else the jq module's setting
 `RAIL8_JQ_MAX_RECURSION_DEPTH` (10 000, at most 4 194 304). `rail8 validate` and `rail8 test` use
 10 000. A body that is not JSON is the sender's fault; an error the filter raises, no result, a
-second result or a budget run out is the flow's. The platform's build takes the engine's jar from
-the local Maven repository, put there by `bin/install-jq`; the engine's own tests run in `jq-ci`.
+second result or a budget run out is the flow's. The platform is built from the repository's root,
+where `-am` builds the engine in the same build; the engine's own tests run in `jq-ci`.
 
 **Planned**
 - Wider jq in the step: the filter from a file, host variables, several results per message.

@@ -167,7 +167,7 @@ class BenchRunScriptOpenDbTest {
         BenchRunScriptTest.stub(bin, "psql", "printf 'psql %s\\n' \"$*\" >> '" + log + "'\n"
                 + "case \"$*\" in *pg_stat_statements*) if [ -n \"$REFUSE_EXTENSION\" ]; then"
                 + " echo 'ERROR:  could not open extension control file pg_stat_statements' >&2; exit 1; fi ;; esac\necho 1");
-        BenchRunScriptTest.stub(bin, "mvn", "exit 0");
+        BenchRunScriptTest.stub(dir, "mvnw", "exit 0");
         BenchRunScriptTest.stub(bin, "git", "echo abc1234");
         BenchRunScriptTest.stub(bin, "python3", "if [ \"$1\" = -c ]; then exec '" + BenchRunScriptOpenTest.python3() + "' \"$@\"; fi\nexit 0");
 

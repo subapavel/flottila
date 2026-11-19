@@ -112,7 +112,7 @@ class BenchRunScriptOpenLevelTest {
                 + "out=''; prev=''; for a in \"$@\"; do if [ \"$prev\" = --out ]; then out=\"$a\"; fi; prev=\"$a\"; done\n"
                 + "if [ -n \"$out\" ]; then mkdir -p \"$(dirname \"$out\")\"; cp '" + canned + "' \"$out\"; fi");
         BenchRunScriptTest.stub(bin, "psql", "echo 1");
-        BenchRunScriptTest.stub(bin, "mvn", "exit 0");
+        BenchRunScriptTest.stub(dir, "mvnw", "exit 0");
         BenchRunScriptTest.stub(bin, "git", "echo abc1234");
         BenchRunScriptTest.stub(bin, "python3", "if [ \"$1\" = -c ]; then exec '" + BenchRunScriptOpenTest.python3() + "' \"$@\"; fi\nexit 0");
 

@@ -18,14 +18,14 @@ root of a Rail8 checkout.
 
 ## Prerequisites
 
-A JDK 25, Maven 3.9, Node.js 22.12 or newer with npm, Docker, and `curl`. On Windows run everything inside WSL 2.
+A JDK 25, Maven 3.9 for the adapter's own build (the checkout builds itself with its `./mvnw`), Node.js 22.12 or newer
+with npm, Docker, and `curl`. On Windows run everything inside WSL 2.
 
 Build the kit once, and again after a `git pull`:
 
 ```sh
-bin/install-jq && bin/install-mapping                                    # the engines the node's steps depend on
-mvn -B -ntp -q -f platform/pom.xml install -DskipTests -pl :rail8-cli -am  # the contract and test suite in ~/.m2, the node's and the cli's jars
-(cd ui && npm ci)                                                        # the UI
+./mvnw -B -ntp -q install -DskipTests -pl :rail8-cli -am   # the contract and test suite in ~/.m2, the node's and the cli's jars
+(cd ui && npm ci)                                           # the UI
 ```
 
 ## Create an adapter

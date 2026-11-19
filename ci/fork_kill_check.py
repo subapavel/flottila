@@ -20,9 +20,10 @@ kill those, run the check again with the unit tests deselected (see the second u
 
 Exit 0 no finding, 1 findings, 2 the listener did not build or Maven itself failed.
 
-Usage (from anywhere inside the repository; extra arguments go to Maven):
-  python3 ci/fork_kill_check.py platform/pom.xml
-  python3 ci/fork_kill_check.py platform/pom.xml -Pit -Dtest=NoUnitTest -Dsurefire.failIfNoSpecifiedTests=false
+Usage (from anywhere inside the repository; extra arguments go to Maven). The platform is checked from the root, whose
+build brings in the engines its steps depend on, with the engines' own tests skipped:
+  python3 ci/fork_kill_check.py pom.xml -Drail8.engines.skipTests
+  python3 ci/fork_kill_check.py pom.xml -Drail8.engines.skipTests -Pit -Dtest=NoUnitTest -Dsurefire.failIfNoSpecifiedTests=false
 """
 from __future__ import annotations
 

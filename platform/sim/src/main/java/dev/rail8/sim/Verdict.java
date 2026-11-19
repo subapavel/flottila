@@ -49,7 +49,7 @@ public record Verdict(SimSeed seed, SimConfig config, int ticks, String world, L
 
     /**
      * One {@code SIM FAIL seed=0x… config=… ticks=… world=… check=… tick=…: <detail>} line per failure, then the command that
-     * replays the run; a run that passed has one {@code SIM PASS …} line with its comparisons instead.
+     * replays the run from the repository's root; a run that passed has one {@code SIM PASS …} line with its comparisons instead.
      */
     public String report() {
         String run = "seed=" + seed.hex() + " config=" + config.name() + " ticks=" + ticks + " world=" + world;
@@ -61,7 +61,7 @@ public record Verdict(SimSeed seed, SimConfig config, int ticks, String world, L
         }
         if (total() == 0) out.append("SIM FAIL ").append(run).append(" check=").append(Check.EMPTY).append(" tick=").append(ticks)
                 .append(": no check compared anything\n");
-        return out.append("mvn -B -ntp -q -pl :rail8-sim -am test -Dtest=SimReplayTest -Dsurefire.failIfNoSpecifiedTests=false")
+        return out.append("./mvnw -B -ntp -q -pl :rail8-sim -am test -Dtest=SimReplayTest -Dsurefire.failIfNoSpecifiedTests=false")
                 .append(" -Dsim.seed=").append(seed.hex()).append(" -Dsim.config=").append(config.name()).append(" -Dsim.ticks=").append(ticks)
                 .append(" -Dsim.world=").append(world).toString();
     }
