@@ -3,6 +3,7 @@ package dev.rail8.runtime.plugin;
 import dev.rail8.api.Component;
 import dev.rail8.api.Expressions;
 import dev.rail8.api.StepFactory;
+import dev.rail8.api.plugin.AdminService;
 import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.api.plugin.Plugin;
 import dev.rail8.api.plugin.PluginSettings;
@@ -27,13 +28,16 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -42,8 +46,9 @@ import java.util.stream.Stream;
 
 /**
  * The plugins of a node: its modules, found on its class path, and the plugins of its plugin directory ({@value #ENV}); what
- * they add is all the components, step factories and expression languages the node has, the built-in steps and the mock aside.
- * The node and the CLI load them alike.
+ * they add is all the components, step factories and expression languages the node has, the built-in steps and the mock aside,
+ * and the services of its admin API that its modules bring. The node and the CLI load them alike; only the node takes the
+ * services ({@link #services}).
  *
  * <p>A module is a {@link Plugin} that a jar on the class path names in {@code META-INF/services}: the node's own build ships
  * one per component and step (http, sftp, direct, xslt with xpath, xsd, jq, mapping). Modules share the node's class loader. At
@@ -90,6 +95,7 @@ public final class Plugins implements AutoCloseable {
     private static final System.Logger LOG = System.getLogger(Plugins.class.getName());
     private static final Pattern NAME = Pattern.compile("[a-z][a-z0-9-]{0,63}");
     private static final Pattern API = Pattern.compile("(\\d{1,4})\\.(\\d{1,4})");
+    private static final Pattern SERVICE_PATH = Pattern.compile("[a-z0-9-]{1,32}(/[a-z0-9-]{1,32}){0,3}");
     /** The name that stands for the platform itself, its built-in steps and its mock: no module's or plugin's. */
     private static final String PLATFORM = "rail8";
     /** What a {@link LinkageError} in a plugin's call is most likely about. */
@@ -319,6 +325,52 @@ public final class Plugins implements AutoCloseable {
     private static List<Component> components(List<Loaded> loaded, ComponentContext context) {
         return merge(loaded, "components()", l -> l.plugin().components(context), Component::scheme, "scheme",
                 Map.of("mock", "is the platform's mock"), "settings()", Component::settings, IllegalStateException::new);
+    }
+
+    /**
+     * Each module's services of the admin API, by its name, each module's built over its settings read from {@code env}
+     * ({@link PluginSettings#of}); a module that brings none is not listed. The node calls it once, at its start; {@code rail8
+     * validate} and {@code rail8 test} never do. Refused, with an {@link IllegalArgumentException} naming the module or plugin:
+     * a plugin of the plugin directory that brings one, a call that throws or a null service, more than
+     * {@link Plugin#MAX_CONTRIBUTIONS}, a method other than {@code GET} or {@code POST}, a path outside the rule of
+     * {@link AdminService#path()} ({@link #servicePath}), and two services of one module with the same method and path.
+     */
+    public Map<String, List<AdminService>> services(Map<String, String> env) {
+        Objects.requireNonNull(env, "env");
+        Map<String, List<AdminService>> all = new LinkedHashMap<>();
+        for (Loaded l : loaded) {
+            String who = l.who();
+            List<AdminService> brought = call(who, l.loader(), "services()", () -> List.copyOf(l.plugin().services(PluginSettings.of(l.name(), env))),
+                    IllegalArgumentException::new);
+            if (brought.isEmpty()) continue;
+            if (l.own().isPresent()) {
+                throw new IllegalArgumentException(who + ": services() brings " + brought.size() + " admin services; only a module brings them, no plugin of " + ENV);
+            }
+            if (brought.size() > Plugin.MAX_CONTRIBUTIONS) {
+                throw new IllegalArgumentException(who + ": services() brings " + brought.size() + "; at most " + Plugin.MAX_CONTRIBUTIONS);
+            }
+            Set<String> routes = new HashSet<>();
+            for (AdminService service : brought) {
+                String type = service.getClass().getName();
+                String method = call(who, l.loader(), "method() of " + type, service::method, IllegalArgumentException::new);
+                String path = call(who, l.loader(), "path() of " + type, service::path, IllegalArgumentException::new);
+                if (!"GET".equals(method) && !"POST".equals(method)) {
+                    throw new IllegalArgumentException(who + ": the method of " + type + " is '" + method + "'; an admin service is GET or POST");
+                }
+                if (!servicePath(path)) {
+                    throw new IllegalArgumentException(who + ": the path of " + type + " is '" + path
+                            + "'; an admin service's path is 1 to 4 segments of [a-z0-9-]{1,32}, joined by slashes");
+                }
+                if (!routes.add(method + " " + path)) throw new IllegalArgumentException(who + ": two admin services are " + method + " " + path);
+            }
+            all.put(l.name(), brought);
+        }
+        return Collections.unmodifiableMap(all);
+    }
+
+    /** Whether {@code path} is the path of an admin service: 1 to 4 segments of {@code [a-z0-9-]{1,32}}, joined by single slashes. */
+    static boolean servicePath(String path) {
+        return path != null && SERVICE_PATH.matcher(path).matches();
     }
 
     /** Each module's step factories, then each plugin's, as loading took them. */

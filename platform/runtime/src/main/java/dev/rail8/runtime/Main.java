@@ -1,5 +1,6 @@
 package dev.rail8.runtime;
 
+import dev.rail8.api.plugin.AdminService;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.plugin.Plugins;
@@ -7,6 +8,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
 
 import java.io.PrintStream;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -80,10 +82,10 @@ public final class Main {
 
     /**
      * Starts a node from {@code env} on a Vert.x of its own with non-daemon threads, with its modules and the plugins of
-     * {@code RAIL8_PLUGINS} ({@link Plugins#fromEnv}), each logged in one line. A refused configuration, the modules and plugins,
-     * their settings, steps and languages included, is one line on {@code err} and 2, before Vert.x starts and anything
-     * connects; a node that does not start, a refused component included, is one line and 1, its Vert.x and its plugins closed
-     * again.
+     * {@code RAIL8_PLUGINS} ({@link Plugins#fromEnv}), each logged in one line, and the admin services of its modules
+     * ({@link Plugins#services}). A refused configuration, the modules and plugins, their settings, steps, languages and admin
+     * services included, is one line on {@code err} and 2, before Vert.x starts and anything connects, the plugins closed again;
+     * a node that does not start, a refused component included, is one line and 1, its Vert.x and its plugins closed again.
      */
     static Started start(Map<String, String> env, PrintStream err) {
         NodeConfig config;
@@ -92,13 +94,19 @@ public final class Main {
             config = NodeConfig.from(env);
             plugins = Plugins.fromEnv(env);
         } catch (IllegalArgumentException refused) {
-            err.println("rail8: configuration refused: " + oneLine(refused));
-            return new Started(2, Optional.empty(), Optional.empty(), Optional.empty());
+            return refused(refused, err);
+        }
+        Map<String, List<AdminService>> services;
+        try {
+            services = plugins.services(env);
+        } catch (IllegalArgumentException refused) {
+            plugins.close();
+            return refused(refused, err);
         }
         plugins.describe().forEach(line -> LOG.log(System.Logger.Level.INFO, line));
         Vertx vertx = Vertx.vertx(new VertxOptions().setUseDaemonThread(false));
         try (ExecutorService starter = Executors.newVirtualThreadPerTaskExecutor()) {
-            Node node = starter.submit(() -> Node.start(config, vertx, plugins::components, plugins.steps(), plugins.languages())).get();
+            Node node = starter.submit(() -> Node.start(config, vertx, plugins::components, plugins.steps(), plugins.languages(), services)).get();
             return new Started(0, Optional.of(node), Optional.of(vertx), Optional.of(plugins));
         } catch (ExecutionException | InterruptedException failed) {
             err.println("rail8: the node did not start: " + oneLine(failed));
@@ -106,6 +114,11 @@ public final class Main {
             plugins.close();
             return new Started(1, Optional.empty(), Optional.empty(), Optional.empty());
         }
+    }
+
+    private static Started refused(IllegalArgumentException refused, PrintStream err) {
+        err.println("rail8: configuration refused: " + oneLine(refused));
+        return new Started(2, Optional.empty(), Optional.empty(), Optional.empty());
     }
 
     /**

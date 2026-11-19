@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@code Main.start} with its modules and the plugins of {@code RAIL8_PLUGINS}, where it ends before Postgres: a plugin
- * directory, plugin, setting, step type or language that is refused refuses the configuration (2) before Vert.x starts; a
+ * directory, plugin, setting, step type, language or admin service that is refused refuses the configuration (2) before Vert.x starts; a
  * plugin's component that is refused stops the node's start (1) before it connects anywhere. Either way nothing is handed back
  * and the plugins' class loaders are closed again: the process holds none of their jars open.
  */
@@ -105,6 +105,14 @@ class MainPluginsTest {
         assertEquals(2, run.started().code());
         assertEquals("rail8: configuration refused: module jq: steps() failed: java.lang.IllegalArgumentException: "
                 + "RAIL8_JQ_MAX_RECURSION_DEPTH must be between 1 and 4194304, was 4194305" + System.lineSeparator(), run.err());
+    }
+
+    @Test
+    void aPluginThatBringsAnAdminServiceRefusesTheConfiguration() throws IOException {
+        Run run = start(plugin("serves.jar", PluginFixtures.Serves.class));
+        assertEquals(2, run.started().code());
+        assertEquals("rail8: configuration refused: plugin serves: services() brings 2 admin services; only a module brings them, no plugin of RAIL8_PLUGINS"
+                + System.lineSeparator(), run.err());
     }
 
     @Test

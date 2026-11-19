@@ -18,12 +18,15 @@ import dev.rail8.core.record.Snapshot;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.deploy.Doors;
 import dev.rail8.runtime.deploy.PackageDraft;
+import dev.rail8.api.plugin.AdminService;
 import dev.rail8.api.plugin.ComponentContext;
+import dev.rail8.api.plugin.PluginSettings;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.node.PlainComponent;
 import dev.rail8.runtime.node.TestJournalKey;
+import dev.rail8.runtime.sample.AdminSamplePlugin;
 import dev.rail8.steps.validate.XsdValidate;
 import dev.rail8.steps.xslt.SaxonXml;
 import dev.rail8.testkit.Ports;
@@ -294,6 +297,24 @@ class NodeIT {
         } finally {
             db.close().await();
         }
+    }
+
+    /** The node serves its modules' admin services under {@code /admin/modules/<module name>/}, each call given the node's clock. */
+    @Test
+    void theNodeServesItsModulesAdminServices() throws Exception {
+        NodeConfig config = NodeConfig.from(env("dev"));
+        List<AdminService> services = new AdminSamplePlugin(new AdminSamplePlugin.Holds()).services(PluginSettings.of("admin-sample", Map.of()));
+        node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(), List.of(), List.of(), Map.of("admin-sample", services)));
+        HttpResponse<String> clock = get(node.adminPort(), "/admin/modules/admin-sample/clock");
+        assertEquals(200, clock.statusCode(), clock.body());
+        assertFalse(new JsonObject(clock.body()).getString("now").isBlank(), "the node's clock: " + clock.body());
+        try (HttpClient client = http()) {
+            HttpResponse<String> echo = send(client, "POST", node.adminPort(), "/admin/modules/admin-sample/echo", "{\"a\":1}".getBytes(StandardCharsets.UTF_8),
+                    "application/json");
+            assertEquals(200, echo.statusCode(), echo.body());
+            assertEquals("{\"a\":1}", echo.body(), "the service's reply as it is");
+        }
+        assertEquals(404, get(node.adminPort(), "/admin/modules/other/clock").statusCode(), "no module of that name");
     }
 
     /**

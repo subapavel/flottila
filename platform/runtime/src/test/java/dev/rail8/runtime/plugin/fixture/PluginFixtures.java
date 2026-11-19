@@ -12,6 +12,9 @@ import dev.rail8.api.Stage;
 import dev.rail8.api.StepConfig;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.StepResources;
+import dev.rail8.api.plugin.AdminReply;
+import dev.rail8.api.plugin.AdminRequest;
+import dev.rail8.api.plugin.AdminService;
 import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.api.plugin.Plugin;
 import dev.rail8.api.plugin.PluginSettings;
@@ -282,5 +285,61 @@ public final class PluginFixtures {
     public static final class NoVersion implements Plugin {
         @Override public String name() { return "no-version"; }
         @Override public String api() { return "latest"; }
+    }
+
+    /** An admin service of {@code method} and {@code path} that answers 200 {@code {}}. */
+    public record Service(String method, String path) implements AdminService {
+        @Override public AdminReply handle(AdminRequest request) { return new AdminReply(200, "{}"); }
+    }
+
+    /**
+     * A plugin named {@code serves} whose admin services are {@code GET status} and {@code POST status}, and {@code POST extra}
+     * too when its setting {@code EXTRA} is 1 (0 or 1, 0 unset).
+     */
+    public static final class Serves implements Plugin {
+        @Override public String name() { return "serves"; }
+        @Override public String api() { return API; }
+        @Override public List<AdminService> services(PluginSettings settings) {
+            List<AdminService> services = new ArrayList<>(List.of(new Service("GET", "status"), new Service("POST", "status")));
+            if (settings.whole("EXTRA", 0, 0, 1) == 1) services.add(new Service("POST", "extra"));
+            return services;
+        }
+    }
+
+    /** A plugin named {@code twice} with two admin services {@code POST a/b}. */
+    public static final class ServesTwice implements Plugin {
+        @Override public String name() { return "twice"; }
+        @Override public String api() { return API; }
+        @Override public List<AdminService> services(PluginSettings settings) { return List.of(new Service("POST", "a/b"), new Service("POST", "a/b")); }
+    }
+
+    /** A plugin named {@code puts} whose one admin service is {@code PUT status}. */
+    public static final class ServesAPut implements Plugin {
+        @Override public String name() { return "puts"; }
+        @Override public String api() { return API; }
+        @Override public List<AdminService> services(PluginSettings settings) { return List.of(new Service("PUT", "status")); }
+    }
+
+    /** A plugin named {@code nulls} whose one admin service has no path. */
+    public static final class ServesNoPath implements Plugin {
+        @Override public String name() { return "nulls"; }
+        @Override public String api() { return API; }
+        @Override public List<AdminService> services(PluginSettings settings) { return List.of(new Service("GET", null)); }
+    }
+
+    /** A plugin named {@code many} with one admin service more than a plugin may bring. */
+    public static final class ServesTooMany implements Plugin {
+        @Override public String name() { return "many"; }
+        @Override public String api() { return API; }
+        @Override public List<AdminService> services(PluginSettings settings) {
+            return IntStream.rangeClosed(0, MAX_CONTRIBUTIONS).<AdminService>mapToObj(i -> new Service("GET", "s" + i)).toList();
+        }
+    }
+
+    /** A plugin named {@code failing-services} whose {@code services()} throws. */
+    public static final class FailingServices implements Plugin {
+        @Override public String name() { return "failing-services"; }
+        @Override public String api() { return API; }
+        @Override public List<AdminService> services(PluginSettings settings) { throw new IllegalStateException("no services today"); }
     }
 }

@@ -7,7 +7,8 @@ import dev.rail8.api.StepFactory;
 import java.util.List;
 
 /**
- * A plugin: what adds components, step factories and expression languages to a node. The node's own parts are plugins too, and
+ * A plugin: what adds components, step factories and expression languages to a node, and, when it is a module, services of the
+ * node's admin API. The node's own parts are plugins too, and
  * register the same way: each shipped component and step (http, sftp, direct, xslt with xpath, xsd, jq, mapping) is a module of
  * the node's build, found on the node's class path. A plugin from elsewhere is one jar, or one directory of jars, in the node's
  * plugin directory ({@code RAIL8_PLUGINS}). The node finds both with {@link java.util.ServiceLoader}: a jar names its
@@ -19,6 +20,8 @@ import java.util.List;
  * <ul>
  * <li>{@link #name()} and {@link #api()} once, when it loads the plugin;</li>
  * <li>{@link #steps(PluginSettings)} and {@link #languages()} once each, when it loads the plugin, before Vert.x starts;</li>
+ * <li>{@link #services(PluginSettings)} once, at the node's start, before Vert.x starts; only the node calls it, never
+ *     {@code rail8 validate} or {@code rail8 test};</li>
  * <li>{@link #components(ComponentContext)} once per node start, inside the start and before Postgres is touched, and once per
  *     {@code rail8 validate} or {@code rail8 test} run; {@code rail8 test} builds the components of the platform's
  *     {@code direct} module again for each case of a package with a {@code direct} endpoint. It builds objects and opens
@@ -56,7 +59,7 @@ public interface Plugin {
      */
     String API = "0.3";
 
-    /** The most contributions of one kind (components, step factories, expression languages) a plugin may bring. */
+    /** The most contributions of one kind (components, step factories, expression languages, admin services) a plugin may bring. */
     int MAX_CONTRIBUTIONS = 256;
 
     /**
@@ -92,6 +95,19 @@ public interface Plugin {
 
     /** The expression languages the plugin adds; none by default. */
     default List<Expressions> languages() {
+        return List.of();
+    }
+
+    /**
+     * The services of the admin API the module adds, built over its settings; none by default. Only a module brings services:
+     * a plugin of {@code RAIL8_PLUGINS} that brings one refuses the node's start, naming it. So do two services of one module
+     * with the same method and path, a method other than {@code GET} or {@code POST}, and a path outside the rule of
+     * {@link AdminService#path()}.
+     *
+     * @param settings the module's settings ({@code RAIL8_<NAME>_*}), read from the node's environment
+     * @since 0.3
+     */
+    default List<AdminService> services(PluginSettings settings) {
         return List.of();
     }
 }
