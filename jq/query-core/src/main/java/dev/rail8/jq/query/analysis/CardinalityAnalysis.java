@@ -25,9 +25,11 @@ import dev.rail8.jq.query.ir.Intrinsic;
 import dev.rail8.jq.query.ir.Label;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.ParamCall;
+import dev.rail8.jq.query.ir.PathOf;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Try;
+import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
 import dev.rail8.jq.query.run.CallForm;
 import dev.rail8.jq.query.run.Fn0;
@@ -53,6 +55,8 @@ import java.util.List;
  *   <li>Collect is ONE, or NEVER when its body is; Reduce is {@code seq(init, ONE)}, or {@code seq(init, NEVER)} when
  *       its each is NEVER, since then no run of each ends and the Reduce emits nothing after its first init result.
  *   <li>Comma, Alt and Try are {@link #comma}, {@link #alt} and {@link #tryCatch}; Label is {@code join(body, NONE)}.
+ *   <li>A PathOf is its body's: one path per result. An Update is ONE, or NEVER when its lhs is: it emits once, after
+ *       its lhs ran out. Its rhs runs only for an lhs result, of which there may be none, so it does not count.
  * </ul>
  */
 final class CardinalityAnalysis {
@@ -138,6 +142,8 @@ final class CardinalityAnalysis {
       case Alt a -> alt(card[id(a.left())], card[id(a.right())]);
       case Try t -> tryCatch(card[id(t.body())], card[id(t.handler())]);
       case Label l -> join(card[id(l.body())], NONE);
+      case PathOf p -> card[id(p.body())];
+      case Update u -> card[id(u.lhs())] == NEVER ? NEVER : ONE;
     };
   }
 

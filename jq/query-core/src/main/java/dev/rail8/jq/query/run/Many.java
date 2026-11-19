@@ -25,4 +25,12 @@ public non-sealed interface Many extends CallForm {
 
   /** The result at {@code cursor}, which is not {@link #END}, for {@code in} and {@code args}. */
   Object value(RunState state, Object in, Object[] args, long cursor);
+
+  /**
+   * The key under which {@code in} holds the result at {@code cursor}, for a form that is also a {@link PathStep}; any
+   * other form has none and throws.
+   */
+  default Object key(RunState state, Object in, Object[] args, long cursor) {
+    throw new UnsupportedOperationException("this form finds no result at a key");
+  }
 }

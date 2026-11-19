@@ -19,16 +19,23 @@ import dev.rail8.jq.query.ir.Intrinsic;
 import dev.rail8.jq.query.ir.Label;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.ParamCall;
+import dev.rail8.jq.query.ir.PathOf;
+import dev.rail8.jq.query.ir.PathRule;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Reduce;
+import dev.rail8.jq.query.ir.Tracking;
 import dev.rail8.jq.query.ir.Try;
+import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
+import dev.rail8.jq.query.run.CallForm;
 import dev.rail8.jq.query.run.Fn0;
 import dev.rail8.jq.query.run.Fn1;
 import dev.rail8.jq.query.run.Fn2;
 import dev.rail8.jq.query.run.FnN;
 import dev.rail8.jq.query.run.Many;
+import dev.rail8.jq.query.run.PathFormat;
+import dev.rail8.jq.query.run.PathStep;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -50,6 +57,11 @@ import java.util.Set;
  * Intrinsic's arguments are atomic (Identity, Var or Const), as many as its call form's arity: none for Fn0, one for
  * Fn1, two for Fn2, and any number for an FnN or a Many, which take them as an array.
  *
+ * <p>In path mode: an operation's path rule is KEY, INDEX, DYNAMIC, SLICE or KEY_LIST if and only if its call form is a
+ * PathStep Fn0, Fn1 or Fn2, and ALL if and only if it is a PathStep Many. A Binds has one tracking per value. Only the
+ * Bind that is a Foreach's each, its source, may be ITEM-tracked. An assign's right side is atomic, and every PathOf and
+ * Update of the program holds the same format instance.
+ *
  * <p>A program is its main tree and its functions, each body checked on its own
  * slots, with no node object used twice in the whole program. In a function, slots {@code 0 .. values - 1} are its value
  * parameters, which it sees as parameters and no slot of its caller; a Break may also name one of them, a Label's
@@ -67,6 +79,12 @@ final class IrVerifier {
 
   /** The program's functions, which a Call names by place. */
   private final List<Function> functions;
+
+  /** The format of the program's PathOf and Update nodes so far, by identity: one at most. */
+  private final Set<PathFormat> formats;
+
+  /** The source Bind of the Foreach whose each the walk is about to enter, the one Bind that may be ITEM-tracked. */
+  private Node item;
 
   /** The parameter slots of this body: the main tree's, or the function's value parameters. */
   private final int parameters;
@@ -110,10 +128,11 @@ final class IrVerifier {
    */
   record Layout(int[] slots, Map<Node, List<Integer>> closures) {}
 
-  private IrVerifier(Set<Node> seen, Map<Node, List<Integer>> frames, List<Function> functions, int parameters, int closures) {
+  private IrVerifier(Set<Node> seen, Map<Node, List<Integer>> frames, List<Function> functions, Set<PathFormat> formats, int parameters, int closures) {
     this.seen = seen;
     this.frames = frames;
     this.functions = functions;
+    this.formats = formats;
     this.parameters = parameters;
     this.closures = closures;
     for (int p = 0; p < parameters; p++) {
@@ -133,12 +152,13 @@ final class IrVerifier {
   static Layout verify(Program program, int parameters) {
     Set<Node> seen = Collections.newSetFromMap(new IdentityHashMap<>());
     Map<Node, List<Integer>> frames = new IdentityHashMap<>();
+    Set<PathFormat> formats = Collections.newSetFromMap(new IdentityHashMap<>());
     List<Function> functions = program.functions();
     int[] slots = new int[functions.size() + 1];
-    slots[0] = new IrVerifier(seen, frames, functions, parameters, MAIN).body(program.main());
+    slots[0] = new IrVerifier(seen, frames, functions, formats, parameters, MAIN).body(program.main());
     for (int i = 0; i < functions.size(); i++) {
       Function f = functions.get(i);
-      slots[i + 1] = new IrVerifier(seen, frames, functions, f.values(), f.closures()).body(f.body());
+      slots[i + 1] = new IrVerifier(seen, frames, functions, formats, f.values(), f.closures()).body(f.body());
     }
     return new Layout(slots, frames);
   }
@@ -200,6 +220,9 @@ final class IrVerifier {
         visit(a.right());
       }
       case Bind b -> {
+        if (b.tracking() == Tracking.ITEM && b != item) {
+          throw new IllegalStateException("the Bind at bytes " + b.source() + " is ITEM-tracked, but it is not the source Bind of a Foreach");
+        }
         take(b.slot(), node);
         // The value runs before the slot is set, so only the body may read it.
         visit(b.value());
@@ -243,6 +266,26 @@ final class IrVerifier {
         }
         visit(a.update());
       }
+      case PathOf p -> {
+        format(p, p.paths());
+        visit(p.body());
+      }
+      case Update u -> {
+        format(u, u.paths());
+        if (u.kind() == Update.Kind.ASSIGN && !(u.rhs() instanceof Identity || u.rhs() instanceof Var || u.rhs() instanceof Const)) {
+          throw new IllegalStateException("the right side of the assign at bytes " + u.source() + " is not atomic: " + u.rhs());
+        }
+        visit(u.lhs());
+        visit(u.rhs());
+      }
+    }
+  }
+
+  /** The format {@code paths} of the PathOf or Update {@code node}: the program's one. */
+  private void format(Node node, PathFormat paths) {
+    formats.add(paths);
+    if (formats.size() > 1) {
+      throw new IllegalStateException("the node at bytes " + node.source() + " holds another format than the program's other PathOf and Update nodes");
     }
   }
 
@@ -254,14 +297,17 @@ final class IrVerifier {
     take(slot, node);
     visit(init);
     loops.add(slot);
+    if (node instanceof Foreach && each instanceof Bind source) {
+      item = source;
+    }
     visit(each);
     loops.remove(slot);
   }
 
   /**
-   * The Binds {@code b}, as the chain of nested Bind nodes it means: two values at least and one slot per value, each
-   * slot taken before its value is walked, and each value sees the slots of the values before it, the body all of them.
-   * The walk loops over the values, so it does not go deeper with their number.
+   * The Binds {@code b}, as the chain of nested Bind nodes it means: two values at least, one tracking and one slot per
+   * value, no tracking ITEM, each slot taken before its value is walked, and each value sees the slots of the values
+   * before it, the body all of them. The walk loops over the values, so it does not go deeper with their number.
    */
   private void binds(Binds b) {
     List<Node> values = b.values();
@@ -271,6 +317,13 @@ final class IrVerifier {
     List<Integer> slots = b.slots();
     if (slots.size() != values.size()) {
       throw new IllegalStateException("the Binds at bytes " + b.source() + " has " + values.size() + " values and " + slots.size() + " slots; it needs one slot per value");
+    }
+    if (b.trackings().size() != values.size()) {
+      throw new IllegalStateException(
+          "the Binds at bytes " + b.source() + " has " + values.size() + " values and " + b.trackings().size() + " trackings; it needs one tracking per value");
+    }
+    if (b.trackings().contains(Tracking.ITEM)) {
+      throw new IllegalStateException("a value of the Binds at bytes " + b.source() + " is ITEM-tracked; only the source Bind of a Foreach may be");
     }
     for (int k = 0; k < values.size(); k++) {
       take(slots.get(k), b);
@@ -285,12 +338,15 @@ final class IrVerifier {
   }
 
   /**
-   * The chain {@code a}: its value sees neither its value slot nor its group slots, its alternatives see the value
-   * slot, and its body sees both.
+   * The chain {@code a}: its value is not ITEM-tracked and sees neither its value slot nor its group slots, its
+   * alternatives see the value slot, and its body sees both.
    */
   private void altBind(AltBind a) {
     if (a.alternatives().isEmpty()) {
       throw new IllegalStateException("the AltBind at bytes " + a.source() + " has no alternative");
+    }
+    if (a.tracking() == Tracking.ITEM) {
+      throw new IllegalStateException("the value of the AltBind at bytes " + a.source() + " is ITEM-tracked; only the source Bind of a Foreach may be");
     }
     take(a.slot(), a);
     for (int g : a.slots()) {
@@ -389,11 +445,33 @@ final class IrVerifier {
       throw new IllegalStateException(
           "the Intrinsic " + i.op().name() + " at bytes " + i.source() + " has " + i.args().size() + " arguments; its form takes " + arity);
     }
+    PathRule rule = i.op().facts().path();
+    if (needsStep(rule) != isStep(i.op().form()) || (rule == PathRule.ALL) != isStepMany(i.op().form())) {
+      throw new IllegalStateException("the Intrinsic " + i.op().name() + " at bytes " + i.source() + " declares the path rule " + rule + ", which its call form does not match");
+    }
     for (Node a : i.args()) {
       if (!(a instanceof Identity || a instanceof Var || a instanceof Const)) {
         throw new IllegalStateException("an argument of the Intrinsic " + i.op().name() + " at bytes " + i.source() + " is not atomic: " + a);
       }
       visit(a);
     }
+  }
+
+  /** Whether {@code rule} is a one-result step's, which needs a PathStep Fn0, Fn1 or Fn2. */
+  private static boolean needsStep(PathRule rule) {
+    return switch (rule) {
+      case KEY, INDEX, DYNAMIC, SLICE, KEY_LIST -> true;
+      case NONE, SAME, ALL -> false;
+    };
+  }
+
+  /** Whether {@code form} is a PathStep Fn0, Fn1 or Fn2. */
+  private static boolean isStep(CallForm form) {
+    return form instanceof PathStep && (form instanceof Fn0 || form instanceof Fn1 || form instanceof Fn2);
+  }
+
+  /** Whether {@code form} is a PathStep Many. */
+  private static boolean isStepMany(CallForm form) {
+    return form instanceof PathStep && form instanceof Many;
   }
 }

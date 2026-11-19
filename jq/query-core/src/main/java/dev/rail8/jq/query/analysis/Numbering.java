@@ -19,10 +19,12 @@ import dev.rail8.jq.query.ir.Intrinsic;
 import dev.rail8.jq.query.ir.Label;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.ParamCall;
+import dev.rail8.jq.query.ir.PathOf;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Try;
+import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -141,6 +143,8 @@ public final class Numbering {
         parts.addAll(c.values());
         yield parts;
       }
+      case PathOf p -> List.of(p.body());
+      case Update u -> List.of(u.lhs(), u.rhs());
     };
   }
 }

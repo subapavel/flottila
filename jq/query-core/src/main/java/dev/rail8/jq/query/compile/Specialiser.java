@@ -21,10 +21,12 @@ import dev.rail8.jq.query.ir.Intrinsic;
 import dev.rail8.jq.query.ir.Label;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.ParamCall;
+import dev.rail8.jq.query.ir.PathOf;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Try;
+import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,7 +53,8 @@ import java.util.Set;
  *   <li>A tuple is the outside call's closure argument for each invariant class, the classes in the order of the
  *       group's first function's parameters. Two tuples are one key when they have one shape: Source ignored, the
  *       slots they bind renamed in the order they are bound, their free slots and free closure parameters numbered by
- *       first occurrence, and their constants, Operations, truths and collectors compared by identity.
+ *       first occurrence, their constants, Operations, truths, collectors and formats compared by identity, and
+ *       their trackings and update kinds compared by value.
  *   <li>A copy keeps the closure parameters that are not invariant, renumbered from 0, then takes one trailing closure
  *       per free closure parameter of the tuple; it takes the original's value parameters, then one trailing value per
  *       free slot, a free Break's token among them, its own slots moving up past them. Each ParamCall of an
@@ -505,6 +508,7 @@ public final class Specialiser {
           }
           case Bind b -> {
             key.add(5);
+            key.add(b.tracking().ordinal());
             shape(b.value());
             bind(b.slot());
             shape(b.body());
@@ -513,6 +517,7 @@ public final class Specialiser {
             key.add(6);
             key.add(b.values().size());
             for (int k = 0; k < b.values().size(); k++) {
+              key.add(b.trackings().get(k).ordinal());
               shape(b.values().get(k));
               bind(b.slots().get(k));
             }
@@ -544,6 +549,7 @@ public final class Specialiser {
           }
           case AltBind a -> {
             key.add(11);
+            key.add(a.tracking().ordinal());
             key.add(a.alternatives().size());
             key.add(a.slots().size());
             bind(a.slot());
@@ -600,6 +606,18 @@ public final class Specialiser {
             key.add(19);
             key.add(closures.computeIfAbsent(p.param(), q -> closures.size()));
           }
+          case PathOf p -> {
+            key.add(20);
+            key.add(identity(p.paths()));
+            shape(p.body());
+          }
+          case Update u -> {
+            key.add(21);
+            key.add(u.kind().ordinal());
+            key.add(identity(u.paths()));
+            shape(u.lhs());
+            shape(u.rhs());
+          }
         }
       }
     }
@@ -640,7 +658,7 @@ public final class Specialiser {
           case Bind b -> {
             Node value = node(b.value());
             int slot = bind(b.slot());
-            yield new Bind(b.source(), value, slot, node(b.body()));
+            yield new Bind(b.source(), value, b.tracking(), slot, node(b.body()));
           }
           case Binds b -> {
             List<Node> values = new ArrayList<>();
@@ -649,7 +667,7 @@ public final class Specialiser {
               values.add(node(b.values().get(k)));
               bound.add(bind(b.slots().get(k)));
             }
-            yield new Binds(b.source(), values, bound, node(b.body()));
+            yield new Binds(b.source(), values, b.trackings(), bound, node(b.body()));
           }
           case Intrinsic i -> new Intrinsic(i.source(), i.op(), nodes(i.args()));
           case Collect c -> new Collect(c.source(), node(c.body()), c.collector());
@@ -675,6 +693,8 @@ public final class Specialiser {
           case Advance a -> new Advance(a.source(), ref(a.slot()), node(a.update()));
           case Call c -> call(c);
           case ParamCall p -> paramCall(p);
+          case PathOf p -> new PathOf(p.source(), node(p.body()), p.paths());
+          case Update u -> new Update(u.source(), u.kind(), node(u.lhs()), node(u.rhs()), u.paths());
         };
       }
 
@@ -695,7 +715,7 @@ public final class Specialiser {
           }
           alternatives.add(new Alternative(match, from));
         }
-        return new AltBind(a.source(), value, slot, alternatives, group, node(a.body()));
+        return new AltBind(a.source(), value, a.tracking(), slot, alternatives, group, node(a.body()));
       }
     }
 

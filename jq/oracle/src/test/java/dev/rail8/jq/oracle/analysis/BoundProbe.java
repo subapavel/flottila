@@ -21,11 +21,13 @@ import dev.rail8.jq.query.ir.Label;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.Operation;
 import dev.rail8.jq.query.ir.ParamCall;
+import dev.rail8.jq.query.ir.PathOf;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Source;
 import dev.rail8.jq.query.ir.Try;
+import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
 import dev.rail8.jq.query.run.CallForm;
 import dev.rail8.jq.query.run.FilterException;
@@ -241,7 +243,7 @@ final class BoundProbe {
       case Var v -> v.slot();
       case Break b -> b.slot();
       // The kinds that name no slot; a ParamCall names a closure parameter, which is no slot.
-      case Identity _, Const _, Pipe _, Comma _, Intrinsic _, Collect _, If _, Alt _, Try _, Call _, ParamCall _ -> -1;
+      case Identity _, Const _, Pipe _, Comma _, Intrinsic _, Collect _, If _, Alt _, Try _, Call _, ParamCall _, PathOf _, Update _ -> -1;
     };
   }
 
@@ -294,6 +296,8 @@ final class BoundProbe {
         parts.addAll(c.values());
         yield parts;
       }
+      case PathOf p -> List.of(p.body());
+      case Update u -> List.of(u.lhs(), u.rhs());
     };
   }
 
@@ -320,8 +324,8 @@ final class BoundProbe {
       case Identity _, Const _, Var _, Break _, ParamCall _ -> node;
       case Pipe _ -> new Pipe(s, p.get(0), p.get(1));
       case Comma _ -> new Comma(s, p.get(0), p.get(1));
-      case Bind b -> new Bind(s, p.get(0), b.slot(), p.get(1));
-      case Binds b -> new Binds(s, p.subList(0, p.size() - 1), b.slots(), p.getLast());
+      case Bind b -> new Bind(s, p.get(0), b.tracking(), b.slot(), p.get(1));
+      case Binds b -> new Binds(s, p.subList(0, p.size() - 1), b.trackings(), b.slots(), p.getLast());
       case Intrinsic i -> new Intrinsic(s, i.op(), p);
       case Collect c -> new Collect(s, p.get(0), c.collector());
       case If i -> new If(s, p.get(0), p.get(1), p.get(2), i.truth());
@@ -331,7 +335,7 @@ final class BoundProbe {
         for (int k = 0; k < a.alternatives().size(); k++) {
           alternatives.add(new Alternative(p.get(1 + k), a.alternatives().get(k).from()));
         }
-        yield new AltBind(s, p.get(0), a.slot(), alternatives, a.slots(), p.getLast());
+        yield new AltBind(s, p.get(0), a.tracking(), a.slot(), alternatives, a.slots(), p.getLast());
       }
       case Try _ -> new Try(s, p.get(0), p.get(1));
       case Label l -> new Label(s, l.slot(), p.get(0));
@@ -339,6 +343,8 @@ final class BoundProbe {
       case Foreach f -> new Foreach(s, p.get(0), f.slot(), p.get(1));
       case Advance a -> new Advance(s, a.slot(), p.get(0));
       case Call c -> new Call(s, c.fn(), p.subList(0, c.closures().size()), p.subList(c.closures().size(), p.size()));
+      case PathOf o -> new PathOf(s, p.get(0), o.paths());
+      case Update u -> new Update(s, u.kind(), p.get(0), p.get(1), u.paths());
     };
   }
 }

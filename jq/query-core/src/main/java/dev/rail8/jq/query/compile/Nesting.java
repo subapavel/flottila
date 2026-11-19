@@ -19,10 +19,12 @@ import dev.rail8.jq.query.ir.Intrinsic;
 import dev.rail8.jq.query.ir.Label;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.ParamCall;
+import dev.rail8.jq.query.ir.PathOf;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Try;
+import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
 import dev.rail8.jq.query.analysis.CallGraph;
 import dev.rail8.jq.query.analysis.CallKinds;
@@ -285,6 +287,9 @@ public final class Nesting {
         Facts u = of(a.update());
         yield new Facts(u.emit() + 1 + SINK, none(u.leaf() + 1 + SINK), 1 + u.depth());
       }
+      // The interpreter has no push form for path mode, so no frames to count.
+      case PathOf p -> throw Compiler.noPathMode(p);
+      case Update u -> throw Compiler.noPathMode(u);
     };
   }
 
@@ -394,6 +399,8 @@ public final class Nesting {
       case Advance a -> List.of(new Place(a.update(), base + 1, SINK + rise));
       // Leaves: no part to place. An Intrinsic's arguments are atomic and hold no frame.
       case Identity _, Const _, Var _, Intrinsic _, Break _ -> List.of();
+      case PathOf p -> throw Compiler.noPathMode(p);
+      case Update u -> throw Compiler.noPathMode(u);
     };
   }
 

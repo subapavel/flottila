@@ -26,10 +26,12 @@ import dev.rail8.jq.query.ir.Intrinsic;
 import dev.rail8.jq.query.ir.Label;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.ParamCall;
+import dev.rail8.jq.query.ir.PathOf;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Source;
 import dev.rail8.jq.query.ir.Try;
+import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
 import dev.rail8.jq.value.JqValue;
 import java.util.ArrayList;
@@ -203,6 +205,8 @@ final class ParseAssertions {
         yield "(call " + c.fn() + " " + closures + " " + arguments(c.values(), scope, met) + ")" + chars(c.source());
       }
       case ParamCall p -> "param " + p.param() + chars(p.source());
+      case PathOf p -> "path(" + shape(p.body(), scope, met) + ")";
+      case Update u -> "(" + shape(u.lhs(), scope, met) + (u.kind() == Update.Kind.MODIFY ? " |= " : " = ") + shape(u.rhs(), scope, met) + ")";
     };
   }
 
