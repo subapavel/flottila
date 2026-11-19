@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -105,19 +106,27 @@ class NodeJarIT {
     }
 
     /**
-     * The mapping module's admin services come with the mapping studio, which reads and writes JSON with Jackson. The node's class
-     * path holds the studio, and one Jackson: one {@code jackson-core} and one {@code jackson-databind}, which the studio and the
-     * node's other libraries share.
+     * The mapping module's admin services come with the mapping studio, which reads and writes JSON with Jackson 2. The node's
+     * class path holds the studio, and one Jackson 2: one jar of {@code com.fasterxml.jackson.core}'s core and one of its
+     * databind, which the studio and the node's other libraries share. Jackson 3, whose packages are {@code tools.jackson},
+     * is another library.
      */
     @Test
     void thePackagedJarsClassPathHoldsTheMappingStudioAndOneJackson() throws IOException {
+        Path jar = packagedJar();
         List<String> classPath;
-        try (JarFile file = new JarFile(packagedJar().toFile())) {
+        try (JarFile file = new JarFile(jar.toFile())) {
             classPath = List.of(file.getManifest().getMainAttributes().getValue(Attributes.Name.CLASS_PATH).trim().split("\\s+"));
         }
-        for (String artifact : List.of("rail8-mapping-studio", "jackson-core", "jackson-databind")) {
-            List<String> entries = classPath.stream().filter(e -> e.matches("lib/" + artifact + "-\\d[^/]*\\.jar")).toList();
-            assertEquals(1, entries.size(), "one " + artifact + " on the class path: " + classPath);
+        for (String type : List.of("dev/rail8/mapping/studio/Studio.class", "com/fasterxml/jackson/core/JsonFactory.class",
+                "com/fasterxml/jackson/databind/ObjectMapper.class")) {
+            List<String> holders = new ArrayList<>();
+            for (String entry : classPath) {
+                try (JarFile file = new JarFile(jar.resolveSibling(entry).toFile())) {
+                    if (file.getEntry(type) != null) holders.add(entry);
+                }
+            }
+            assertEquals(1, holders.size(), "one jar of the class path holds " + type + ": " + holders);
         }
     }
 
