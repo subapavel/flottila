@@ -12,8 +12,8 @@
 # against in RESULTS.md, D-037; unset → "host:<hostname>", which no baseline matches: set it on purpose,
 # e.g. BENCH_MACHINE="cloud VM, 4 vCPU" on the coordinator's VM), BENCH_SCENARIOS (batched — what runs, space-separated:
 # `batched` the BatchingWriter pair, the CI regression job's; the node bench (NodeBenchMain, P1-10a): `sync` keep and
-# metadata-only against the raw echo, `ack` the at-least-once 202 at c=1, c=8 and c=64, `worker` passthrough and xslt, each keep
-# and metadata-only, `at-most-once` keep and metadata-only (the 202s and the runs behind them; its 503s stand as the cpu scenario's do), `cpu` (FIX-108) the sync flow passthrough and xslt at c=1 and c=64, each with --cpu-sampling off, PT0.004S and
+# metadata-only against the raw echo, `ack` the at-least-once 202 at c=1, c=8 and c=64, `worker` passthrough, xslt and mapping (the
+# same ~100 KB invoice to the same partner invoice), each keep and metadata-only, `at-most-once` keep and metadata-only (the 202s and the runs behind them; its 503s stand as the cpu scenario's do), `cpu` (FIX-108) the sync flow passthrough and xslt at c=1 and c=64, each with --cpu-sampling off, PT0.004S and
 # PT0.002S one after the other, BENCH_CPU_ROUNDS (3) rounds, runs named node-cpu-<step>-c<c>-<sampling>-r<round>;
 # BENCH_MESSAGES / BENCH_WARMUP / BENCH_CONCURRENCY apply to every run but ack's and cpu's concurrency), BENCH_COMMIT_DELAY (unset —
 # the server's own: a commit_delay in µs, 0 to 100000; set server-wide with ALTER SYSTEM + pg_reload_conf() before the first
@@ -199,7 +199,7 @@ for scenario in $BENCH_SCENARIOS; do
       if [[ -n "$ack_suffix" ]]; then set_commit_delay "$BENCH_COMMIT_DELAY"; fi
       for c in 1 8 64; do run_node "node-ack-c$c$ack_suffix" --scenario ack --concurrency "$c"; done ;;
     worker)
-      for step in passthrough xslt; do
+      for step in passthrough xslt mapping; do
         for recording in keep metadata-only; do run_node "node-worker-$step-$recording" --scenario worker --step "$step" --recording "$recording"; done
       done ;;
     cpu)

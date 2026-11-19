@@ -1,0 +1,117 @@
+{
+  "description": "The node bench's invoice to the partner's: the stylesheet of the xslt step, drawn as a mapping.",
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/invoice.xsd"
+    ],
+    "fingerprint": "sha256:fa6ad7ad8e6784dae704946951b5b16640b6a98b24324ea4097177610d7fcdbc",
+    "root": {
+      "element": "Invoice"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/partner-invoice.xsd"
+    ],
+    "fingerprint": "sha256:a5acb8fdb141a16188c9ca9df6b5b95461941b7be7dff0dbf56e90e1db2118c6",
+    "root": {
+      "element": "PartnerInvoice"
+    }
+  },
+  "targetFieldMappings": {
+    "/PartnerInvoice/@number": {
+      "boxes": {
+        "S1": {
+          "field": "/Invoice/Id",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    },
+    "/PartnerInvoice/@currency": {
+      "boxes": {
+        "S2": {
+          "field": "/Invoice/Currency",
+          "kind": "source"
+        }
+      },
+      "id": "T2",
+      "result": "S2"
+    },
+    "/PartnerInvoice/Total": {
+      "boxes": {
+        "S3": {
+          "context": "/Invoice",
+          "field": "/Invoice/Lines/Line/Qty",
+          "kind": "source"
+        },
+        "S4": {
+          "context": "/Invoice",
+          "field": "/Invoice/Lines/Line/Price",
+          "kind": "source"
+        },
+        "F1": {
+          "fn": "multiply",
+          "inputs": [
+            "S3",
+            "S4"
+          ],
+          "kind": "function"
+        },
+        "F2": {
+          "fn": "sum",
+          "inputs": [
+            "F1"
+          ],
+          "kind": "function"
+        }
+      },
+      "id": "T3",
+      "result": "F2"
+    },
+    "/PartnerInvoice/Item": {
+      "boxes": {
+        "S5": {
+          "field": "/Invoice/Lines/Line",
+          "kind": "source"
+        }
+      },
+      "id": "T4",
+      "result": "S5"
+    },
+    "/PartnerInvoice/Item/@sku": {
+      "boxes": {
+        "S6": {
+          "field": "/Invoice/Lines/Line/Sku",
+          "kind": "source"
+        }
+      },
+      "id": "T5",
+      "result": "S6"
+    },
+    "/PartnerInvoice/Item/@amount": {
+      "boxes": {
+        "S7": {
+          "field": "/Invoice/Lines/Line/Qty",
+          "kind": "source"
+        },
+        "S8": {
+          "field": "/Invoice/Lines/Line/Price",
+          "kind": "source"
+        },
+        "F3": {
+          "fn": "multiply",
+          "inputs": [
+            "S7",
+            "S8"
+          ],
+          "kind": "function"
+        }
+      },
+      "id": "T6",
+      "result": "F3"
+    }
+  }
+}

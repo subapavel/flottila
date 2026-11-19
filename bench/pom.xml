@@ -36,6 +36,10 @@
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
+      <artifactId>rail8-step-mapping</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>dev.rail8</groupId>
       <!-- compile scope since P1-01: the tier benchmark streams a GeneratedReadStream body (the bench is a tool, never shipped) -->
       <artifactId>rail8-testkit</artifactId>
     </dependency>

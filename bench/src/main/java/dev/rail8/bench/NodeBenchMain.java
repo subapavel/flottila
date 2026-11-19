@@ -1,11 +1,13 @@
 package dev.rail8.bench;
 
+import dev.rail8.api.StepFactory;
 import dev.rail8.api.Timer;
 import dev.rail8.components.http.HttpComponent;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.time.VertxTimer;
+import dev.rail8.steps.mapping.MappingStepFactory;
 import dev.rail8.steps.xslt.SaxonXml;
 import dev.rail8.testkit.Ports;
 import io.vertx.core.Future;
@@ -28,6 +30,7 @@ import io.vertx.sqlclient.Row;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -36,6 +39,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -78,7 +82,8 @@ import java.util.zip.ZipOutputStream;
  *       {@code drainTailMs} (the last 202 → the last message recorded) and {@code commitsPerMessage} and
  *       {@code walSyncsPerMessage} as an ack record does.</li>
  * </ul>
- * The flow is {@code [xslt?, to partner]} ({@code --step}; xslt sends a ~100 KB generated invoice, passthrough a one-line one)
+ * The flow is {@code [xslt or mapping?, to partner]} ({@code --step}; xslt and mapping send a ~100 KB generated invoice and turn
+ * it into the same partner invoice, passthrough sends a one-line one)
  * under {@code --recording}. Its {@code maxInFlight} is {@code --max-in-flight}, by default {@code --concurrency} for
  * at-least-once (the ingress permit is back when the 202 is decided, and the worker runs at most that many items) and
  * {@value #SYNC_PERMITS_PER_CLIENT} times it for sync: a sync message holds its permit until its recording closed, after the
@@ -107,7 +112,7 @@ import java.util.zip.ZipOutputStream;
  * node's sessions commit durably whatever the database's default, and a node refuses off, D-061), truncates every table but
  * Flyway's history and, for {@code worker} only, installs the two triggers (any other run drops them). Arguments: BenchMain's
  * {@code --host --port --db --user --password --messages --warmup --concurrency --name --out --sync-commit --commit} plus
- * {@code --scenario sync|ack|worker} (required), {@code --recording keep|metadata-only} (keep), {@code --step passthrough|xslt}
+ * {@code --scenario sync|ack|worker} (required), {@code --recording keep|metadata-only} (keep), {@code --step passthrough|xslt|mapping}
  * (passthrough), {@code --max-in-flight} (a positive number), {@code --cpu-sampling off|<ISO-8601 period>} (off: the node's
  * {@code RAIL8_CPU_SAMPLING}, D-094, refused as the node refuses it). {@code --sync-commit} is on or off, and off is refused by the run; a {@code --db} whose name lacks "bench" is
  * refused before anything connects.
@@ -150,8 +155,8 @@ public final class NodeBenchMain {
     /** The flow's {@code recording.level} (FIX-124): none deploys {@code off}, all {@code all}; the CLI name is the lower-case name. */
     public enum RecordingLevel { NONE, ALL }
 
-    /** The flow's step before {@code to partner}. */
-    public enum Step { PASSTHROUGH, XSLT }
+    /** The flow's step before {@code to partner}: none, the stylesheet {@link #STYLESHEET}, or the mapping {@link #MAPPING_FILES} hold. */
+    public enum Step { PASSTHROUGH, XSLT, MAPPING }
 
     /**
      * The open loop of CORE-15 ({@code --rate}): {@code rate} requests per second after a linear {@code ramp} from 0, for
@@ -183,7 +188,7 @@ public final class NodeBenchMain {
 
     /** The flow's and the partner's max body. */
     static final long MAX_BODY_BYTES = 1024 * 1024;
-    /** The size the xslt step's generated invoice grows to. */
+    /** The size the generated invoice of the xslt and mapping steps grows to. */
     static final int XSLT_BODY_BYTES = 100_000;
     /** A sync flow's permits per client request in flight (see the class comment). */
     static final int SYNC_PERMITS_PER_CLIENT = 64;
@@ -223,6 +228,12 @@ public final class NodeBenchMain {
               </xsl:template>
             </xsl:stylesheet>
             """;
+
+    /**
+     * The mapping step's files, as the bench package holds them and as this class' resources under {@code mapping/} hold them: the
+     * mapping of the invoice to the partner's, the same target as {@link #STYLESHEET}, and the schemas of both.
+     */
+    static final List<String> MAPPING_FILES = List.of("flows/transform.mapping.json", "structures/invoice.xsd", "structures/partner-invoice.xsd");
 
     /** Run before the node starts, on a session of its own (ALTER DATABASE reaches new sessions only). */
     static final String PREPARE = """
@@ -427,7 +438,7 @@ public final class NodeBenchMain {
     }
 
     private static int report(Options o, Migrations.Result migrated, Vertx vertx, Pool pool, Path data) throws Exception {
-        Buffer body = invoice(o.step() == Step.XSLT ? XSLT_BODY_BYTES : 0);
+        Buffer body = invoice(o.step() == Step.PASSTHROUGH ? 0 : XSLT_BODY_BYTES);
         int in = freePort();
         AtomicLong receipts = new AtomicLong();
         HttpServer echo = echo(vertx, receipts);
@@ -436,7 +447,9 @@ public final class NodeBenchMain {
         Harness h = new Harness(o, vertx, pool, client, body, in, echo.actualPort(), config.journal().dir());
         SaxonXml xml = new SaxonXml();
         JsonObject measured;
-        Node node = Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())), xml.steps(),
+        List<StepFactory> steps = new ArrayList<>(xml.steps());
+        steps.add(new MappingStepFactory());
+        Node node = Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())), steps,
                 xml.languages());
         try {
             int admin = node.adminPort();
@@ -607,6 +620,7 @@ public final class NodeBenchMain {
                         .put("poolSize", o.concurrency()))));
         JsonArray steps = new JsonArray();
         if (o.step() == Step.XSLT) steps.add(new JsonObject().put("type", "xslt").put("name", "transform").put("stylesheet", "flows/transform.xsl"));
+        if (o.step() == Step.MAPPING) steps.add(new JsonObject().put("type", "mapping").put("name", "transform").put("mapping", "flows/transform.mapping.json"));
         steps.add(new JsonObject().put("type", "to").put("name", "partner").put("endpoint", "partner"));
         files.put("flows/bench.yaml", yaml(doc("flow").put("id", "bench").put("version", "0.1.0").put("from", new JsonObject().put("endpoint", "in"))
                 .put("delivery", new JsonObject().put("mode", switch (o.scenario()) {
@@ -619,6 +633,11 @@ public final class NodeBenchMain {
                 .put("limits", new JsonObject().put("maxBodyBytes", MAX_BODY_BYTES).put("maxInFlight", inFlight(o)))
                 .put("steps", steps)));
         files.put("flows/transform.xsl", STYLESHEET.getBytes(StandardCharsets.UTF_8));
+        for (String file : MAPPING_FILES) {
+            try (InputStream in = Objects.requireNonNull(NodeBenchMain.class.getResourceAsStream("mapping/" + file), file)) {
+                files.put(file, in.readAllBytes());
+            }
+        }
         return zip(files);
     }
 

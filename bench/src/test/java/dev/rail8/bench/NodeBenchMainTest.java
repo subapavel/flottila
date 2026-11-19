@@ -59,8 +59,9 @@ class NodeBenchMainTest {
                 "--host", "127.0.0.1", "--port", "1", "--scenario", "batch", "--messages", "1", "--warmup", "0"}));
         assertTrue(refused.getMessage().contains("batch"), refused.getMessage());
 
-        // --step passthrough|xslt, default passthrough
+        // --step passthrough|xslt|mapping, default passthrough
         assertEquals(NodeBenchMain.Step.XSLT, NodeBenchMain.options(new String[] {"--scenario", "worker", "--step", "xslt"}).step());
+        assertEquals(NodeBenchMain.Step.MAPPING, NodeBenchMain.options(new String[] {"--scenario", "worker", "--step", "mapping"}).step());
         assertEquals(NodeBenchMain.Step.PASSTHROUGH, NodeBenchMain.options(new String[] {"--scenario", "worker", "--step", "passthrough"}).step());
         assertEquals(NodeBenchMain.Step.PASSTHROUGH, defaults.step(), "the step defaults to passthrough");
         IllegalArgumentException step = assertThrows(IllegalArgumentException.class,
