@@ -275,11 +275,14 @@ export function mappingApi(options: MappingApiOptions) {
       case 'create': {
         const sent = await bodyOf(req);
         const id = memberOf(sent, 'id');
-        let folder = '';
-        const created = await operate('create', sent, async () => bundleFolder(root, (folder = await mappingFolder(root, id))), signal);
+        // The id and its folder are checked before the node is asked; a body that names no id is the node's to refuse.
+        const named = id === '' ? undefined : await mappingFolder(root, id);
+        const folder = async () => named ?? mappingFolder(root, id);
+        const created = await operate('create', sent, async () => bundleFolder(root, await folder()), signal);
         if (created.status !== 201) return created;
+        const into = join(await folder(), basename(id) + SUFFIX);
         return locked(async () => {
-          if (!(await writeNew(join(folder, basename(id) + SUFFIX), created.body))) {
+          if (!(await writeNew(into, created.body))) {
             throw new Problem(409, mappingProblem('mapping-exists'), 'Mapping exists', 'a mapping with this id exists');
           }
           return model(created, { location: `/api/mappings/${id}` });
@@ -287,7 +290,8 @@ export function mappingApi(options: MappingApiOptions) {
       }
       case 'structure': {
         const sent = await bodyOf(req);
-        return operate('structure', sent, async () => bundleFolder(root, await baseFolder(root, memberOf(sent, 'base'))), signal);
+        const at = await bundleFolder(root, await baseFolder(root, memberOf(sent, 'base')));
+        return operate('structure', sent, async () => at, signal);
       }
       default: {
         const at = await bundleFolder(root, await mappingFolder(root, route.id));

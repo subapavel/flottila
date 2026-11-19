@@ -3,7 +3,7 @@ import { link, lstat, readdir, readFile, realpath, rename, rm, stat, writeFile }
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { basename, dirname, join, relative, sep } from 'node:path';
 
-/** At most this many YAML files are looked at, this deep, and none longer than this. */
+/** At most this many files of the kind a walk looks for are looked at, this deep, and none longer than this is read. */
 export const MAX_FILES = 1000;
 const MAX_DEPTH = 16;
 export const MAX_FILE_BYTES = 1024 * 1024;
