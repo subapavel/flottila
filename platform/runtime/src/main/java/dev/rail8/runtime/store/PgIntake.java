@@ -68,7 +68,8 @@ import java.util.concurrent.locks.ReentrantLock;
  * naming the record's ref ({@link PgWorkQueue}) — or, for a body keyed by another message, copying the kept ref.
  * Its statements go in turns, a turn's statements sent together and the next turn sent only once every reply of this one
  * came: BEGIN alone; the rows — the records as one insert into messages and one
- * into message_keys, then each member's kept ref and item in call order (so one partition's items keep the call order); then,
+ * into message_keys, then each member's item and kept ref in call order (so one partition's items keep the call order) — the
+ * kept ref of a body keyed by another message before its item, which copies it; then,
  * after the {@code abandoned} check, COMMIT alone. A failed statement of a turn fails the turn with its own cause (the first
  * failed in the turn's order, never a later statement's aborted transaction) and the transaction rolls back.
  *
@@ -374,9 +375,10 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * The rows turn over the members: their records' inserts, then each one's kept ref — a body of this store, its flow keeping
-     * its input or the body {@link #shared} — and item, each sent before any reply; then the abandoned check on each. Fails with the
-     * first failed statement's cause in that order, or with the first member found abandoned.
+     * The rows turn over the members: their records' inserts, then each one's item and kept ref — a {@link #shared} body's kept ref
+     * before its item, which copies it; a record forced for a flow keeping its input kept after its item — each sent before any
+     * reply; then the abandoned check on each. Fails with the first failed statement's cause in that order, or with the first
+     * member found abandoned.
      */
     private Future<Void> writes(SqlClient tx, Group g) {
         List<Future<?>> replies = new ArrayList<>(2 + 2 * g.members.size());
@@ -388,8 +390,10 @@ public final class PgIntake implements Intake {
         replies.add(queue.lockKeys(tx, keys));   // the keys' locks before any keyed insert reads its key; none without a key
         replies.add(messages.insert(tx, g.members.stream().map(Member::ingress).toList()));
         for (Member m : g.members) {
-            if (m.durable() != null && (m.keepInput() || shared(m))) replies.add(m.durable().keepIn(tx));   // before the item that may copy it
+            boolean shared = shared(m);
+            if (shared) replies.add(m.durable().keepIn(tx));
             replies.add(enqueue(tx, m, g));
+            if (!shared && m.keepInput() && m.durable() != null && m.durable().ref() != null) replies.add(m.durable().keepIn(tx));
         }
         return Future.join(replies).compose(written -> {
             for (Member m : g.members) if (m.abandoned().isComplete()) return Future.failedFuture(abandoned(m));

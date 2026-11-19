@@ -293,6 +293,30 @@ class CalleeBodyIT {
     }
 
     @Test
+    void twoCalleesSavingOneLocalBodyAtOnceBothPointAtTheKeptRef() throws Exception {
+        BlobKey key = BlobKey.body("m-sync", 2);
+        Body body = settled(a.blobs.write(key, bytes(3_000, 10), JournalWorld.MAX)).result();
+        PgWire.Held commit = wire.holdNext(PgWire.query("COMMIT"));
+        Future<String> first = startHandOver(body, "m-callee-1");
+        commit.awaitReached();   // the first save's kept ref is written, its transaction not yet committed: the body is still local
+        Future<String> second = startHandOver(body, "m-callee-2");   // forces a record of its own
+        SegmentSweepIT.until(() -> count(db.pool(), "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'") > 0,
+                () -> "the second save waits for the first one's kept ref");
+
+        commit.release();
+
+        for (Future<String> save : List.of(first, second)) {
+            assertTrue(settled(save).succeeded(), "both saves succeed: " + (save.failed() ? causes(save.cause()) : ""));
+        }
+        JournalWorld.Ref kept = bodyRef(db.pool(), key);
+        assertNotNull(kept, "the first save kept a ref of the caller's key");
+        assertEquals(kept, workRef(db.pool(), "m-callee-1"), "the first callee's item points at the kept ref's place");
+        assertEquals(kept, workRef(db.pool(), "m-callee-2"), "and so does the second's, not at the record its own save forced");
+        assertEquals(1, refs(key), "one kept ref");
+        readable(a.restartedStore(), key, bytes(3_000, 10), "by key, with no location index");
+    }
+
+    @Test
     void aSavedBodyWhoseCommitReplyWasLostStaysOpenUntilItsOutcomeIsKnown() throws Exception {
         BlobKey key = BlobKey.body("m-sync", 2);
         Body body = settled(a.blobs.write(key, bytes(3_000, 9), JournalWorld.MAX)).result();
