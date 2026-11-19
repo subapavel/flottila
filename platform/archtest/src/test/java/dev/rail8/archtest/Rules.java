@@ -35,8 +35,10 @@ final class Rules {
     static final String SIM = "dev.rail8.sim..";
     /** The mapping engine under {@code mapping/}, every package of it. */
     static final String MAPPING_ENGINE = "dev.rail8.mapping..";
-    /** The engine's embedding API: the one package of the engine a platform module may use. */
+    /** The engine's embedding API: a package of the engine the mapping step may use. */
     static final String MAPPING_EMBED = "dev.rail8.mapping.embed";
+    /** The mapping studio, the browser's operations on bytes: the other package of the engine the mapping step may use. */
+    static final String MAPPING_STUDIO = "dev.rail8.mapping.studio";
     static final String MAPPING_STEP = "dev.rail8.steps.mapping..";
 
     /**
@@ -148,9 +150,11 @@ final class Rules {
             .should().dependOnClassesThat().resideInAPackage(MAPPING_ENGINE)
             .because("the mapping step is the only platform module that depends on the mapping engine");
 
-    static final ArchRule THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API = noClasses().that().resideInAPackage(MAPPING_STEP)
-            .should().dependOnClassesThat(resideInAPackage(MAPPING_ENGINE).and(DescribedPredicate.not(resideInAPackage(MAPPING_EMBED))))
-            .because("the mapping step reaches the engine through its embedding API, " + MAPPING_EMBED + ", and nothing else of it");
+    static final ArchRule THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API_AND_THE_STUDIO = noClasses().that().resideInAPackage(MAPPING_STEP)
+            .should().dependOnClassesThat(resideInAPackage(MAPPING_ENGINE)
+                    .and(DescribedPredicate.not(resideInAnyPackage(MAPPING_EMBED, MAPPING_STUDIO))))
+            .because("the mapping step reaches the engine through its embedding API, " + MAPPING_EMBED + ", and its studio, "
+                    + MAPPING_STUDIO + ", and nothing else of it");
 
     static final ArchRule ONLY_RUNTIME_TOUCHES_STORE_CLIENTS = noClasses().that().resideInAPackage("dev.rail8..")
             .and().resideOutsideOfPackage(RUNTIME)

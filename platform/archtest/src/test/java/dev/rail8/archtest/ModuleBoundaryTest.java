@@ -50,11 +50,14 @@ class ModuleBoundaryTest {
         }
     }
     @Test void onlyTheMappingStepDependsOnTheMappingEngine() { Rules.ONLY_THE_MAPPING_STEP_DEPENDS_ON_THE_MAPPING_ENGINE.check(tree); }
-    @Test void theMappingStepUsesOnlyTheEmbeddingApi() { Rules.THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API.check(tree); }
+    @Test void theMappingStepUsesOnlyTheEmbeddingApiAndTheStudio() {
+        Rules.THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API_AND_THE_STUDIO.check(tree);
+    }
 
     /** The two mapping rules check the step and the engine, not an empty set: both are on the archtest classpath. */
     @Test void theMappingStepAndTheEngineAreOnTheArchtestClasspath() {
-        for (String c : List.of("dev.rail8.steps.mapping.MappingStepFactory", "dev.rail8.mapping.embed.Mapping", "dev.rail8.mapping.api.EngineFacade")) {
+        for (String c : List.of("dev.rail8.steps.mapping.MappingStepFactory", "dev.rail8.mapping.embed.Mapping", "dev.rail8.mapping.studio.Studio",
+                "dev.rail8.mapping.api.EngineFacade")) {
             assertTrue(tree.contain(c), "the production tree holds " + c);
         }
     }

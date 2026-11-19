@@ -13,7 +13,7 @@
   <artifactId>rail8-step-mapping</artifactId>
   <packaging>jar</packaging>
   <name>Rail8 :: step :: mapping</name>
-  <description>mapping step on the engine under mapping/: one mapping file compiled per flow, run on each message's body.</description>
+  <description>mapping step on the engine under mapping/: one mapping file compiled per flow, run on each message's body; and the mapping studio's admin services.</description>
 
   <dependencies>
     <dependency>
@@ -23,6 +23,10 @@
     <dependency>
       <groupId>dev.rail8.mapping</groupId>
       <artifactId>rail8-mapping-embed</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>dev.rail8.mapping</groupId>
+      <artifactId>rail8-mapping-studio</artifactId>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
