@@ -1,0 +1,11 @@
+# Sync, called on /check: the partner's answer is its reply.
+schemaVersion: 1
+kind: flow
+id: check
+version: 0.1.0
+from: { endpoint: check-in }
+delivery: { mode: sync }
+recording: { level: all, payload: keep }
+limits: { maxBodyBytes: 1048576 }
+steps:
+  - { type: to, name: partner, endpoint: partner }

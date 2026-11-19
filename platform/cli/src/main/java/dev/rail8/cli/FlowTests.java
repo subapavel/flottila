@@ -8,6 +8,7 @@ import dev.rail8.api.Headers;
 import dev.rail8.api.Runtime;
 import dev.rail8.api.StepResources;
 import dev.rail8.api.Timer;
+import dev.rail8.components.direct.DirectComponent;
 import dev.rail8.components.mock.Behaviour;
 import dev.rail8.components.mock.MockComponent;
 import dev.rail8.core.dlq.InMemoryDlq;
@@ -48,7 +49,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.function.IntSupplier;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -60,17 +63,21 @@ import java.util.stream.Stream;
  *
  * <p>Then every {@code kind: test} document in path order, its cases in order, one at a time, each on a world of its own: a
  * fresh fake runtime (clock, timer, ids, blobs), one {@link MockComponent} per scheme, a plugin's included, bound to the document's
- * {@code mocks} — a case's entry for an endpoint replaces the document's whole — in-memory stores, and a node
+ * {@code mocks} — a case's entry for an endpoint replaces the document's whole —, the real {@code direct} component in front of
+ * the {@code direct} mock ({@link Calls}: a call to a flow of the package or of a dependency runs that flow, unless the case's
+ * mocks name its endpoint), in-memory stores, and a node
  * ({@link Deployments}) of environment {@code ci} over a temporary data directory, deleted after the case, to which the
  * dependencies' closure validate resolved is deployed leaves first, then the package, each as its deterministic zip
  * ({@link Deploy#zip}, built once). The case's {@code send} — the fixture's bytes and
- * its {@code headers} — is {@link MockComponent#ingest ingested} on the flow's from endpoint; a case without one is fed by that
+ * its {@code headers} — is {@link MockComponent#ingest ingested} on the flow's from endpoint, or, on a real {@code direct} one,
+ * {@linkplain Calls#ingest sent through a direct producer} as a caller at depth 0 would; a case without one is fed by that
  * endpoint's mock, whose {@code files} or {@code messages} its consumer polls from its start (the package's cross-check refuses
  * a case that neither sends nor is fed). The case settles on virtual time ({@link VirtualTime}: settled = the answer
  * complete — a fed case has none —, no file of the from endpoint {@linkplain MockComponent#undelivered undelivered} and no
- * work-queue row that can still run, on a quiet world: a stopped key's rows wait for an operator, who never comes in a test) and
- * its {@code expect} is evaluated ({@link Expectations}; {@code steps} and {@code keys}
- * read the first message the from endpoint delivered); then the node is closed, on virtual time too.
+ * work-queue row that can still run, of any flow the case's message reached, on a quiet world: a stopped key's rows wait for an
+ * operator, who never comes in a test) and its {@code expect} is evaluated ({@link Expectations}; {@code steps} and {@code keys}
+ * read the first message the from endpoint delivered; {@code sent}, {@code retries} and {@code dlq} count every flow's sends and
+ * rows, a real call between flows a send too); then the node is closed, on virtual time too.
  *
  * <p>The report, on stdout: {@code PASS|FAIL <flow>: <case> (flow time <d>)} per case, after a FAIL what failed, each on an
  * indented line — the failed keys ({@link Expectations}), or {@code did not settle: <what>}, {@code send refused: <why>} (the
@@ -96,6 +103,8 @@ final class FlowTests {
     private static final List<String> NOT_YET = List.of("recorded", "script");
     /** The answer of a case without a send, fed by its from endpoint's mock: there is none to wait for, and no Ack. */
     private static final Future<Ack> FED = Future.succeededFuture();
+    /** The scheme of calls between flows, which run for real in a test ({@link Calls}). */
+    private static final String DIRECT = "direct";
 
     private final Package pkg;
     private final Path root;
@@ -244,8 +253,10 @@ final class FlowTests {
         for (String endpoint : behaviours.fieldNames()) {
             mocks.get(scheme(endpoint)).bind(endpoint, Behaviour.from(behaviours.getJsonObject(endpoint).getMap(), root));
         }
+        Calls calls = mocks.containsKey(DIRECT) ? new Calls(new DirectComponent(rt.blobs(), rt.ids(), timer), mocks.get(DIRECT),
+                behaviours.fieldNames().stream().filter(endpoint -> scheme(endpoint).equals(DIRECT)).collect(Collectors.toSet()), rt.blobs(), rt.ids()) : null;
         String from = from(doc.flow());
-        MockComponent door = mocks.get(scheme(from));
+        Door door = calls != null && scheme(from).equals(DIRECT) ? calls : Door.of(mocks.get(scheme(from)));
         String sends = c.getString("send");
         byte[] send = sends == null ? null : Files.readAllBytes(root.resolve(sends));
         Map<String, String> headers = new LinkedHashMap<>();
@@ -256,6 +267,8 @@ final class FlowTests {
         InMemoryDlq dlq = new InMemoryDlq();
         InMemoryWorkQueue queue = new InMemoryWorkQueue(rt.clock(), dlq);   // a keyed message parks where an unkeyed one does
         Map<String, Component> components = new LinkedHashMap<>(mocks);
+        if (calls != null) components.put(DIRECT, calls);
+        IntSupplier sent = () -> sends(mocks.values(), calls).size();
         Path data = Files.createTempDirectory("rail8-test-");
         try {
             NodeConfig config = NodeConfig.from(Map.of("RAIL8_ENV", ENV, "RAIL8_NODE_ID", NODE_ID, "RAIL8_DATA_DIR", data.toString()))
@@ -268,7 +281,7 @@ final class FlowTests {
                 Future<Ack> answer = send == null ? FED : door.ingest(from, new Headers(headers), Buffer.buffer(send));
                 BooleanSupplier answered = done(answer);   // the answer's monitor stays out of the sampling: read through this only
                 VirtualTime.Outcome outcome = new VirtualTime(rt.clock(), rt.timer(),
-                        Quiescence.ofJvm(watched::inside, STEADY, world(watched, rt.clock(), door, from, mocks.values(), answered)), WALL_GUARD)
+                        Quiescence.ofJvm(watched::inside, STEADY, world(watched, rt.clock(), door, from, sent, answered)), WALL_GUARD)
                         .settle(() -> answered.getAsBoolean() && door.undelivered(from).isEmpty() && queue.moving() == 0);
                 if (!outcome.settled()) {
                     return Verdict.failed(outcome.flowTime(), "did not settle: " + outcome.reason() + " (answer complete: " + answered.getAsBoolean()
@@ -278,13 +291,14 @@ final class FlowTests {
                 if (answer.failed() && taken.isEmpty()) return Verdict.failed(outcome.flowTime(), "send refused: " + Cli.oneLine(answer.cause().getMessage()));
                 Optional<String> first = taken.stream().findFirst().map(Envelope::id);   // none: a feed whose glob matched no file
                 Expectations.Observed observed = new Expectations.Observed(first, answer.result(), answer.cause(), messages, dlq.size(),
-                        mocks.values().stream().flatMap(m -> m.sent().stream()).toList(), endpoint -> mocks.get(scheme(endpoint)).sentTo(endpoint), xpaths);
+                        sends(mocks.values(), calls), endpoint -> calls != null && scheme(endpoint).equals(DIRECT) ? calls.sentTo(endpoint)
+                        : mocks.get(scheme(endpoint)).sentTo(endpoint), xpaths);
                 List<String> failed = Expectations.failed(c.getJsonObject("expect"), observed);
                 return new Verdict(failed.isEmpty(), outcome.flowTime(), failed);
             } catch (DeployRefusedException refused) {
                 return Verdict.failed(Duration.ZERO, "deploy refused: " + Cli.oneLine(refused.getMessage()));
             } finally {
-                close(node, rt, watched, door, from, mocks.values());
+                close(node, rt, watched, door, from, sent);
             }
         } finally {
             deleteTree(data);
@@ -294,22 +308,54 @@ final class FlowTests {
     /**
      * The fingerprint of a case's world that {@link Quiescence} compares: the calls into {@code watched}'s timer, the moves of
      * {@code clock} from now on — every advance, a zero one too, starts the steady wait afresh — its instant, {@code door}'s
-     * deliveries on {@code from} and the files remaining there, each mock's sends and {@code done} (the case's answer, the node's
-     * close). It takes no monitor a virtual thread takes, as a store's size or a Vert.x future's {@code isComplete()} would: a
-     * thread blocked on one would leave its carrier unseen. The remaining files are read without one: the inbox's current
-     * immutable list through a volatile field, found by a {@code ConcurrentHashMap} get ({@link MockComponent#remaining}).
+     * deliveries on {@code from} and the files remaining there, the number of {@code sends} (every mock's, and the real calls
+     * between flows) and {@code done} (the case's answer, the node's close). It takes no monitor a virtual thread takes, as a
+     * store's size or a Vert.x future's {@code isComplete()} would: a thread blocked on one would leave its carrier unseen. The
+     * remaining files are read without one: the inbox's current immutable list through a volatile field, found by a
+     * {@code ConcurrentHashMap} get ({@link MockComponent#remaining}).
      */
-    static Supplier<List<Object>> world(Watched watched, FakeClock clock, MockComponent door, String from, Collection<MockComponent> mocks,
-                                        BooleanSupplier done) {
+    static Supplier<List<Object>> world(Watched watched, FakeClock clock, Door door, String from, IntSupplier sends, BooleanSupplier done) {
         AtomicLong moves = new AtomicLong();
         clock.onChange(moves::incrementAndGet);
-        return () -> {
-            List<Object> seen = new ArrayList<>(List.of(watched.calls(), moves.get(), clock.instant(), door.delivered(from).size(),
-                    door.remaining(from).size()));
-            mocks.forEach(m -> seen.add(m.sent().size()));
-            seen.add(done.getAsBoolean());
-            return seen;
-        };
+        return () -> List.of(watched.calls(), moves.get(), clock.instant(), door.delivered(from).size(), door.remaining(from).size(),
+                sends.getAsInt(), done.getAsBoolean());
+    }
+
+    /** Every send of the case: each mock's, in each mock's order, then the real calls between flows ({@code calls}, if any). */
+    private static List<Envelope> sends(Collection<MockComponent> mocks, Calls calls) {
+        Stream<Envelope> called = calls == null ? Stream.empty() : calls.sent().stream();
+        return Stream.concat(mocks.stream().flatMap(m -> m.sent().stream()), called).toList();
+    }
+
+    /**
+     * Where a case's message comes in, on its from endpoint: the endpoint's mock ({@link #of}) or a real {@code direct} endpoint
+     * ({@link Calls}). Each read takes no lock.
+     */
+    interface Door {
+        /** Hands the case's send to the consumer on {@code endpoint}; its answer. */
+        Future<Ack> ingest(String endpoint, Headers headers, Buffer bytes);
+
+        /** What the handler of the consumer on {@code endpoint} was given, in order. */
+        List<Envelope> delivered(String endpoint);
+
+        /** The files on {@code endpoint} still to be delivered ({@link MockComponent#undelivered}). */
+        Collection<String> undelivered(String endpoint);
+
+        /** The files still on {@code endpoint} ({@link MockComponent#remaining}). */
+        Collection<String> remaining(String endpoint);
+
+        /** {@code mock}'s endpoints. */
+        static Door of(MockComponent mock) {
+            return new Door() {
+                @Override public Future<Ack> ingest(String endpoint, Headers headers, Buffer bytes) { return mock.ingest(endpoint, headers, bytes); }
+
+                @Override public List<Envelope> delivered(String endpoint) { return mock.delivered(endpoint); }
+
+                @Override public Collection<String> undelivered(String endpoint) { return mock.undelivered(endpoint); }
+
+                @Override public Collection<String> remaining(String endpoint) { return mock.remaining(endpoint); }
+            };
+        }
     }
 
     /**
@@ -328,9 +374,9 @@ final class FlowTests {
      * that did not stop within the deadline when the case did not settle, a close still waiting at the wall guard — changes
      * nothing of it.
      */
-    private static void close(Deployments node, FakeRuntime rt, Watched watched, MockComponent door, String from, Collection<MockComponent> mocks) {
+    private static void close(Deployments node, FakeRuntime rt, Watched watched, Door door, String from, IntSupplier sends) {
         CompletableFuture<Void> closed = CompletableFuture.runAsync(node::close, task -> Thread.ofVirtual().name("rail8-test-close").start(task));
-        new VirtualTime(rt.clock(), rt.timer(), Quiescence.ofJvm(watched::inside, STEADY, world(watched, rt.clock(), door, from, mocks, closed::isDone)),
+        new VirtualTime(rt.clock(), rt.timer(), Quiescence.ofJvm(watched::inside, STEADY, world(watched, rt.clock(), door, from, sends, closed::isDone)),
                 WALL_GUARD).settle(closed::isDone);
     }
 

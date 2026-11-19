@@ -1,0 +1,7 @@
+schemaVersion: 1
+kind: endpoint
+id: archive-in
+scheme: direct
+direction: in
+config:
+  address: /archive

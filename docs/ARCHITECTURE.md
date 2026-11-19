@@ -399,9 +399,11 @@ CPI). A call needs no network, and the body is not copied on its way in. The moc
 - **Storage.** For a body whose key names another message, the save writes the body's kept
   reference in the same transaction. Retention keeps that reference while any work row points at the
   same place in the journal.
-
-**Planned**
-- **Tests.** `rail8 test` runs the flows a package calls, as well as the flow under test.
+- **Tests.** `rail8 test` runs the real `direct` component, so a call runs the flow of the package
+  or of a dependency that serves the address. `sent`, `retries`, `dlq` and the wait for the work
+  queue count every flow the case's message reached, and a real call counts as a send. A case's
+  mock may stand in for a `direct` endpoint like any other. A test of a flow fed by `direct` sends
+  its fixture through a `direct` producer, as a caller at depth 0 would.
 
 ### The command line
 

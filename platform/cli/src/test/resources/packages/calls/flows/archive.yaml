@@ -1,0 +1,14 @@
+# At-least-once, called on /archive: the caller goes on once the arrival is saved; a worker sends it to the archive.
+schemaVersion: 1
+kind: flow
+id: archive
+version: 0.1.0
+from: { endpoint: archive-in }
+delivery:
+  mode: at-least-once
+  retries: { count: 1, interval: 1s }
+recording: { level: all, payload: keep }
+limits: { maxBodyBytes: 1048576 }
+retry: { attempts: 3, initial: 100ms, max: 2s }
+steps:
+  - { type: to, name: archive, retryable: true, endpoint: archive }

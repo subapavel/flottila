@@ -33,10 +33,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <ul>
  *   <li>{@code FlowTests.Watched} — {@code new Watched()}, {@code Timer timer(Timer)} (the case's timer, its schedules and
  *       cancels counted as they return), {@code int inside()} (the threads inside one of those calls);</li>
- *   <li>{@code static Supplier<List<Object>> FlowTests.world(Watched watched, FakeClock clock, MockComponent door, String from,
- *       Collection<MockComponent> mocks, BooleanSupplier done)} — the fingerprint {@code play} hands to {@link Quiescence}: the
+ *   <li>{@code static Supplier<List<Object>> FlowTests.world(Watched watched, FakeClock clock, Door door, String from,
+ *       IntSupplier sends, BooleanSupplier done)} — the fingerprint {@code play} hands to {@link Quiescence}: the
  *       watched calls, the clock's moves (counted from here on, {@code clock.onChange}), its instant, the door's deliveries on
- *       {@code from}, each mock's sends, and {@code done} (the case's answer in {@code play}, the node's close in {@code close});</li>
+ *       {@code from}, the number of sends, and {@code done} (the case's answer in {@code play}, the node's close in {@code close});</li>
  *   <li>{@code static BooleanSupplier FlowTests.done(Future<?> future)} — whether {@code future} has completed (succeeded or
  *       failed), read without taking its monitor: a flag a listener registered at this call sets. {@code play} reads the
  *       answer through it only, in the fingerprint and in the settle check.</li>
@@ -49,7 +49,7 @@ class FlowTestsWorldTest {
     private final FlowTests.Watched watched = new FlowTests.Watched();
     private final Timer timer = watched.timer(rt.timer());
     private final MockComponent door = new MockComponent("http", rt.blobs(), timer, rt.ids());
-    private final Supplier<List<Object>> world = FlowTests.world(watched, rt.clock(), door, "in", List.of(door), () -> false);
+    private final Supplier<List<Object>> world = FlowTests.world(watched, rt.clock(), FlowTests.Door.of(door), "in", () -> door.sent().size(), () -> false);
 
     /** Nothing happens: two reads are equal (the cases below see a change, not a fingerprint that differs on every read). */
     @Test
@@ -130,7 +130,7 @@ class FlowTestsWorldTest {
         Promise<Ack> promise = Promise.promise();
         Future<Ack> answer = promise.future();
         BooleanSupplier done = FlowTests.done(answer);
-        Supplier<List<Object>> answered = FlowTests.world(watched, rt.clock(), door, "in", List.of(door), done);
+        Supplier<List<Object>> answered = FlowTests.world(watched, rt.clock(), FlowTests.Door.of(door), "in", () -> door.sent().size(), done);
         List<Object> before = answered.get();
         CountDownLatch holding = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);

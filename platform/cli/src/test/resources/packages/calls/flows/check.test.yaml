@@ -1,0 +1,13 @@
+# A flow fed by direct: the fixture is sent through a direct producer, as a caller at depth 0 would.
+schemaVersion: 1
+kind: test
+flow: check
+mocks:
+  partner: { reply: fixtures/ack.xml }
+cases:
+  - name: called
+    send: fixtures/order.xml
+    expect:
+      steps: 2
+      sent:
+        partner: { count: 1, contains: "<Id>42</Id>" }

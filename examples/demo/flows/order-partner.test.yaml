@@ -1,0 +1,13 @@
+# order-partner is fed by direct: the order is sent to it as a calling flow would send it.
+schemaVersion: 1
+kind: test
+flow: order-partner
+mocks:
+  partner-domestic: { reply: fixtures/partner-ack.xml }
+cases:
+  - name: order sent on
+    send: fixtures/sample-order.json
+    expect:
+      steps: 2
+      sent:
+        partner-domestic: { count: 1, contains: '"id":42' }

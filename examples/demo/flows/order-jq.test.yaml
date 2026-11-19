@@ -1,3 +1,4 @@
+# The call of order-partner runs for real: what it sends to the partner is this case's.
 schemaVersion: 1
 kind: test
 flow: order-jq

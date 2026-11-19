@@ -38,8 +38,8 @@ class DemoPackageTest {
     void theFlowReferencesOnlyEndpointsThatExistAndTheTestOnlyFixturesThatExist() throws IOException {
         Package pkg = Package.load(DEMO);
         assertEquals("demo", pkg.name());
-        assertEquals(Set.of("http-in", "http-in-async", "http-in-order", "sftp-inbox", "partner-domestic", "partner-foreign"), pkg.endpointIds());
-        assertEquals(Set.of("invoice-sync", "invoice-async", "sftp-invoice", "order-jq"), Set.copyOf(pkg.flowIds()));
+        assertEquals(Set.of("http-in", "http-in-async", "http-in-order", "order-partner-call", "order-partner-in", "sftp-inbox", "partner-domestic", "partner-foreign"), pkg.endpointIds());
+        assertEquals(Set.of("invoice-sync", "invoice-async", "sftp-invoice", "order-jq", "order-partner"), Set.copyOf(pkg.flowIds()));
         List<String> problems = pkg.crossCheck();
         assertTrue(problems.isEmpty(), String.join("\n", problems));
     }

@@ -1,0 +1,13 @@
+# Sync: keys the order, has check answer it and hands check's answer to archive.
+schemaVersion: 1
+kind: flow
+id: order
+version: 0.1.0
+from: { endpoint: in-order }
+delivery: { mode: sync }
+recording: { level: all, payload: keep }
+limits: { maxBodyBytes: 1048576 }
+steps:
+  - { type: extractKey, name: orderId, key: orderId, xpath: /Order/Id }
+  - { type: to, name: check, endpoint: call-check }
+  - { type: to, name: archive, endpoint: call-archive }

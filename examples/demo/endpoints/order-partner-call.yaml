@@ -1,0 +1,8 @@
+# order-jq's call of order-partner: a call between flows of this node, no network.
+schemaVersion: 1
+kind: endpoint
+id: order-partner-call
+scheme: direct
+direction: out
+config:
+  address: /orders/partner

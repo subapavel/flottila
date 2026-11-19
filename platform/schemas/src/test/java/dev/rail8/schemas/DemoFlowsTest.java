@@ -81,10 +81,10 @@ class DemoFlowsTest {
     @Test
     void theFlowsLoadAndTheWholePackageIsValid() throws IOException {
         Package pkg = demo();
-        assertEquals(Set.of("invoice-sync", "invoice-async", "sftp-invoice", "order-jq"), Set.copyOf(pkg.flowIds()));
-        assertEquals(Set.of("http-in", "http-in-async", "http-in-order", "sftp-inbox", "partner-domestic", "partner-foreign"), pkg.endpointIds());
+        assertEquals(Set.of("invoice-sync", "invoice-async", "sftp-invoice", "order-jq", "order-partner"), Set.copyOf(pkg.flowIds()));
+        assertEquals(Set.of("http-in", "http-in-async", "http-in-order", "order-partner-call", "order-partner-in", "sftp-inbox", "partner-domestic", "partner-foreign"), pkg.endpointIds());
         assertEquals(List.of(), pkg.problems(), "every document is valid against its schema and the package is consistent across files");
-        for (String id : List.of("invoice-sync", "invoice-async", "sftp-invoice", "order-jq")) {
+        for (String id : List.of("invoice-sync", "invoice-async", "sftp-invoice", "order-jq", "order-partner")) {
             assertTrue(Schemas.forKind("flow").validate(flow(id)).valid(), id + " is valid against the flow schema");
         }
     }
