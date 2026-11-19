@@ -1,0 +1,50 @@
+=== add a validate step first
+{"op":"add","path":["steps",0],"value":{"type":"validate","name":"validate-2","required":"Amount > 0"}}
+@@ line 9
++  - type: validate
++    name: validate-2
++    required: Amount > 0
+
+=== add a to step last
+{"op":"add","path":["steps",4],"value":{"type":"to","name":"to-2","endpoint":"partner-domestic"}}
+@@ line 19
++  - type: to
++    name: to-2
++    endpoint: partner-domestic
+
+=== delete the first step
+{"op":"remove","path":["steps",0]}
+refused: steps[0] holds an anchor (&check), which the editor does not change
+
+=== move the last step first
+{"op":"move","from":["steps",3],"path":["steps",0]}
+@@ line 9
++  - type: to
++    endpoint: partner-domestic
+@@ line 17
+-  - type: to
+-    endpoint: partner-domestic
+
+=== move the first step last
+{"op":"move","from":["steps",0],"path":["steps",3]}
+refused: steps[0] holds an anchor (&check), which the editor does not change
+
+=== name the first step
+{"op":"replace","path":["steps",0,"name"],"value":"renamed"}
+refused: steps[0] holds an anchor (&check), which the editor does not change
+
+=== take the name of the first step
+{"op":"remove","path":["steps",0,"name"]}
+refused: steps[0] holds an anchor (&check), which the editor does not change
+
+=== record all of the first step
+{"op":"add","path":["steps",0,"recording"],"value":{"level":"all"}}
+refused: steps[0] holds an anchor (&check), which the editor does not change
+
+=== write a note of several lines on the first step
+{"op":"add","path":["steps",0,"note"],"value":"first line\nsecond line\n"}
+refused: steps[0] holds an anchor (&check), which the editor does not change
+
+=== write a note the node reads as true
+{"op":"add","path":["steps",0,"note"],"value":"yes"}
+refused: steps[0] holds an anchor (&check), which the editor does not change

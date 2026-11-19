@@ -1,0 +1,47 @@
+=== add a validate step first
+{"op":"add","path":["steps",0],"value":{"type":"validate","required":"Amount > 0"}}
+refused: steps holds a list written on one line ([ … ]), which the editor does not change
+
+=== add a to step last
+{"op":"add","path":["steps",2],"value":{"type":"to","name":"to-2","endpoint":"partner-domestic"}}
+refused: steps holds a list written on one line ([ … ]), which the editor does not change
+
+=== delete the first step
+{"op":"remove","path":["steps",0]}
+refused: steps holds a list written on one line ([ … ]), which the editor does not change
+
+=== move the last step first
+{"op":"move","from":["steps",1],"path":["steps",0]}
+refused: steps holds a list written on one line ([ … ]), which the editor does not change
+
+=== move the first step last
+{"op":"move","from":["steps",0],"path":["steps",1]}
+refused: steps holds a list written on one line ([ … ]), which the editor does not change
+
+=== name the first step
+{"op":"add","path":["steps",0,"name"],"value":"renamed"}
+refused: steps holds a list written on one line ([ … ]), which the editor does not change
+
+=== take the name of the first step
+unchanged
+
+=== record all of the first step
+{"op":"add","path":["steps",0,"recording"],"value":{"level":"all"}}
+refused: steps holds a list written on one line ([ … ]), which the editor does not change
+
+=== write a note of several lines on the first step
+{"op":"add","path":["steps",0,"note"],"value":"first line\nsecond line\n"}
+refused: steps holds a list written on one line ([ … ]), which the editor does not change
+
+=== write a note the node reads as true
+{"op":"add","path":["steps",0,"note"],"value":"yes"}
+refused: steps holds a list written on one line ([ … ]), which the editor does not change
+
+=== move the first step into the first process
+{"op":"move","from":["steps",0],"path":["processes","enrich","steps",0]}
+refused: steps holds a list written on one line ([ … ]), which the editor does not change
+
+=== add a step to the first process
+{"op":"add","path":["processes","enrich","steps",1],"value":{"type":"validate","required":"true()"}}
+@@ line 13
++      - { type: validate, required: true() }

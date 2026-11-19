@@ -1,0 +1,67 @@
+=== add a validate step first
+{"op":"add","path":["steps",0],"value":{"type":"validate","required":"Amount > 0"}}
+@@ line 10
++  - type: validate
++    required: Amount > 0
+
+=== add a to step last
+{"op":"add","path":["steps",5],"value":{"type":"to","name":"to-2","endpoint":"partner-domestic"}}
+@@ line 24
++  - type: to
++    name: to-2
++    endpoint: partner-domestic
+
+=== delete the first step
+{"op":"remove","path":["steps",0]}
+@@ line 10
+-  - type: xsd
+-    schema: flows/invoice.xsd
+-    strict: true
+
+=== move the last step first
+{"op":"move","from":["steps",4],"path":["steps",0]}
+@@ line 10
++  - type: to
++    endpoint: nowhere
++    note: kept
+@@ line 21
+-  - type: to
+-    endpoint: nowhere
+-    note: kept
+
+=== move the first step last
+{"op":"move","from":["steps",0],"path":["steps",4]}
+@@ line 10
+-  - type: xsd
+-    schema: flows/invoice.xsd
+-    strict: true
+@@ line 24
++  - type: xsd
++    schema: flows/invoice.xsd
++    strict: true
+
+=== name the first step
+{"op":"add","path":["steps",0,"name"],"value":"renamed"}
+@@ line 13
++    name: renamed
+
+=== take the name of the first step
+unchanged
+
+=== record all of the first step
+{"op":"add","path":["steps",0,"recording"],"value":{"level":"all"}}
+@@ line 13
++    recording:
++      level: all
+
+=== write a note of several lines on the first step
+{"op":"add","path":["steps",0,"note"],"value":"first line\nsecond line\n"}
+@@ line 13
++    note: |
++      first line
++      second line
+
+=== write a note the node reads as true
+{"op":"add","path":["steps",0,"note"],"value":"yes"}
+@@ line 13
++    note: "yes"

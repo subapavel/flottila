@@ -1,0 +1,52 @@
+=== add a validate step first
+{"op":"add","path":["steps",0],"value":{"type":"validate","required":"Amount > 0"}}
+@@ line 17
++  - type: validate
++    required: Amount > 0
+
+=== add a to step last
+{"op":"add","path":["steps",1],"value":{"type":"to","endpoint":"partner-domestic"}}
+@@ line 20
++  - type: to
++    endpoint: partner-domestic
+
+=== delete the first step
+{"op":"remove","path":["steps",0]}
+refused: steps keeps at least one step
+
+=== move the last step first
+{"op":"move","from":["steps",0],"path":["steps",0]}
+unchanged
+
+=== move the first step last
+{"op":"move","from":["steps",0],"path":["steps",0]}
+unchanged
+
+=== name the first step
+{"op":"replace","path":["steps",0,"name"],"value":"renamed"}
+@@ line 18
+-    name: partner
++    name: renamed
+
+=== take the name of the first step
+{"op":"remove","path":["steps",0,"name"]}
+@@ line 18
+-    name: partner
+
+=== record all of the first step
+{"op":"add","path":["steps",0,"recording"],"value":{"level":"all"}}
+@@ line 20
++    recording:
++      level: all
+
+=== write a note of several lines on the first step
+{"op":"add","path":["steps",0,"note"],"value":"first line\nsecond line\n"}
+@@ line 20
++    note: |
++      first line
++      second line
+
+=== write a note the node reads as true
+{"op":"add","path":["steps",0,"note"],"value":"yes"}
+@@ line 20
++    note: "yes"
