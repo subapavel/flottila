@@ -408,6 +408,11 @@ editor can break, as it meets them while it draws:
 - **Settings.** Each step's settings are checked against its description, as the endpoint form checks
   an endpoint's.
 
+The rules of names and processes repeat the node's own. One file of cases, each a flow and the problems
+it must give, is run by the node's test and by `view`'s test, so the two cannot drift apart silently, as
+the endpoint form's checks share their cases with the node today. The built-in types' keys are checked
+against the flow schema.
+
 The flow's own settings cannot be edited before the stage "the rest", whose form checks them in the same
 way. The browser repeats no other rule of the node: the reserved prefix `rail8.`, the 1,024 steps of an
 expanded flow, and the rules of `delivery`, `limits` and `retry` are left to `rail8 validate` and the
@@ -514,7 +519,8 @@ listed. It is behind the same browser rule and token as every other `/admin` rou
 - **`view`.** A golden view per file, positions included, which also shows that the same text gives the
   same picture.
 - **Steps inside a step.** A made-up branching type, drawn and edited, as "Steps inside a step" says.
-- **Problems.** For each awkward file, the problems it must give, each with its path.
+- **Problems.** For each awkward file, the problems it must give, each with its path. The shared file
+  of cases for the rules of names and processes, run by the node's test and by `view`'s.
 - **The development server.** Tested on a temporary folder, as the endpoint files' server is.
 - **The screen.** Tested against a fake `FlowsApi` that keeps texts in memory with a counter as
   `ETag`, and answers 412 and 403 as the server does.
@@ -540,7 +546,7 @@ listed. It is behind the same browser rule and token as every other `/admin` rou
    - The routes `GET /files/flows` and `GET /files/flows/<path>`, and the context.
    - `GET /admin/steps` on the node.
    - `view`, walking every list of steps by its path, with every node kind, lane and fork above.
-   - The problems `view` finds in the whole flow.
+   - The problems `view` finds in the whole flow, and the file of cases it shares with the node.
    - The canvas, and the settings panel read-only, endpoints and the flow's own settings included.
 2. **A straight flow.**
    - `edit` and `follow` for adding, deleting and moving a step in a list, and for the keys of a step,
