@@ -571,7 +571,7 @@ class LeasedConsumerTest {
     }
 
     /**
-     * A consumer whose start fails is stopped, and once that stop settled the lease is released (review r1, as Deployments does
+     * A consumer whose start fails is stopped, and once that stop settled the lease is released (as Deployments does
      * with a consumer that did not start); then the instance breaks with the start's cause and asks for no further tick: the node
      * starts a fresh instance after its delay.
      */
@@ -920,7 +920,7 @@ class LeasedConsumerTest {
     }
 
     /**
-     * R11: held, lost (c1 stopped), held again — and the component refuses to build a fresh consumer. That is a failed start (the
+     * Held, lost (c1 stopped), held again — and the component refuses to build a fresh consumer. That is a failed start (the
      * lease released, the instance broken with the refusal), not a tick that dies holding it.
      */
     @Test

@@ -50,6 +50,8 @@ class RestartingConsumerTest {
     final List<Inner> built = new CopyOnWriteArrayList<>();
     final List<String> log = new CopyOnWriteArrayList<>();
     final AtomicInteger refusals = new AtomicInteger();
+    /** What the next builds do instead of building an inner consumer, in order: throw, or answer null. */
+    final java.util.concurrent.ConcurrentLinkedQueue<Supplier<Consumer>> builds = new java.util.concurrent.ConcurrentLinkedQueue<>();
     final List<LogRecord> logged = new CopyOnWriteArrayList<>();
     /** Strongly held: JUL keeps loggers weakly, and a collected logger loses its handler. */
     final Logger rail8 = Logger.getLogger("dev.rail8");
@@ -59,6 +61,8 @@ class RestartingConsumerTest {
         @Override public void close() {}
     };
     final Supplier<Consumer> fresh = () -> {
+        Supplier<Consumer> instead = builds.poll();
+        if (instead != null) return instead.get();
         if (refusals.getAndUpdate(n -> Math.max(0, n - 1)) > 0) throw new IllegalArgumentException("the component refused the consumer");
         return inner();
     };
@@ -86,7 +90,7 @@ class RestartingConsumerTest {
     /**
      * An inner consumer, {@code c<n>}: its start succeeds unless {@link #failStart} or {@link #holdStart} was set, its stop
      * completes unless {@link #holdStop} was set, and {@link #breakNow} fails its {@code broken()}. Its start, failed start,
-     * stop and settled stop go to the case's log.
+     * stop and settled stop go to the case's log; {@link #onStop} runs at the top of its stop.
      */
     final class Inner implements Consumer {
         final int n;
@@ -95,6 +99,7 @@ class RestartingConsumerTest {
         volatile Promise<Void> heldStart;
         volatile Promise<Void> heldStop;
         volatile boolean breakInsideStart;
+        volatile Runnable onStop;
         final AtomicInteger starts = new AtomicInteger();
         final AtomicInteger stops = new AtomicInteger();
         /** The thread its start was called on. */
@@ -133,6 +138,8 @@ class RestartingConsumerTest {
         @Override public Future<Void> stop() {
             stops.incrementAndGet();
             log.add("stop c" + n);
+            Runnable hook = onStop;
+            if (hook != null) hook.run();
             Promise<Void> held = heldStop;
             return (held == null ? Future.<Void>succeededFuture() : held.future()).andThen(done -> log.add("stopped c" + n));
         }
@@ -273,6 +280,7 @@ class RestartingConsumerTest {
             startedAttempt(i + 2);
         }
         runs(8);
+        until(() -> !logged(Level.INFO).isEmpty(), "the INFO, written once it runs");
         assertEquals(1, logged(Level.INFO).size(), "one INFO when it runs again: " + logged);
         assertTrue(logged(Level.INFO).getFirst().getMessage().contains("after 7 failures in a row"), logged(Level.INFO).getFirst().getMessage());
         for (int n = 1; n < 8; n++) assertEquals(1, c(n).stops.get(), "c" + n + ", whose start failed, was stopped once");
@@ -294,6 +302,7 @@ class RestartingConsumerTest {
         assertTrue(warning.getMessage().contains("did not start") && warning.getMessage().contains("partner down")
                 && warning.getMessage().contains("PT1S") && warning.getMessage().contains("failure 1"), warning.getMessage());
         assertTrue(warning.getThrown() != null, "with the cause's stack trace");
+        until(() -> !logged(Level.FINE).isEmpty(), "the DEBUG, written once the second failure is counted");
         assertEquals(1, logged(Level.FINE).size(), "the second failure is DEBUG: " + logged);
     }
 
@@ -310,6 +319,27 @@ class RestartingConsumerTest {
         assertEquals("the component refused the consumer", restarting.waiting().get().cause().getMessage());
         clock.advance(Duration.ofSeconds(2));
         runs(2);
+    }
+
+    @Test
+    void aConsumerBuiltWithAnErrorOrAsNullIsAFailedAttempt() {
+        Inner c1 = inner().failStart("partner down");
+        builds.add(() -> { throw new NoClassDefFoundError("dev/partner/Client"); });
+        builds.add(() -> null);
+        Future<Void> start = restarting(c1, false).start();
+        until(start::isComplete, "the first attempt failed");
+        restarting.retry(start.cause());
+        waitsFor(Duration.ofSeconds(1), 1);
+        clock.advance(Duration.ofSeconds(1));
+        waitsFor(Duration.ofSeconds(2), 2);
+        assertInstanceOf(NoClassDefFoundError.class, restarting.waiting().get().cause(), "an Error of the build fails the attempt");
+        clock.advance(Duration.ofSeconds(2));
+        waitsFor(Duration.ofSeconds(4), 3);
+        assertInstanceOf(NullPointerException.class, restarting.waiting().get().cause(), "a build that answers null fails the attempt");
+        clock.advance(Duration.ofSeconds(4));
+        runs(2);
+        Future<Void> stop = restarting.stop();
+        until(stop::isComplete, "the stop completes: no attempt is left hanging");
     }
 
     @Test
@@ -435,6 +465,21 @@ class RestartingConsumerTest {
         assertFalse(stop.isComplete(), "the broken consumer's stop has not settled");
         c1.heldStop.complete();
         until(stop::isComplete, "completes once it did");
+    }
+
+    @Test
+    void aStopThatComesAsABrokenConsumerIsGivenUpWaitsForItsStop() {
+        Inner c1 = inner().holdStop();
+        java.util.concurrent.atomic.AtomicReference<Future<Void>> stop = new java.util.concurrent.atomic.AtomicReference<>();
+        c1.onStop = () -> stop.set(restarting.stop());   // the node's stop, called just as the broken c1 is stopped
+        Future<Void> start = restarting(c1, false).start();
+        until(start::isComplete, "it runs");
+        c1.breakNow("dropped");
+        until(() -> stop.get() != null, "the stop came as c1 was given up; log " + log);
+        assertFalse(stop.get().isComplete(), "the broken consumer's stop has not settled");
+        c1.heldStop.complete();
+        until(stop.get()::isComplete, "completes once it did");
+        assertEquals(0, timer.pending(), "no attempt after the stop");
     }
 
     // --- never two at once

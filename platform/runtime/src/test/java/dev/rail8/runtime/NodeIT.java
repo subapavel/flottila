@@ -1188,23 +1188,21 @@ class NodeIT {
 
     /**
      * The {@code deployments} health check: UP while every package and flow runs; DOWN — /health 503, the other checks UP, the
-     * wire showing the status only, never a name — while a restored flow's consumer cannot be built, and while a package could
-     * not be restored (its archive gone); UP again once a PUT of that package ran it.
+     * wire showing the status only, never a name — while a flow is FAILED (a redeploy's rollback could not build it again), and
+     * while a package could not be restored (its archive gone); UP again once a PUT of that package ran it.
      */
     @Test
     void healthIsDownWhileAFlowOrPackageIsFailed() throws Exception {
         byte[] shop = doorsPackage("shop", "a", "b").zip();
         byte[] store = doorsPackage("store", "c").zip();
-        node = startWith(env("ci"), new Doors());
+        Doors doors = new Doors();
+        node = startWith(env("ci"), doors);
         putOk(node.adminPort(), "shop", shop);
         putOk(node.adminPort(), "store", store);
         JsonObject up = health(node.adminPort(), 200);
         assertEquals("UP", up.getJsonObject("checks").getString("deployments"), "the node reports a deployments check, UP while everything runs: " + up.encode());
-        closeNode(node);
-        node = null;
 
-        node = startWith(env("ci"), unbuildable("shop/b"));
-        assertEquals("FAILED", itemOf(listed(node.adminPort(), "flows", "id"), "shop/b", "restored with b failed").getString("state"), "fixture: b could not be built on restore");
+        failB(doors, node.adminPort());
         JsonObject flowDown = health(node.adminPort(), 503);
         assertEquals("DOWN", flowDown.getString("status"), flowDown.encode());
         assertEquals("DOWN", flowDown.getJsonObject("checks").getString("deployments"), "a FAILED flow: " + flowDown.encode());
@@ -2342,15 +2340,16 @@ class NodeIT {
     }
 
     /**
-     * R2 deployments: a node restored with a FAILED flow — its consumer cannot be built — is not ready — /ready 503 naming
-     * deployments DOWN — and live.
+     * R2 deployments: a node with a FAILED flow — a redeploy's rollback could not build it again — is not ready — /ready 503
+     * naming deployments DOWN — and live.
      */
     @Test
     void failedFlowNodeIsNotReady() throws Exception {
-        deployedAndClosed(Map.of("shop", doorsPackage("shop", "a", "b").zip()));
-        node = startWith(env("ci"), unbuildable("shop/b"));
+        Doors doors = new Doors();
+        node = startWith(env("ci"), doors);
         int port = node.adminPort();
-        assertEquals("FAILED", itemOf(listed(port, "flows", "id"), "shop/b", "restored with b failed").getString("state"), "fixture: b could not be built on restore");
+        putOk(port, "shop", doorsPackage("shop", "a", "b").zip());
+        failB(doors, port);
 
         assertEquals(readyBody("DOWN", "deployments"), answer(port, "/ready", 503), "a FAILED flow: not ready, deployments named");
         assertEquals(LIVE, answer(port, "/live", 200), "a node with a FAILED flow is still live");
@@ -2378,13 +2377,22 @@ class NodeIT {
         assertEquals("DEGRADED", degraded.getJsonObject("checks").getString("deployments"), "a RESTARTING flow: " + degraded.encode());
     }
 
-    /** A component whose consumer of {@code flow} cannot be built: the flow is listed FAILED. */
-    static Doors unbuildable(String flow) {
-        Doors doors = new Doors();
-        doors.onConsumer(cfg -> {
-            if (flow.equals(cfg.options().get("flow"))) throw new IllegalArgumentException(flow + " cannot be built");
+    /**
+     * Makes shop/b FAILED on the node at {@code admin}, which runs shop with flows a and b on {@code doors}: a redeploy changes b,
+     * whose start fails, and its rollback cannot build the b before again. The PUT answers 500.
+     */
+    static void failB(Doors doors, int admin) throws Exception {
+        doors.failStartOf("shop/b", "address in use");
+        AtomicInteger builds = new AtomicInteger();
+        doors.onConsumer(cfg -> {   // the second: the redeploy builds the first
+            if ("shop/b".equals(cfg.options().get("flow")) && builds.incrementAndGet() == 2) throw new IllegalArgumentException("shop/b cannot be built again");
         });
-        return doors;
+        byte[] changed = doorsPackage("shop", "a", "b").flow("b", "2.0.0", "sync", "b-in", 1024, PackageDraft.toPartner()).zip();
+        try (HttpClient client = http()) {
+            HttpResponse<String> put = send(client, "PUT", admin, "/admin/packages/shop", changed, "application/zip");
+            assertEquals(500, put.statusCode(), "fixture: the redeploy, whose b does not start, rolled back: " + put.body());
+        }
+        assertEquals("FAILED", itemOf(listed(admin, "flows", "id"), "shop/b", "after the rollback").getString("state"), "fixture: the rollback could not build b again");
     }
 
     /**
