@@ -4,14 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
+import dev.rail8.jq.query.ir.Call;
+import dev.rail8.jq.query.ir.Function;
 import dev.rail8.jq.query.ir.Identity;
 import dev.rail8.jq.query.ir.Intrinsic;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.Operation;
+import dev.rail8.jq.query.ir.PathOf;
 import dev.rail8.jq.query.ir.Pipe;
+import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Source;
+import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.run.FilterException;
 import dev.rail8.jq.query.run.Fn0;
+import dev.rail8.jq.query.run.InertPaths;
 import dev.rail8.jq.query.run.RunState;
 import java.util.ArrayList;
 import java.util.List;
@@ -276,5 +282,27 @@ class CompilerTest {
         .as("results of same | same")
         .singleElement()
         .isSameAs(in);
+  }
+
+  @Test
+  void aPathOfOrAnUpdateIsRefusedUntilTheInterpreterHasAPathMode() {
+    // The IR holds both kinds, but the interpreter has no op for either: compile refuses them in main and in a function,
+    // in both modes, naming the kind and its place.
+    List<Node> kinds = List.of(new PathOf(AT, new Identity(AT), new InertPaths()), new Update(AT, Update.Kind.MODIFY, new Identity(AT), new Identity(AT), new InertPaths()));
+    for (CompileMode mode : CompileMode.values()) {
+      for (Node node : kinds) {
+        String kind = node.getClass().getSimpleName();
+        assertThatIllegalStateException()
+            .as("compile of a %s in main, %s", kind, mode)
+            .isThrownBy(() -> Compiler.compile(node, mode))
+            .withMessage("the interpreter has no path mode, so it cannot run the %s at bytes Source[start=0, end=1]", kind);
+        Program inFunction = new Program(new Call(AT, 0, List.of(), List.of()), List.of(new Function(AT, 0, 0, node)));
+        assertThatIllegalStateException()
+            .as("compile of a %s in a function, %s", kind, mode)
+            .isThrownBy(() -> Compiler.compile(inFunction, 0, mode))
+            .withMessageContaining("no path mode")
+            .withMessageContaining(kind);
+      }
+    }
   }
 }

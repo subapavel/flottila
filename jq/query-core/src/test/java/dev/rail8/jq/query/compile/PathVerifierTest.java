@@ -2,7 +2,6 @@ package dev.rail8.jq.query.compile;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
-import static org.assertj.core.api.Assertions.assertThatNoException;
 
 import dev.rail8.jq.query.ir.Advance;
 import dev.rail8.jq.query.ir.AltBind;
@@ -56,13 +55,16 @@ class PathVerifierTest {
 
   private static final PathFormat PATHS = new InertPaths();
 
-  /** Verifies {@code program}, whose main tree has no parameter; a broken rule throws. */
-  private static void verify(Program program) {
-    IrVerifier.verify(program, 0);
+  /**
+   * Verifies {@code program}, whose main tree has no parameter; a broken rule throws. Returns the slots a run of each
+   * body needs, main's first.
+   */
+  private static int[] verify(Program program) {
+    return IrVerifier.verify(program, 0).slots();
   }
 
-  private static void verify(Node main) {
-    verify(new Program(main, List.of()));
+  private static int[] verify(Node main) {
+    return verify(new Program(main, List.of()));
   }
 
   private static Identity id() {
@@ -95,7 +97,7 @@ class PathVerifierTest {
     Node main = new Comma(AT, pathOf(id()), new Comma(AT, update(Update.Kind.MODIFY, id(), c()), update(Update.Kind.ASSIGN, id(), c())));
     Function f = new Function(AT, 0, 0, pathOf(id()));
 
-    assertThatNoException().as("one format in main and in a function").isThrownBy(() -> verify(new Program(main, List.of(f))));
+    assertThat(verify(new Program(main, List.of(f)))).as("one format in main and in a function: the slots of each").containsExactly(0, 0);
   }
 
   @Test
@@ -111,18 +113,18 @@ class PathVerifierTest {
   void anAssignsRightSideIsAtomic() {
     for (Supplier<Node> atomic : List.<Supplier<Node>>of(PathVerifierTest::id, PathVerifierTest::c, () -> var(0))) {
       Node main = new Bind(AT, c(), 0, update(Update.Kind.ASSIGN, id(), atomic.get()));
-      assertThatNoException().as("an assign of %s", atomic.get()).isThrownBy(() -> verify(main));
+      assertThat(verify(main)).as("an assign of %s: its slots", atomic.get()).containsExactly(1);
     }
     assertThatIllegalStateException()
         .as("an assign of a Pipe")
         .isThrownBy(() -> verify(update(Update.Kind.ASSIGN, id(), new Pipe(AT, id(), c()))))
         .withMessageContaining("not atomic");
-    assertThatNoException().as("a modify of a Pipe").isThrownBy(() -> verify(update(Update.Kind.MODIFY, id(), new Pipe(AT, id(), c()))));
+    assertThat(verify(update(Update.Kind.MODIFY, id(), new Pipe(AT, id(), c())))).as("a modify of a Pipe: its slots").containsExactly(0);
   }
 
   @Test
   void itemIsOnlyOnTheSourceBindOfAForeach() {
-    assertThatNoException().as("ITEM on a Foreach's source Bind").isThrownBy(() -> verify(foreach(Tracking.ITEM)));
+    assertThat(verify(foreach(Tracking.ITEM))).as("ITEM on a Foreach's source Bind: its slots").containsExactly(2);
 
     Map<String, Node> elsewhere = new LinkedHashMap<>();
     elsewhere.put("a Bind outside any loop", new Bind(AT, c(), Tracking.ITEM, 0, var(0)));
@@ -143,15 +145,13 @@ class PathVerifierTest {
 
   @Test
   void pathIsOnAnyBindValue() {
-    List<Node> marked =
-        List.of(
-            new Bind(AT, c(), Tracking.PATH, 0, var(0)),
-            foreach(Tracking.PATH),
-            new Binds(AT, List.of(c(), c()), List.of(Tracking.PATH, Tracking.VALUE), List.of(0, 1), var(1)),
-            new AltBind(AT, c(), Tracking.PATH, 0, List.of(new Alternative(id(), List.of())), List.of(), id()));
-    for (Node node : marked) {
-      assertThatNoException().as("PATH on %s", node).isThrownBy(() -> verify(node));
-    }
+    // Each node with the slots it needs.
+    Map<Node, Integer> marked = new LinkedHashMap<>();
+    marked.put(new Bind(AT, c(), Tracking.PATH, 0, var(0)), 1);
+    marked.put(foreach(Tracking.PATH), 2);
+    marked.put(new Binds(AT, List.of(c(), c()), List.of(Tracking.PATH, Tracking.VALUE), List.of(0, 1), var(1)), 2);
+    marked.put(new AltBind(AT, c(), Tracking.PATH, 0, List.of(new Alternative(id(), List.of())), List.of(), id()), 1);
+    marked.forEach((node, slots) -> assertThat(verify(node)).as("PATH on %s: its slots", node).containsExactly(slots));
   }
 
   @Test
@@ -163,9 +163,9 @@ class PathVerifierTest {
 
   @Test
   void theSlotAndTreeRulesHoldInsidePathOfAndUpdate() {
-    assertThatNoException()
-        .as("a Var of an outer Bind in both sides")
-        .isThrownBy(() -> verify(new Bind(AT, c(), 0, new Comma(AT, pathOf(var(0)), update(Update.Kind.MODIFY, var(0), var(0))))));
+    assertThat(verify(new Bind(AT, c(), 0, new Comma(AT, pathOf(var(0)), update(Update.Kind.MODIFY, var(0), var(0))))))
+        .as("a Var of an outer Bind in both sides: its slots")
+        .containsExactly(1);
     assertThatIllegalStateException().as("a Var out of scope in a PathOf's body").isThrownBy(() -> verify(pathOf(var(0)))).withMessageContaining("scope");
     assertThatIllegalStateException().as("a Var out of scope in an lhs").isThrownBy(() -> verify(update(Update.Kind.MODIFY, var(0), id()))).withMessageContaining("scope");
     assertThatIllegalStateException().as("a Var out of scope in an rhs").isThrownBy(() -> verify(update(Update.Kind.ASSIGN, id(), var(0)))).withMessageContaining("scope");
