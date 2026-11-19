@@ -17,10 +17,10 @@ import org.junit.jupiter.api.Test;
 /**
  * The path natives {@code getpath/1}, {@code setpath/2} and {@code delpaths/1} in value mode: jq 1.8.2's {@code
  * jv_getpath}, {@code jv_setpath} and {@code jv_delpaths} with {@code delpaths_sorted} and {@code jv_dels} (src/jv_aux.c),
- * their errors in jq's order, and "Path too deep" past 10 000 components. The expected values follow that source, as
- * jq's own test files show them for the other inputs (jq.test's "Path too deep" cases among them), and the cases of the
- * spec's ticket approval recorded on jq-ref 1.8.2. Every run is on {@code null} unless the filter builds its input; a
- * constant array of n elements costs n - 1 steps, a native call none of its own.
+ * their errors in jq's order, and "Path too deep" past 10 000 components. The expected values are jq-ref 1.8.2's
+ * outputs, observed 2026-11-19, or jq's own test cases (jq.test's "Path too deep" cases among them). Every run is on
+ * {@code null} unless the filter builds its input; a constant array of n elements costs n - 1 steps, a native call none
+ * of its own.
  */
 class PathNativesTest {
   private static final JqEngine ENGINE = JqEngine.builder().build();
@@ -107,6 +107,9 @@ class PathNativesTest {
     assertThat(results("[1,2,3,4,5] | delpaths([[{\"start\":1,\"end\":3}]])")).as("delpaths of a slice").containsExactly("[1,4,5]");
     assertThat(results("{\"a\":1,\"b\":2,\"c\":3} | delpaths([[\"c\"],[\"a\"]])")).as("delpaths of two keys").containsExactly("{\"b\":2}");
     assertThat(results("[1,[2,3]] | delpaths([[1,0],[0]])")).as("delpaths in and of an element").containsExactly("[[3]]");
+    assertThat(results("[[1,2],[3,4]] | delpaths([[-1,0],[1,1]])"))
+        .as("two deletes in one element, the second reading what the first wrote")
+        .containsExactly("[[1,2],[4]]");
     assertThat(results("[1,2,3] | delpaths([[1],[1,0]])")).as("a deleted key drops its longer paths").containsExactly("[1,3]");
     assertThat(results("5 | delpaths([])")).as("delpaths of no path").containsExactly("5");
     assertThat(results("{\"a\":1} | delpaths([[]]), delpaths([[\"a\"],[]])")).as("delpaths of the empty path").containsExactly("null", "null");
@@ -178,6 +181,10 @@ class PathNativesTest {
     // The input's comma and the path's, one path, two keys, two elements compacted below, one copied to write above.
     assertThat(completes("[[1,2]] | delpaths([[0,0]])", 8)).as("delpaths one level down with 8 steps").containsExactly("[[2]]");
     assertThat(ends("[[1,2]] | delpaths([[0,0]])", 7)).as("delpaths one level down with 7 steps").isEmpty();
+    // The input's comma and the paths' three, two paths, one comparison, four keys, one element dropped below each, and
+    // two slots copied once above for both writes.
+    assertThat(completes("[[1],[2]] | delpaths([[0,0],[1,0]])", 15)).as("delpaths of two writes into one level with 15 steps").containsExactly("[[],[]]");
+    assertThat(ends("[[1],[2]] | delpaths([[0,0],[1,0]])", 14)).as("delpaths of two writes into one level with 14 steps").isEmpty();
   }
 
   /** The result texts of {@code filter} on null. */
