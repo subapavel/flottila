@@ -53,17 +53,18 @@ cloud environment over this repository, read-only.
 1. Post one comment on the issue with the complete prompt for Codex in a single code block, ready
    to copy. The prompt stands on its own: it names the files to read, states the recommendation
    and the alternatives turned down, asks for the weak points and what would break first, and
-   tells Codex to change no file and open no pull request. Label the issue `codex-wanted`.
-2. Post a second comment with the same request as a mention of `@codex`. When Codex answers there
-   with more than a notice about its environment, use that answer; the owner has nothing to paste.
-3. Tell the owner at once. The daily overview lists every issue that still waits with `codex-wanted`.
-4. The owner pastes the prompt into Codex and pastes its answer back as a comment on the issue.
-5. Read the answer. Take each objection, or turn it down with a reason in the issue. Remove the
+   tells Codex to change no file and open no pull request. It also asks Codex to post its answer
+   as a comment on the issue when it can, and otherwise to print the answer for the owner to
+   paste. Label the issue `codex-wanted`. Never write a mention of Codex in a comment.
+2. Tell the owner at once. The daily overview lists every issue that still waits with `codex-wanted`.
+3. The owner pastes the prompt into Codex. Codex's answer arrives as a comment on the issue, posted
+   by Codex or pasted by the owner.
+4. Read the answer. Take each objection, or turn it down with a reason in the issue. Remove the
    label and go on.
-6. When no answer has come by the next morning's daily overview (08:00 Prague time), an agent on a different Claude
-   model than yours argues against the recommendation instead. Say so in the issue, remove the
-   label and go on. An answer that arrives later but before the merge is still handled as in
-   step 5.
+5. When no answer has come by the next morning's daily overview (08:00 Prague time), an agent on a
+   different Claude model than yours argues against the recommendation instead. Say so in the
+   issue, remove the label and go on. An answer that arrives later but before the merge is still
+   handled as in step 4.
 
 Give the brief, the drafts, the recommendation and the objections to the `owner-proxy` agent; it
 chooses. Record the chosen contract and the reason
