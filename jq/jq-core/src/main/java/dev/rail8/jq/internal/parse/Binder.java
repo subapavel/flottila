@@ -172,6 +172,9 @@ final class Binder {
     GMTIME("gmtime", 0, false),
     LOCALTIME("localtime", 0, false),
     NOW("now", 0, false),
+    GETPATH("getpath", 1, true),
+    SETPATH("setpath", 2, true),
+    DELPATHS("delpaths", 1, true),
     ;
 
     private final String signature;

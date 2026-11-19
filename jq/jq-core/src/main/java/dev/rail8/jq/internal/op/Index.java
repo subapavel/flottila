@@ -57,6 +57,9 @@ public final class Index implements Fn1 {
   /** {@code .[k]?}. */
   public static final Operation QUIET = new Operation(".[k]?", new Index(true));
 
+  /** {@code .[k]} for the natives that read along a path. */
+  private static final Index READ = new Index(false);
+
   /** Whether this is {@code .[k]?}, which drops its own error. */
   private final boolean quiet;
 
@@ -121,6 +124,11 @@ public final class Index implements Fn1 {
       return CallForm.NONE;
     }
     throw NavigationErrors.cannotIndex(state, t, k);
+  }
+
+  /** jq's {@code jv_get}: {@code t[k]}, or jq's error. */
+  static JqValue get(RunState state, JqValue t, JqValue k) {
+    return (JqValue) READ.apply(state, t, k);
   }
 
   /**

@@ -34,6 +34,9 @@ licence text ships in the jq-core jar under META-INF/.
   jq 1.8.2's jv_dump_string_trunc (src/jv_print.c) (#63)
 - jq-core/src/main/java/dev/rail8/jq/internal/op/Index.java, translated from
   jq 1.8.2's jv_get (src/jv_aux.c) (#63) and jv_array_indexes (src/jv.c) (#72)
+- jq-core/src/main/java/dev/rail8/jq/internal/op/Paths.java, translated from
+  jq 1.8.2's jv_set, jv_dels, jv_setpath, jv_getpath, delpaths_sorted and
+  jv_delpaths (src/jv_aux.c) and jv_array_set (src/jv.c) (#153)
 - jq-core/src/main/java/dev/rail8/jq/internal/op/Slice.java, translated from
   jq 1.8.2's parse_slice and the slice of jv_get (src/jv_aux.c) (#63)
 - jq-core/src/main/java/dev/rail8/jq/internal/parse/ConstantKey.java, translated from

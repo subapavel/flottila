@@ -76,12 +76,14 @@ class ParserEdgesTest {
     for (String text :
         List.of(
             "import \"a\" as $x; .",
-            "import \"a\" as x {a: 1}; .",
-            // .a."b"? left with its Stub: #63 lowers it (ResolverTest.navigationAndCommaLowerToTheirIr).
-            // The key is the string "a" from getpath/1, still unbuilt, so it stubs; jq 1.8.2 gives 1, rc 0.
-            ". as {({\"x\":\"a\"}|getpath([\"x\"])): $e} | 1")) {
+            "import \"a\" as x {a: 1}; .")) {
+      // .a."b"? left this list once it was lowered (ResolverTest.navigationAndCommaLowerToTheirIr).
       parsesToAStub(text);
     }
+    // A pattern whose key is an expression, here the string "a" from getpath/1: jq 1.8.2 gives 1, rc 0.
+    assertThat(ResolverTest.results(". as {({\"x\":\"a\"}|getpath([\"x\"])): $e} | 1"))
+        .as("a pattern keyed by an expression")
+        .containsExactly("1");
     // #67 lowers as and its patterns, #68 if and elif, and #69 foreach, so those entries ended with | .., which
     // stubbed until #110 built it (ADR-0042 amendment for #110): each now compiles.
     allCompile(

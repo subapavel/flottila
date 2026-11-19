@@ -148,7 +148,7 @@ public final class Slice implements Fn2 {
   }
 
   /** Whether {@code bound} is null or a number, which parse_slice takes; Java null, a missing key, is neither. */
-  private static boolean isBound(JqValue bound) {
+  static boolean isBound(JqValue bound) {
     // One pattern per case: javac checks a case of several patterns again, a branch that is never taken.
     return switch (bound) {
       case null -> false;

@@ -20,6 +20,7 @@ import dev.rail8.jq.internal.op.Last;
 import dev.rail8.jq.internal.op.LoopState;
 import dev.rail8.jq.internal.op.NumberTests;
 import dev.rail8.jq.internal.op.ObjectKey;
+import dev.rail8.jq.internal.op.Paths;
 import dev.rail8.jq.internal.op.Raise;
 import dev.rail8.jq.internal.op.Range;
 import dev.rail8.jq.internal.op.Regex;
@@ -692,6 +693,9 @@ public final class Resolver {
       case GMTIME -> new Intrinsic(at, Dates.GMTIME, List.of());
       case LOCALTIME -> new Intrinsic(at, Dates.LOCALTIME, List.of());
       case NOW -> new Intrinsic(at, Dates.NOW, List.of());
+      case GETPATH -> withArgument(c, Paths.GETPATH);
+      case SETPATH -> withArguments(c, Paths.SETPATH);
+      case DELPATHS -> withArgument(c, Paths.DELPATHS);
     };
   }
 
