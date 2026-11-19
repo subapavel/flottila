@@ -35,7 +35,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -97,8 +96,8 @@ class PlannedStopTest {
         node1 = node("node-1", doors1);
         node2 = node("node-2", doors2);
         for (Deployments node : List.of(node1, node2)) {
-            Path archive = relay().zipTo(tmp.resolve("archives-" + System.identityHashCode(node)));
-            OnVirtualThread.call(() -> node.deploy("relay", Optional.empty(), archive));
+            Path folder = relay().folderIn(tmp.resolve("archives-" + System.identityHashCode(node)));
+            OnVirtualThread.call(() -> node.deploy("relay", folder));
         }
     }
 

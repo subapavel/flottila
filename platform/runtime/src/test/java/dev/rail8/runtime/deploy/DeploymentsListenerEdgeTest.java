@@ -100,16 +100,16 @@ class DeploymentsListenerEdgeTest {
     }
 
     void deploy(PackageDraft p) throws Exception {
-        Path archive = p.zipTo(tmp.resolve("uploads"));
+        Path folder = p.folderIn(tmp.resolve("uploads"));
         String name = p.manifest().getString("name");
-        OnVirtualThread.call(() -> deployments.deploy(name, Optional.empty(), archive));
+        OnVirtualThread.call(() -> deployments.deploy(name, folder));
     }
 
     /** The problem lines of the deploy of {@code p}, refused as a 422. */
     List<String> refused(PackageDraft p) {
-        Path archive = p.zipTo(tmp.resolve("uploads"));
+        Path folder = p.folderIn(tmp.resolve("uploads"));
         String name = p.manifest().getString("name");
-        DeployRefusedException r = assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> deployments.deploy(name, Optional.empty(), archive)),
+        DeployRefusedException r = assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> deployments.deploy(name, folder)),
                 "the deploy of " + name + " is refused");
         assertEquals(Kind.INVALID, r.kind(), "a 422: " + r.error() + " " + r.problems());
         return r.problems();

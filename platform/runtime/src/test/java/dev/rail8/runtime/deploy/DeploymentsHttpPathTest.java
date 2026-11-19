@@ -92,15 +92,15 @@ class DeploymentsHttpPathTest {
     }
 
     DeployResult deploy(PackageDraft p) throws Exception {
-        Path archive = p.zipTo(tmp.resolve("uploads"));
-        return OnVirtualThread.call(() -> deployments.deploy(p.manifest().getString("name"), Optional.empty(), archive));
+        Path folder = p.folderIn(tmp.resolve("uploads"));
+        return OnVirtualThread.call(() -> deployments.deploy(p.manifest().getString("name"), folder));
     }
 
     List<String> refused(PackageDraft p) {
-        Path archive = p.zipTo(tmp.resolve("uploads"));
+        Path folder = p.folderIn(tmp.resolve("uploads"));
         String name = p.manifest().getString("name");
         DeployRefusedException r = assertThrows(DeployRefusedException.class,
-                () -> OnVirtualThread.call(() -> deployments.deploy(name, Optional.empty(), archive)), "the deploy of " + name + " is refused");
+                () -> OnVirtualThread.call(() -> deployments.deploy(name, folder)), "the deploy of " + name + " is refused");
         assertEquals(Kind.INVALID, r.kind(), "a 422: " + r.error() + " " + r.problems());
         return r.problems().stream().sorted().toList();
     }

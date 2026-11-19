@@ -86,19 +86,21 @@ import java.util.stream.Stream;
 
 /**
  * The packages deployed on this node and their running flows. The listing lives in memory; each deploy
- * writes its package's {@link DeploymentRecord} and stores its archive, and {@link #restore} installs what those name at
- * the node's start. A deploy of a package that runs already is a redeploy: it swaps only the flows whose effective hash changed;
+ * writes its package's {@link DeploymentRecord} and stores its archive (a deploy with no origin does neither), and {@link #restore}
+ * installs what those name at the node's start. A deploy of a package that runs already is a redeploy: it swaps only the flows whose effective hash changed;
  * a deploy of a package listed {@link DeployedPackage.State#FAILED} (the restore could not install it) is a first deploy.
  *
  * <p>{@link #deploy} blocks: call it on a virtual thread. Its order: a bad name or revision ({@link Kind#BAD_REQUEST}); a
  * deployed environment ({@link Kind#FORBIDDEN}: manual deploy is non-production only); a closing node
  * ({@link Kind#STOPPING}); another deploy holding the node's lock ({@link Kind#CONFLICT}: one deploy at a time per node, whatever
- * the package) — all of them before the archive is read. Then the archive is unpacked into {@code <dataDir>/.incoming} and moved
+ * the package) — all of them before the archive is read. Then the archive is unpacked into a folder of {@code <dataDir>/.incoming}
+ * (a refused archive is {@link Kind#BAD_REQUEST}), and the deploy goes on from that folder: the archive is the deploy's origin,
+ * stored and named by its record below ({@link #deploy(String, Path)} deploys a folder with no origin). The folder is moved
  * atomically to {@code <dataDir>/packages/<name>/<sha256>/} (a directory an earlier node left there is replaced), unless that
- * directory is one this node keeps for the package (below) and holds the files recorded when it was unpacked, path and SHA-256
- * alike: then it is used as it is and nothing is unpacked. A kept directory whose files differ (one written into it, changed,
- * deleted, or one the node cannot read) is not trusted: the archive is unpacked afresh over it, and it stays kept whatever happens
- * next. A refused archive is {@link Kind#BAD_REQUEST}. Then the package is checked whole — {@code Package.problems()}, the
+ * directory is one this node keeps for the package (below) and holds the files recorded when it was written, path and SHA-256
+ * alike: then it is used as it is and the folder is deleted. A kept directory whose files differ (one written into it, changed,
+ * deleted, or one the node cannot read) is not trusted: the folder replaces it, and it stays kept whatever happens
+ * next. Then the package is checked whole — {@code Package.problems()}, the
  * manifest's name, its dependencies ({@link #dependencies}), a component for every scheme, every endpoint's config (its environment's keys laid over it) against
  * its component's settings description ({@code Component.settings()}, or its {@code configSchema()} when it describes
  * nothing), no in endpoint setting {@code flow} or {@code maxBodyBytes}, one flow per in endpoint,
@@ -604,7 +606,46 @@ public final class Deployments {
         if (!deploying.tryLock()) throw busy();
         try {
             if (closing) throw stopping();
-            return install(name, revision, archive, null);
+            String sha256 = FlowHash.sha256(archive);
+            Path folder = unpacked(archive);
+            try {
+                return install(name, revision, folder, sha256, archive, null);
+            } finally {
+                deleteTree(folder);   // moved into packages/ by now, unless the deploy was refused or a kept directory served
+            }
+        } finally {
+            deploying.unlock();
+        }
+    }
+
+    /**
+     * Deploys the package folder {@code folder} as {@code name} with no origin: {@code rail8 test}'s deploy, the only one that uses
+     * it. The deploy works on a copy of the folder, made once the lock is held, and never writes into {@code folder}: an edit of it
+     * while the deploy or its flows run changes nothing of them. No archive is stored and no record is written, so a restore never
+     * installs it; the package's directory under {@code packages/<name>/} is named by the hex of its content digest
+     * ({@code Package.content}), and so is its {@link DeployedPackage#archiveSha256()}. Otherwise its order is the one of
+     * {@link #deploy(String, Optional, Path)}: a bad name ({@link Kind#BAD_REQUEST}); a deployed environment ({@link Kind#FORBIDDEN}:
+     * a deploy with no origin is dev and ci only); a closing node ({@link Kind#STOPPING}); another deploy holding the lock
+     * ({@link Kind#CONFLICT}); then the copy, in which anything but a regular file or a directory is {@link Kind#BAD_REQUEST}; then
+     * the checks, the build and the swap. Blocking: on a virtual thread.
+     *
+     * @return the package deployed and the flows added, swapped and removed
+     * @throws DeployRefusedException as {@link #deploy(String, Optional, Path)}
+     * @throws IOException {@code folder} cannot be read or the data directory written: the caller's or the node's failure
+     */
+    public DeployResult deploy(String name, Path folder) throws DeployRefusedException, IOException {
+        Objects.requireNonNull(folder, "folder");
+        if (!NAME.matcher(name).matches()) throw badName(name);
+        if (config.deployed()) throw refused(Kind.FORBIDDEN, "a deploy with no origin is dev and ci only: it writes no record");
+        if (!deploying.tryLock()) throw busy();
+        try {
+            if (closing) throw stopping();
+            Path copy = copied(folder);
+            try {
+                return install(name, Optional.empty(), copy, Package.content(copy).substring("sha256:".length()), null, null);
+            } finally {
+                deleteTree(copy);
+            }
         } finally {
             deploying.unlock();
         }
@@ -758,7 +799,8 @@ public final class Deployments {
      * Installs, at the node's start, every package the pool's records name, one at a time in name order, under the deploy
      * lock — a deploy meanwhile is {@link Kind#CONFLICT} — and returns once each one is installed or listed FAILED. Each record's
      * archive is fetched from the {@link ArchiveStore} into a temporary file in {@link #incomingDir()}, deleted whatever comes of
-     * it, and installed in restore mode ({@link #install}): its SHA-256 must be the record's; no deployed-environment refusal, no
+     * it; its SHA-256 must be the record's; it is unpacked into a folder of {@code .incoming}, and that folder is installed in
+     * restore mode ({@link #install}): no deployed-environment refusal, no
      * put and no record written; {@code revision} and {@code deployedAt} are the record's; a flow that does not start is listed
      * {@link DeployedFlow.State#FAILED} and the others run. A package refused whole — its fetch failed (the archive store down
      * included: no retry, recovery is a restart or a deploy), its SHA-256 differs, its unpack is refused, it has problems — is
@@ -810,9 +852,16 @@ public final class Deployments {
     /** One record of {@link #restore()}: installed, or listed FAILED when refused; only an IOException of the data directory throws. */
     private void restore(DeploymentRecord row, Path incoming) throws IOException {
         Path fetched = Files.createTempFile(incoming, "restore-", ".zip");
+        Path folder = null;
         try {
             fetch(row, fetched);
-            install(row.name(), row.revision(), fetched, row);
+            String sha256 = FlowHash.sha256(fetched);
+            if (!sha256.equals(row.archiveSha256())) {   // other bytes under the record's key: nothing of them runs
+                throw refused(Kind.FAILED, "archive sha256:" + row.archiveSha256() + " differs from what the archive store holds under its key, whose "
+                        + "SHA-256 is " + sha256);
+            }
+            folder = unpacked(fetched);
+            install(row.name(), row.revision(), folder, sha256, null, row);
         } catch (DeployRefusedException refused) {
             List<String> problems = Stream.concat(Stream.of(refused.error()), refused.problems().stream()).toList();
             LOG.log(System.Logger.Level.ERROR, "package '" + row.name() + "' (archive sha256:" + row.archiveSha256() + ") could not be restored; it is listed "
@@ -821,6 +870,7 @@ public final class Deployments {
                     List.of(), List.of(), List.of(), DeployedPackage.State.FAILED, problems, null, List.of()), List.of(), Map.of(), null, row.dependencies()));
         } finally {
             Files.deleteIfExists(fetched);   // fetched whole, half or not at all: nothing of it stays in .incoming
+            if (folder != null) deleteTree(folder);   // moved into packages/ by now, unless the package was refused
         }
     }
 
@@ -875,7 +925,8 @@ public final class Deployments {
     // --- one deploy, under the lock
 
     /**
-     * Unpacks (or reuses a kept directory that holds what was unpacked into it), checks, builds, stores the archive, classifies,
+     * Moves the folder in place (or reuses a kept directory that holds what was written into it), checks, builds, stores the archive,
+     * classifies,
      * swaps, saves the record, then replaces the package's listing and prunes — or, when phase B does not start every flow of a
      * redeploy or its record is not written, rolls back; whatever refuses it
      * stops what it built and did not close yet and deletes what it wrote, unchecked failures included. It writes {@code deployed}
@@ -883,17 +934,15 @@ public final class Deployments {
      * FAILED unless the rollback runs it again ({@link #afterFailure}); {@code deployed.get(name)} is {@code running} until then.
      * A package listed {@link DeployedPackage.State#FAILED} runs nothing: a deploy over it is a first deploy.
      *
-     * <p>{@code restoring} is null for a deploy; for a restore ({@link #restore}) it is the package's record, and the install runs in
-     * restore mode: the archive must have the record's SHA-256 (else {@link Kind#FAILED} naming both), nothing is put and no record
-     * is written, {@code deployedAt} is the record's, and a flow that does not start is stopped, closed and listed
+     * <p>{@code folder} holds the package's files in {@code .incoming}: the install moves it under {@code packages/<name>/<sha256>/}
+     * or leaves it to the caller to delete. {@code origin} is the archive the folder was unpacked from: put in the archive store under
+     * {@code sha256} and named by the record; null for a deploy with no origin and for a restore, which put nothing and write no
+     * record. {@code restoring} is null for a deploy; for a restore ({@link #restore}) it is the package's record, and the install
+     * runs in restore mode: nothing is put and no record is written, {@code deployedAt} is the record's, and a flow that does not start is stopped, closed and listed
      * {@link DeployedFlow.State#FAILED} while the others run — the package is installed all the same.
      */
-    private DeployResult install(String name, Optional<String> revision, Path archive, DeploymentRecord restoring) throws DeployRefusedException, IOException {
-        String sha256 = FlowHash.sha256(archive);
-        if (restoring != null && !sha256.equals(restoring.archiveSha256())) {   // other bytes under the record's key: nothing of them runs
-            throw refused(Kind.FAILED, "archive sha256:" + restoring.archiveSha256() + " differs from what the archive store holds under its key, whose "
-                    + "SHA-256 is " + sha256);
-        }
+    private DeployResult install(String name, Optional<String> revision, Path folder, String sha256, Path origin, DeploymentRecord restoring)
+            throws DeployRefusedException, IOException {
         Deployed listed = deployed.get(name);
         Deployed running = listed == null || listed.pkg().state() == DeployedPackage.State.FAILED ? null : listed;   // a FAILED package runs nothing
         List<Flow> before = running == null ? List.of() : running.flows();
@@ -911,14 +960,11 @@ public final class Deployments {
         DeployResult result;
         try {
             if (unpackedInto == null || !holds(dir, unpackedInto)) {   // a kept directory is reused only as it was unpacked
-                Path unpacked = Files.createTempDirectory(incoming, "unpack-");
-                written.add(unpacked);
-                // a kept directory unpacked afresh stays whatever happens: it runs or ran; so does a pinned one, a record pins it,
+                // a kept directory written afresh stays whatever happens: it runs or ran; so does a pinned one, a record pins it,
                 // and one a listed flow reads as a dependency
                 if (unpackedInto == null && !pinned(name).contains(sha256) && !read(name).contains(sha256)) written.add(dir);
-                unpack(archive, unpacked);
                 deleteTree(dir);   // what an earlier node left there, or a kept directory's changed files, is replaced, never merged
-                Files.move(unpacked, dir, StandardCopyOption.ATOMIC_MOVE);
+                Files.move(folder, dir, StandardCopyOption.ATOMIC_MOVE);
             }
             if (restoring != null) {
                 for (DeploymentRecord.Pin pin : restoring.dependencies()) installPin(pin, incoming, written);
@@ -954,7 +1000,7 @@ public final class Deployments {
             discard(List.of(), spare);
             List<Flow> starting = consumers(built, problems);   // added and changed, each with its consumer, none started
             if (!problems.isEmpty()) throw invalid(name, problems);
-            if (restoring == null) store(sha256, archive);   // before anything stops: a failed put refuses the deploy and the running version runs on
+            if (origin != null) store(sha256, origin);   // before anything stops: a failed put refuses the deploy and the running version runs on
             now.addAll(starting);
             now.sort(Comparator.comparing(Flow::id));
             Instant deployedAt = restoring == null ? clock.instant() : restoring.deployedAt();
@@ -972,7 +1018,7 @@ public final class Deployments {
                 if (restoring == null) throw rollBack(Kind.FAILED, version, "did not start", List.of(), running, retiring, started, packageDir, built, again);
                 unstarted(name, failed, now);   // a restore: those are listed FAILED, the others run
             }
-            if (restoring == null) {   // a restore writes no record: it installs the one it read
+            if (origin != null) {   // a restore writes no record: it installs the one it read; a deploy with no origin has none to write
                 // the commit point: the package's record, written once every flow started; the listing and the pruning follow it
                 Future<Void> saved = Future.future(done -> records.save(new DeploymentRecord(name, version, revision, sha256, deployedAt, pins)).onComplete(done));
                 saved.otherwiseEmpty().await();
@@ -1151,6 +1197,57 @@ public final class Deployments {
             archives.put(sha256, archive);
         } catch (IOException failed) {
             throw refused(Kind.FAILED, "archive sha256:" + sha256 + " not stored: " + reason(failed));
+        }
+    }
+
+    /**
+     * The archive unpacked into a fresh folder of {@code .incoming}, with {@link PackageArchive}'s checks (a refusal is
+     * {@link Kind#BAD_REQUEST}); the folder is the caller's to move or delete. Whatever stops the unpack deletes what it wrote.
+     */
+    private Path unpacked(Path archive) throws DeployRefusedException, IOException {
+        return written(Files.createTempDirectory(Files.createDirectories(incomingDir()), "unpack-"), into -> unpack(archive, into));
+    }
+
+    /**
+     * A copy of the package folder {@code folder} in a fresh folder of {@code .incoming}, walked without following links: its
+     * directories and regular files; anything else (a symbolic link, a device) is {@link Kind#BAD_REQUEST}. The copy is the
+     * caller's to move or delete. Whatever stops the copy deletes what it wrote.
+     */
+    private Path copied(Path folder) throws DeployRefusedException, IOException {
+        Path from = folder.toAbsolutePath().normalize();
+        return written(Files.createTempDirectory(Files.createDirectories(incomingDir()), "copy-"), into -> {
+            List<Path> paths;
+            try (Stream<Path> walk = Files.walk(from)) {
+                paths = walk.sorted().toList();
+            }
+            for (Path p : paths) {
+                Path target = into.resolve(from.relativize(p).toString());
+                if (Files.isDirectory(p, LinkOption.NOFOLLOW_LINKS)) {
+                    Files.createDirectories(target);
+                } else if (Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)) {
+                    Files.copy(p, target, LinkOption.NOFOLLOW_LINKS);
+                } else {
+                    throw refused(Kind.BAD_REQUEST, "the package folder is refused: '" + from.relativize(p).toString().replace(File.separatorChar, '/')
+                            + "' is neither a regular file nor a directory");
+                }
+            }
+        });
+    }
+
+    /** What one writing step writes into an empty folder. */
+    @FunctionalInterface
+    private interface Writing {
+        void into(Path dir) throws DeployRefusedException, IOException;
+    }
+
+    /** {@code dir} once {@code writing} filled it; a writing that throws deletes {@code dir} first. */
+    private static Path written(Path dir, Writing writing) throws DeployRefusedException, IOException {
+        try {
+            writing.into(dir);
+            return dir;
+        } catch (Throwable failure) {
+            cleanUp(failure, () -> deleteTree(dir));
+            throw failure;
         }
     }
 

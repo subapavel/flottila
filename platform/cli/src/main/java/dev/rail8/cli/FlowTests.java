@@ -70,8 +70,10 @@ import java.util.stream.Stream;
  * the {@code direct} mock ({@link Calls}: a call to a flow of the package or of a dependency runs that flow, unless the case's
  * mocks name its endpoint), in-memory stores, and a node
  * ({@link Deployments}) of environment {@code ci} over a temporary data directory, deleted after the case, to which the
- * dependencies' closure validate resolved is deployed leaves first, then the package, each as its deterministic zip
- * ({@link Deploy#zip}, built once). The case's {@code send} — the fixture's bytes and
+ * dependencies' closure validate resolved is deployed leaves first, then the package, each with no origin
+ * ({@code Deployments.deploy(name, folder)}: no archive, no record) from a copy of its folder that the run makes once, before
+ * its first case, in a temporary directory it owns and deletes when it ends: an edit of a package folder during the run changes
+ * nothing in it, and a case reads its fixtures and its mocks' files from that copy too. The case's {@code send} — the fixture's bytes and
  * its {@code headers} — is {@link MockComponent#ingest ingested} on the flow's from endpoint, or, on a real {@code direct} one,
  * {@linkplain Calls#ingest sent through a direct producer} as a caller at depth 0 would; a case without one is fed by that
  * endpoint's mock, whose {@code files} or {@code messages} its consumer polls from its start (the package's cross-check refuses
@@ -114,8 +116,10 @@ final class FlowTests {
     private final List<String> schemes;
     private final Plugins plugins;
     private final Map<String, Function<Envelope, Optional<String>>> xpaths = new HashMap<>();
-    private byte[] zip;
-    private List<Archive> dependencies;
+    /** The run's copy of the package folder. */
+    private Path copy;
+    /** The run's copies of the dependencies' folders, leaves first. */
+    private List<Copy> dependencies;
     private Vertx vertx;
 
     private FlowTests(Package pkg, Path root, List<String> schemes, Plugins plugins) {
@@ -128,8 +132,8 @@ final class FlowTests {
     /** One test document: its path from the package root, its flow, its {@code mocks} and its cases. */
     private record Doc(String path, String flow, JsonObject mocks, List<JsonObject> cases) {}
 
-    /** A dependency's deterministic zip ({@link Deploy#zip}) and the name it is deployed as. */
-    private record Archive(String name, byte[] zip) {}
+    /** The run's copy of a dependency's folder and the name it is deployed as. */
+    private record Copy(String name, Path dir) {}
 
     /** How a case ended: passed or not, at what flow time, and the indented lines that say what failed. */
     private record Verdict(boolean passed, Duration flowTime, List<String> why) {
@@ -151,17 +155,30 @@ final class FlowTests {
             out.println("no test document in package " + pkg.name() + ": nothing to run");
             return 1;
         }
-        run.zip = Deploy.zip(dir);
-        List<Archive> dependencies = new ArrayList<>();
-        for (Dependencies.Found dep : checked.dependencies()) dependencies.add(new Archive(dep.pin().name(), Deploy.zip(dep.dir())));
-        run.dependencies = List.copyOf(dependencies);
+        Path copies = Files.createTempDirectory("rail8-test-packages-");
+        try {
+            return run.cases(docs, dir, checked.dependencies(), copies, out);
+        } finally {
+            deleteTree(copies);
+        }
+    }
+
+    /**
+     * Copies the package folder {@code dir} and each dependency's into {@code copies}, then plays every case of {@code docs} and
+     * prints the report; the exit code.
+     */
+    private int cases(List<Doc> docs, Path dir, List<Dependencies.Found> found, Path copies, PrintStream out) throws IOException {
+        copy = copy(dir, copies.resolve("package"));
+        List<Copy> deps = new ArrayList<>();
+        for (Dependencies.Found dep : found) deps.add(new Copy(dep.pin().name(), copy(dep.dir(), copies.resolve("dependency-" + deps.size()))));
+        dependencies = List.copyOf(deps);
         int passed = 0;
         int cases = 0;
-        run.vertx = Vertx.vertx();   // the one each case's components are built over; it runs nothing of theirs
+        vertx = Vertx.vertx();   // the one each case's components are built over; it runs nothing of theirs
         try {
             for (Doc doc : docs) {
                 for (JsonObject c : doc.cases()) {
-                    Verdict verdict = run.play(doc, c);
+                    Verdict verdict = play(doc, c);
                     out.println((verdict.passed() ? "PASS " : "FAIL ") + doc.flow() + ": " + c.getString("name") + " (flow time " + duration(verdict.flowTime()) + ")");
                     verdict.why().forEach(line -> out.println("  " + line));
                     cases++;
@@ -169,7 +186,7 @@ final class FlowTests {
                 }
             }
         } finally {
-            run.vertx.close().await();
+            vertx.close().await();
         }
         out.println(cases + " cases: " + passed + " passed, " + (cases - passed) + " failed");
         return passed == cases ? 0 : 1;
@@ -269,14 +286,14 @@ final class FlowTests {
         JsonObject behaviours = doc.mocks().copy();
         c.getJsonObject("mocks", new JsonObject()).forEach(entry -> behaviours.put(entry.getKey(), entry.getValue()));   // whole entries
         for (String endpoint : behaviours.fieldNames()) {
-            mocks.get(scheme(endpoint)).bind(endpoint, Behaviour.from(behaviours.getJsonObject(endpoint).getMap(), root));
+            mocks.get(scheme(endpoint)).bind(endpoint, Behaviour.from(behaviours.getJsonObject(endpoint).getMap(), copy));
         }
         Calls calls = mocks.containsKey(DIRECT) ? new Calls(direct(rt, timer), mocks.get(DIRECT),
                 behaviours.fieldNames().stream().filter(endpoint -> scheme(endpoint).equals(DIRECT)).collect(Collectors.toSet()), rt.blobs(), rt.ids()) : null;
         String from = from(doc.flow());
         Door door = calls != null && scheme(from).equals(DIRECT) ? calls : Door.of(mocks.get(scheme(from)));
         String sends = c.getString("send");
-        byte[] send = sends == null ? null : Files.readAllBytes(root.resolve(sends));
+        byte[] send = sends == null ? null : Files.readAllBytes(copy.resolve(sends));
         Map<String, String> headers = new LinkedHashMap<>();
         JsonObject given = c.getJsonObject("headers", new JsonObject());
         given.fieldNames().forEach(name -> headers.put(name, given.getString(name)));
@@ -294,8 +311,8 @@ final class FlowTests {
             Deployments node = new Deployments(config, new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), components), components,
                     rt.clock(), timer, plugins.steps(), plugins.languages(), messages, dlq, queue, Meter.system());
             try {
-                for (Archive dep : dependencies) node.deploy(dep.name(), Optional.empty(), Files.write(data.resolve("dependency-" + dep.name() + ".zip"), dep.zip()));   // leaves first
-                node.deploy(pkg.name(), Optional.empty(), Files.write(data.resolve("package.zip"), zip));
+                for (Copy dep : dependencies) node.deploy(dep.name(), dep.dir());   // leaves first
+                node.deploy(pkg.name(), copy);
                 Future<Ack> answer = send == null ? FED : door.ingest(from, new Headers(headers), Buffer.buffer(send));
                 BooleanSupplier answered = done(answer);   // the answer's monitor stays out of the sampling: read through this only
                 VirtualTime.Outcome outcome = new VirtualTime(rt.clock(), rt.timer(),
@@ -427,6 +444,23 @@ final class FlowTests {
                 inside.decrementAndGet();
             }
         }
+    }
+
+    /**
+     * The directories and regular files of {@code from}, by their paths below it, copied into {@code to}, a directory made here; a
+     * link is followed, as {@code rail8 deploy}'s zip follows it. Returns {@code to}.
+     */
+    static Path copy(Path from, Path to) throws IOException {
+        List<Path> paths;
+        try (Stream<Path> walk = Files.walk(from)) {
+            paths = walk.sorted().toList();
+        }
+        for (Path p : paths) {
+            Path target = to.resolve(from.relativize(p).toString());
+            if (Files.isDirectory(p)) Files.createDirectories(target);
+            else if (Files.isRegularFile(p)) Files.copy(p, target);
+        }
+        return to;
     }
 
     static void deleteTree(Path dir) throws IOException {

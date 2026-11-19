@@ -17,7 +17,6 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static dev.rail8.runtime.deploy.DeploymentsListenerTest.flowOf;
 import static dev.rail8.runtime.deploy.DeploymentsListenerTest.line;
@@ -61,10 +60,10 @@ class DeploymentsSecretsListenerTest {
     }
 
     DeployRefusedException refused(Deployments d, PackageDraft p) {
-        Path archive = p.zipTo(tmp.resolve("uploads"));
+        Path folder = p.folderIn(tmp.resolve("uploads"));
         String name = p.manifest().getString("name");
         DeployRefusedException refused = assertThrows(DeployRefusedException.class,
-                () -> OnVirtualThread.call(() -> d.deploy(name, Optional.empty(), archive)), "the deploy is refused");
+                () -> OnVirtualThread.call(() -> d.deploy(name, folder)), "the deploy is refused");
         assertEquals(Kind.INVALID, refused.kind(), refused.problems().toString());
         return refused;
     }

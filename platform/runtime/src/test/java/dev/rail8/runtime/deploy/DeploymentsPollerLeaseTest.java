@@ -151,12 +151,12 @@ class DeploymentsPollerLeaseTest {
     }
 
     DeployedPackage deploy(PackageDraft p) throws Exception {
-        return OnVirtualThread.call(() -> deployments.deploy(p.manifest().getString("name"), Optional.empty(), p.zipTo(tmp.resolve("uploads")))).pkg();
+        return OnVirtualThread.call(() -> deployments.deploy(p.manifest().getString("name"), p.folderIn(tmp.resolve("uploads")))).pkg();
     }
 
     DeployRefusedException refused(PackageDraft p) {
         return assertThrows(DeployRefusedException.class,
-                () -> OnVirtualThread.call(() -> deployments.deploy(p.manifest().getString("name"), Optional.empty(), p.zipTo(tmp.resolve("uploads")))),
+                () -> OnVirtualThread.call(() -> deployments.deploy(p.manifest().getString("name"), p.folderIn(tmp.resolve("uploads")))),
                 "the deploy is refused");
     }
 

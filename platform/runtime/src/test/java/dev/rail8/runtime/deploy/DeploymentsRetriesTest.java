@@ -78,7 +78,7 @@ class DeploymentsRetriesTest {
         deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), timer, DeploymentsTest.STEPS, List.of(),
                 messages, dlq, queue, () -> 0L);
         PackageDraft p = DeploymentsTest.flows("shop", Map.of("audit", "at-least-once"));
-        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), p.zipTo(tmp.resolve("archives"))));
+        OnVirtualThread.call(() -> deployments.deploy("shop", p.folderIn(tmp.resolve("archives"))));
         doors.partner().failNext(100, () -> new NackException("partner down", true));
         Envelope e = rt.ingress("shop/audit", Headers.empty(), Buffer.buffer("<order/>"));
         assertEquals(new Ack.Accepted(e.id()), within(doors.door("shop/audit").deliver(e), "the answer"));

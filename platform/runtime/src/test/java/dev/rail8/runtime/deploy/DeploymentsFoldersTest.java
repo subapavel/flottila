@@ -131,13 +131,13 @@ class DeploymentsFoldersTest {
     }
 
     DeployResult deploy(PackageDraft p) throws Exception {
-        Path archive = p.zipTo(archives);
-        return OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), archive));
+        Path folder = p.folderIn(archives);
+        return OnVirtualThread.call(() -> deployments.deploy("shop", folder));
     }
 
     DeployRefusedException refused(PackageDraft p) {
-        Path archive = p.zipTo(archives);
-        return assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), archive)),
+        Path folder = p.folderIn(archives);
+        return assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> deployments.deploy("shop", folder)),
                 "the deploy is refused");
     }
 
@@ -327,11 +327,11 @@ class DeploymentsFoldersTest {
                 : Files.createDirectories(tmp.resolve("x")).resolve("../odd-data");   // x exists: the kernel resolves x/.. only then
         assertTrue(form.equals("relative") ? !dataDir.isAbsolute() : !dataDir.equals(dataDir.normalize()), "fixture: the data dir is " + form + ": " + dataDir);
         Deployments odd = deploymentsAt(dataDir);
-        Path archive = twoNamespaces().file("urn-a/order.xsl", XSL + "<xsl:include href=\"../../escape.xsl\"/><xsl:output method=\"text\"/>"
-                + "<xsl:template match=\"/\">A</xsl:template></xsl:stylesheet>").zipTo(archives);
+        Path folder = twoNamespaces().file("urn-a/order.xsl", XSL + "<xsl:include href=\"../../escape.xsl\"/><xsl:output method=\"text\"/>"
+                + "<xsl:template match=\"/\">A</xsl:template></xsl:stylesheet>").folderIn(archives);
 
         DeployRefusedException include = assertThrows(DeployRefusedException.class,
-                () -> OnVirtualThread.call(() -> odd.deploy("shop", Optional.empty(), archive)), "the deploy is refused");
+                () -> OnVirtualThread.call(() -> odd.deploy("shop", folder)), "the deploy is refused");
 
         assertEquals(Kind.INVALID, include.kind(), include.getMessage());
         assertTrue(include.problems().stream().anyMatch(l -> l.contains("orders-a") && l.contains("../../escape.xsl")),

@@ -23,7 +23,6 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -100,7 +99,7 @@ class DeploymentsFenceTest {
         Map<String, String> modes = new HashMap<>();
         modes.put("audit", "at-least-once");
         modes.put("orders", "sync");
-        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), DeploymentsTest.flows("shop", modes).zipTo(archives)));
+        OnVirtualThread.call(() -> deployments.deploy("shop", DeploymentsTest.flows("shop", modes).folderIn(archives)));
 
         int askedAtStart = asked.get();   // P2-16a (D-121 A6): the at-least-once worker's one start claim asks the fence; the sync flow does not
         Envelope sync = delivered("shop/orders", Ack.Reply.class);
