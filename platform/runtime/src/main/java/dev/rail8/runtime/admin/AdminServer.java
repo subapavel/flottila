@@ -7,6 +7,7 @@ import dev.rail8.api.BlobStore;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Hash;
 import dev.rail8.api.Health;
+import dev.rail8.api.plugin.AdminService;
 import dev.rail8.core.admission.TargetLimit;
 import dev.rail8.core.dlq.Dlq;
 import dev.rail8.core.dlq.FailedMessages;
@@ -58,6 +59,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -73,6 +75,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * The admin read API over the stores: a message's timeline with wall and CPU nanos per step (the rows of
@@ -174,6 +177,10 @@ import java.util.function.Supplier;
  * same body and answers: a parked one as the DLQ cancel does (200, {@code state: "ended"}); one queued, waiting or running has its
  * work row marked and its run stopped (202 {@code {id, auditId, cancelledAt, state: "stopping", node}}); 404 for a message with
  * neither, sync and at-most-once runs among them. There is no {@code /restart} route (404).
+ *
+ * <p>With {@link Modules}, each admin service a module brings is a route, {@code <method> /admin/modules/<plugin>/<path>}, that
+ * runs the service's calls on virtual threads of their own, at most 4 of one plugin at once ({@link ModuleCalls}); its own
+ * answers are problems ({@code application/problem+json}), not {@code {error}}.
  *
  * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
  * is 403 {@code {error}} before the token check and the route, token or no token: what a browser sends, never the CLI.
@@ -298,6 +305,22 @@ public final class AdminServer {
         }
     }
 
+    /**
+     * The services of the admin API that the node's modules bring, and the clock each call of one is given.
+     *
+     * @param services each module's services, by the module's name
+     * @param clock    the node's clock
+     */
+    public record Modules(Map<String, List<AdminService>> services, Clock clock) {
+        /** No services. */
+        public static final Modules NONE = new Modules(Map.of(), Clock.systemUTC());
+
+        public Modules {
+            services = services.entrySet().stream().collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, e -> List.copyOf(e.getValue())));
+            Objects.requireNonNull(clock, "clock");
+        }
+    }
+
     private final Config config;
     private final MessageStore messages;
     private final Dlq dlq;
@@ -310,11 +333,18 @@ public final class AdminServer {
     private final Optional<PgMessageList> list;
     private final Workers workers;
     private final WorkSignals signals;
+    private final Modules modules;
     private volatile Supplier<Future<Void>> undeploy = Future::succeededFuture;
 
     /** The read API only: no deploy routes. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health) {
         this(config, messages, dlq, blobs, health, Optional.empty());
+    }
+
+    /** The read API and the services of {@code modules}: no deploy routes. */
+    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Modules modules) {
+        this(config, messages, dlq, blobs, health, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), new Workers(),
+                WorkSignals.NONE, modules);
     }
 
     /** The read API and, with {@code deployments}, the deploy routes; no work routes. */
@@ -371,12 +401,29 @@ public final class AdminServer {
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, FailedMessages failed, Optional<Sampling> sampling, PgMessageList list, Workers workers, WorkSignals signals) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(failed), sampling, Optional.of(list), workers, signals);
+        this(config, messages, dlq, blobs, health, deployments, work, failed, sampling, list, workers, signals, Modules.NONE);
+    }
+
+    /**
+     * The node's server with its modules' services:
+     * {@link #AdminServer(Config, MessageStore, Dlq, BlobStore, HealthProbe, Optional, WorkQueue, FailedMessages, Optional, PgMessageList,
+     * Workers, WorkSignals)} and the services of {@code modules}.
+     */
+    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
+                       WorkQueue work, FailedMessages failed, Optional<Sampling> sampling, PgMessageList list, Workers workers, WorkSignals signals,
+                       Modules modules) {
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(failed), sampling, Optional.of(list), workers, signals, modules);
     }
 
     private AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                         Optional<WorkQueue> work, Optional<FailedMessages> failed, Optional<Sampling> sampling, Optional<PgMessageList> list,
                         Workers workers, WorkSignals signals) {
+        this(config, messages, dlq, blobs, health, deployments, work, failed, sampling, list, workers, signals, Modules.NONE);
+    }
+
+    private AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
+                        Optional<WorkQueue> work, Optional<FailedMessages> failed, Optional<Sampling> sampling, Optional<PgMessageList> list,
+                        Workers workers, WorkSignals signals, Modules modules) {
         this.config = Objects.requireNonNull(config, "config");
         this.messages = Objects.requireNonNull(messages, "messages");
         this.dlq = Objects.requireNonNull(dlq, "dlq");
@@ -389,6 +436,7 @@ public final class AdminServer {
         this.list = list;
         this.workers = Objects.requireNonNull(workers, "workers");
         this.signals = Objects.requireNonNull(signals, "signals");
+        this.modules = Objects.requireNonNull(modules, "modules");
     }
 
     /** Deploys the listening verticle; completes with the bound port (the actual one when configured 0). */
@@ -411,6 +459,7 @@ public final class AdminServer {
     private final class Listener extends VerticleBase {
 
         volatile HttpServer server;
+        private ModuleCalls calls;
 
         @Override
         public Future<?> start() {
@@ -420,6 +469,8 @@ public final class AdminServer {
             router.get("/ready").handler(offload(AdminServer.this::ready));
             router.route("/admin/*").handler(AdminServer::browserGuard);   // before the token check
             config.token().ifPresent(token -> router.route("/admin/*").handler(bearer(token)));
+            calls = new ModuleCalls(modules, context);
+            calls.mount(router);
             router.get("/admin/messages").handler(offload(AdminServer.this::search));
             router.get("/admin/message-counts").handler(offload(AdminServer.this::counts));
             router.get("/admin/messages/:id").handler(offload(AdminServer.this::timeline));
@@ -453,8 +504,10 @@ public final class AdminServer {
                     .map(listening -> server = listening);
         }
 
+        /** Interrupts the calls of the modules' services that run, then closes the socket. */
         @Override
         public Future<?> stop() {
+            calls.stop();
             return server.close();
         }
 

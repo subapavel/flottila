@@ -4,6 +4,7 @@ import dev.rail8.api.Component;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Expressions;
 import dev.rail8.api.StepFactory;
+import dev.rail8.api.plugin.AdminService;
 import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.api.plugin.Plugin;
@@ -343,6 +344,76 @@ class PluginsTest {
         try (URLClassLoader enough = new URLClassLoader(new URL[] {classes.toUri().toURL()}, NO_MODULES);
              Plugins plugins = Plugins.load(enough, Optional.empty(), Map.of())) {
             assertEquals(Plugins.MAX_MODULES, plugins.describe().size());
+        }
+    }
+
+    // --- admin services: a module's only, taken when the node asks for them
+
+    static List<String> routes(List<AdminService> services) {
+        return services.stream().map(s -> s.method() + " " + s.path()).toList();
+    }
+
+    @Test
+    void aModulesAdminServicesAreBuiltOverItsSettingsWhenTheNodeAsks() throws IOException {
+        try (URLClassLoader classPath = classPath(moduleJar("modules.jar", PluginFixtures.Serves.class, PluginFixtures.Acme.class));
+             Plugins plugins = Plugins.load(classPath, Optional.empty(), Map.of())) {
+            Map<String, List<AdminService>> services = plugins.services(Map.of());
+            assertEquals(List.of("serves"), List.copyOf(services.keySet()), "a module that brings none is not listed");
+            assertEquals(List.of("GET status", "POST status"), routes(services.get("serves")));
+            assertEquals(List.of("GET status", "POST status", "POST extra"), routes(plugins.services(Map.of("RAIL8_SERVES_EXTRA", "1")).get("serves")));
+            assertRefused("module serves: services() failed: java.lang.IllegalArgumentException: RAIL8_SERVES_EXTRA must be between 0 and 1, was 2",
+                    () -> plugins.services(Map.of("RAIL8_SERVES_EXTRA", "2")));
+        }
+    }
+
+    /** Loading, as {@code rail8 validate} and {@code rail8 test} do, never calls {@code services()}: only the node does. */
+    @Test
+    void loadingAloneNeverAsksForTheAdminServices() throws IOException {
+        try (URLClassLoader classPath = classPath(moduleJar("failing.jar", PluginFixtures.FailingServices.class));
+             Plugins plugins = Plugins.load(classPath, Optional.empty(), Map.of())) {
+            assertEquals(List.of("failing-services"), plugins.describe().stream().map(line -> line.split(" ")[1]).toList(), "loaded");
+            assertRefused("module failing-services: services() failed: java.lang.IllegalStateException: no services today", () -> plugins.services(Map.of()));
+        }
+    }
+
+    @Test
+    void aPluginOfTheDirectoryThatBringsAnAdminServiceIsRefusedNamingIt() throws IOException {
+        jar("serves.jar", PluginFixtures.Serves.class);
+        try (Plugins plugins = load()) {
+            assertRefused("plugin serves: services() brings 2 admin services; only a module brings them, no plugin of RAIL8_PLUGINS",
+                    () -> plugins.services(Map.of()));
+        }
+        jar("acme.jar", PluginFixtures.Acme.class);
+        Files.delete(dir.resolve("serves.jar"));
+        try (Plugins plugins = load()) {
+            assertEquals(Map.of(), plugins.services(Map.of()), "a plugin that brings none is taken");
+        }
+    }
+
+    @Test
+    void anAdminServiceOutsideTheRulesIsRefusedNamingTheModule() throws IOException {
+        String service = PluginFixtures.Service.class.getName();
+        Map<Class<?>, String> refusals = Map.of(
+                PluginFixtures.ServesTwice.class, "module twice: two admin services are POST a/b",
+                PluginFixtures.ServesAPut.class, "module puts: the method of " + service + " is 'PUT'; an admin service is GET or POST",
+                PluginFixtures.ServesNoPath.class, "module nulls: the path of " + service + " is 'null'; an admin service's path is 1 to 4 segments of [a-z0-9-]{1,32}",
+                PluginFixtures.ServesTooMany.class, "module many: services() brings " + (Plugin.MAX_CONTRIBUTIONS + 1) + "; at most " + Plugin.MAX_CONTRIBUTIONS);
+        for (Map.Entry<Class<?>, String> refused : refusals.entrySet()) {
+            try (URLClassLoader classPath = classPath(moduleJar(refused.getKey().getSimpleName() + ".jar", refused.getKey()));
+                 Plugins plugins = Plugins.load(classPath, Optional.empty(), Map.of())) {
+                assertRefused(refused.getValue(), () -> plugins.services(Map.of()));
+            }
+        }
+    }
+
+    @Test
+    void anAdminServicesPathIsOneToFourSegmentsOfLowerCaseLettersDigitsAndDashes() {
+        String longest = "a".repeat(32);
+        for (String path : List.of("a", "status", "0-9", "a/b", "mappings/compile", "a/b/c/d", longest, longest + "/" + longest)) {
+            assertTrue(Plugins.servicePath(path), path);
+        }
+        for (String path : List.of("", "/a", "a/", "a//b", "A", "a_b", "a.b", "..", "a/../b", "a b", "a/b/c/d/e", "a".repeat(33), "é")) {
+            assertTrue(!Plugins.servicePath(path), path);
         }
     }
 

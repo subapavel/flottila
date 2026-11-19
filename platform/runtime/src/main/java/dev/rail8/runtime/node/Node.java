@@ -8,6 +8,7 @@ import dev.rail8.api.IdGenerator;
 import dev.rail8.api.Runtime;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.Timer;
+import dev.rail8.api.plugin.AdminService;
 import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.core.admission.Targets;
 import dev.rail8.core.batch.BatchingWriter;
@@ -212,10 +213,17 @@ public final class Node implements AutoCloseable {
         this.peerServer = peerServer;
     }
 
+    /** {@link #start(NodeConfig, Vertx, Function, List, List, Map)} with no admin services of modules. */
+    public static Node start(NodeConfig config, Vertx vertx, Function<ComponentContext, List<Component>> components, List<StepFactory> steps,
+                             List<Expressions> languages) throws IOException {
+        return start(config, vertx, components, steps, languages, Map.of());
+    }
+
     /**
      * Starts a node on {@code vertx}; see the class comment for the order.
      *
      * @param components builds the node's components, once, from the node's own context
+     * @param services   the admin services of the node's modules, by module name, served under {@code /admin/modules/<name>/}
      * @throws IllegalStateException two components for one scheme, a component whose HTTP prefix is refused
      *                               ({@link SharedHttpPort#prefixes}), a deployed environment and a mock binding among the components,
      *                               the dir archive store or an S3 endpoint over plain http, or a Postgres the durability profile
@@ -228,7 +236,7 @@ public final class Node implements AutoCloseable {
      *                     {@code journal_keys} row cannot be unwrapped (named by its key id), or the journal cannot be opened
      */
     public static Node start(NodeConfig config, Vertx vertx, Function<ComponentContext, List<Component>> components, List<StepFactory> steps,
-                             List<Expressions> languages) throws IOException {
+                             List<Expressions> languages, Map<String, List<AdminService>> services) throws IOException {
         List<StepFactory> stepFactories = List.copyOf(steps);
         List<Expressions> expressions = List.copyOf(languages);
         Hasher hasher = Hasher.sha256();
@@ -356,7 +364,7 @@ public final class Node implements AutoCloseable {
                             "deployments", () -> Future.succeededFuture(restored.health()),
                             "journal", () -> Future.succeededFuture(opened.health())), messages::failed, notices, readiness),
                     Optional.of(restored), work, new PgFailedMessages(pool, work), sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)),
-                    new PgMessageList(pool), workers, signals);
+                    new PgMessageList(pool), workers, signals, new AdminServer.Modules(services, clock));
             int port = admin.start(vertx).await();
             retention.start();   // its first run on a virtual thread of its own: the start does not wait for it
             // the segments no row pins go; its first pass an interval later, on a virtual thread of its own

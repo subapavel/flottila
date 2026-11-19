@@ -531,7 +531,8 @@ language (XPath today) is registered the same way.
 
 ### Plugins
 
-A plugin adds components, step factories and expression languages to the node's built-in steps.
+A plugin adds components, step factories and expression languages to the node's built-in steps;
+a module may also bring services of the admin API.
 The components and step modules that ship with the platform (`direct`, `http`, `sftp`, `jq`,
 `mapping`, `xsd`, `xslt`) are plugins on the node's class path, called modules; the node names none
 of them in code. The node's distribution is a build of its own, `platform/node`, with no code: its
@@ -570,9 +571,25 @@ start; building them opens nothing.
   major and a minor up to its own.
 - **Limits.** At most 64 modules, 64 plugins, 512 jars per plugin and 256 contributions of each
   kind per module or plugin.
+- **Admin services.** A module may bring services of the admin API (`AdminService`), each one
+  route: `GET` or `POST /admin/modules/<module name>/<path>`, the path 1 to 4 segments of
+  `[a-z0-9-]{1,32}`. The node builds them once, at its start, over the module's settings;
+  `rail8 validate` and `rail8 test` never do. A plugin of `RAIL8_PLUGINS` that brings one, two
+  services of one module with the same method and path, and a path outside the rule refuse the
+  start. A service keeps no state between calls.
+- **A call of a service** runs behind the admin API's browser guard and token, on a virtual thread
+  of its own, and may block. It is given the request's JSON as it came (`""` for a `GET`) and the
+  node's clock. At most 4 calls of one module run at once, and a fifth is 503 at once; a call
+  holds its place until it returns. Before the call, a body over 16 MiB is 413, a `POST` that is
+  not `application/json` 415, and bytes that are not UTF-8 400. A valid reply, at most 16 MiB,
+  goes to the client as it is: 200 or 201 with JSON, or 400 to 599 with a problem (RFC 9457) of
+  the same status. Any other reply, and an exception, is a 500, logged with the module and the
+  path. The call's thread is interrupted when its client goes away and when the node stops. The
+  node's own answers are problems of type `urn:rail8:admin:problem:<slug>`: `too-large`,
+  `unsupported-media-type`, `not-utf-8`, `busy` and `invalid-reply`.
 
-A refused module, plugin, setting, step type or language stops the node with exit 2 before Vert.x
-starts; a refused component, with exit 1. `rail8 validate` and `rail8 test` load the same plugins, from `--plugins` or
+A refused module, plugin, setting, step type, language or admin service stops the node with exit 2
+before Vert.x starts; a refused component, with exit 1. `rail8 validate` and `rail8 test` load the same plugins, from `--plugins` or
 `RAIL8_PLUGINS`.
 
 ### Writing an adapter plugin
@@ -697,8 +714,7 @@ a file to poll; a deployed node refuses it.
 - Plugins for custom mapping code and custom services, and a plugin that replaces a shipped
   component or step.
 - The admin API lists the loaded modules and plugins (`GET /admin/modules`).
-- Commands of the command line and services of the admin API (under `/admin/modules/<name>/`)
-  that a module brings; a plugin of `RAIL8_PLUGINS` brings neither.
+- Commands of the command line that a module brings; a plugin of `RAIL8_PLUGINS` brings none.
 - A deferred acknowledgement in the adapter contract: system and application acknowledgements as
   in SAP XI.
 - Custom code sends through an outbound endpoint of its package.
@@ -1024,6 +1040,7 @@ Bearer token; without one the API may only listen on loopback. There are no user
 | `GET /admin/targets`, `GET /admin/flows/{flow}/cpu` | limits per target system, CPU by step |
 | `GET /admin/components` | the components the node serves and their settings descriptions |
 | `GET /admin/steps` | the step types of the node's modules and plugins, each with its `configSchema`, sorted by type |
+| `GET`, `POST /admin/modules/{module}/{path}` | the admin services of the node's modules (part 5) |
 
 The list of recent messages reads Postgres only. `from` and `to` are ISO-8601 instants at most 31 days
 apart; it lists the messages whose arrival started at `from` or later and before `to`, each with its id,
