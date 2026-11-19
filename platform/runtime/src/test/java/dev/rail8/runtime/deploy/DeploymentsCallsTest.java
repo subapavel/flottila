@@ -261,6 +261,9 @@ class DeploymentsCallsTest {
         deploy(deployments, flow(callee(pkg("shop"), "billing", "/billing"), "orders", null, "billing"));
         assertEquals(List.of(unserved("shop/orders", "/billing")), warnings(), "its own call that no flow serves");
 
+        deploy(deployments, flow(pkg("audit"), "trail", "/audit"));
+        assertEquals(1, warnings().size(), "a deploy that serves and calls nothing shop calls warns of nothing: " + warnings());
+
         PackageDraft billing = flow(pkg("billing"), "invoices", "/billing");
         deploy(deployments, billing);
         assertEquals(1, warnings().size(), "a flow serves it now: " + warnings());
