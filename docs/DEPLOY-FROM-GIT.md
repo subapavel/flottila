@@ -9,7 +9,7 @@ API (`PUT /admin/packages/{name}`, `rail8 deploy`), and the node keeps each arch
 folder, under its SHA-256. All of that goes. Undeploy, the redeploy of only the flows that changed, the
 rollback of a failed start and the package checks stay.
 
-It is built in five stages; none reworks what an earlier one built ("What each stage builds", at the
+It is built in six stages; none reworks what an earlier one built ("What each stage builds", at the
 end).
 
 ## Rules
@@ -37,8 +37,8 @@ segment under the base (`orders`, `common`): the name `git clone` gives its fold
 followed by that name.
 
 The package lies at `RAIL8_GIT_PATH` in each repository, the repository's root by default. That folder
-holds `package.yaml` and `package.lock`, and every other file of the package, in subfolders as deep as
-it likes. A subfolder may carry a `folder.yaml` with a namespace, as it does today: a namespace of SAP
+holds `package.yaml` and `package.lock`, and every other file of the package, in subfolders as today's
+package rules allow. A subfolder may carry a `folder.yaml` with a namespace, as it does today: a namespace of SAP
 PO carries over as a folder. A package is known by the name in its manifest, which may differ from its
 repository's name. On a pool, a package name belongs to one repository: a deploy of a package of the
 same name from another repository is refused until the first is undeployed.
@@ -90,21 +90,28 @@ its history.
 ## Dependencies
 
 `package.yaml` names each dependency at an exact version, as today. `package.lock` pins each direct
-dependency by its name, its version, its content digest, its repository and its commit. A lock written
-before this change, with a dependency and no repository or commit, is refused, naming `rail8 lock`.
+dependency by its name, its version, its content digest, its repository and its commit. The lock's
+schema stays `schemaVersion: 1`, with `repository` and `commit` required in each entry; a lock without
+them is refused, naming `rail8 lock`.
 
 - `rail8 lock` finds a dependency among the working folder's package folders by its manifest's name, as
   today. It takes the repository from the name of the dependency's git working tree, the commit from its
   `HEAD`, and the content from that commit. A dependency whose files differ from its `HEAD` is refused:
-  commit it first.
+  commit it first. So is one whose `origin` remote ends in another name than its folder's, since the
+  pin would name a repository the pool does not have.
 - A deploy resolves each dependency of the closure from the repository and commit its lock pins, never
   from a version found by name. A directory the node keeps with that content is used as it is;
   otherwise the commit is fetched, under the same rule of reachability as the package's own, written,
   and its content checked against the pin.
 - A dependency's files come from its pinned commit, whatever version of it the pool runs, so packages
-  deploy in any order. Calls between flows go to the flows that run, as today.
+  deploy in any order. A dependency need not be deployed for its files to be used; it must be deployed
+  only for calls to its flows, which go to the flows that run, as today.
 - `rail8 validate` and `rail8 test` read a dependency's files from its pinned commit in its working
   tree's repository, as the node will, and the package itself from its working folder.
+- The command line reads git only through the same seam as the node ("The git seam"), with the
+  folder of candidate packages as a `file://` base and a cache in a temporary folder it deletes. The
+  check that a dependency's files differ from its `HEAD` lives in the command line: it compares the
+  content of the folder, without `.git`, with the content of `HEAD`'s folder written by the seam.
 
 ## A deploy
 
@@ -137,6 +144,9 @@ The order:
 The answer is today's deploy answer, with the repository and the commit in place of the revision and
 the archive.
 
+A listener or a node-local address that moves from one package to another takes two deploys: first
+the one that removes it, then the one that adds it.
+
 **Undeploy** stays `DELETE /admin/packages/{name}`, with today's checks: a package another package's
 record pins, or whose at-least-once flows hold queued items, is not undeployed. **Rollback** is a
 deploy of an earlier commit of the same repository.
@@ -165,8 +175,13 @@ At its start, before its admin port opens, a node installs each record:
   as today.
 - A package that cannot be fetched, or whose content differs from its record (a node configured with
   another base or path), is listed `FAILED` with the reason; the node starts, and the others run.
+  Until following is built, the next start is the next try.
 
 ## Several nodes
+
+This part is agreed in outline. Its stage designs it in full first, as hard work of its own: where the
+mark of a retiring flow lives in Postgres, the connection that holds the advisory lock, and a node that
+dies while a flow drains.
 
 - **One deploy at a time in a pool.** A deploy or an undeploy holds a Postgres advisory lock for its
   whole length; a second one on any node of the pool is 409.
@@ -178,10 +193,11 @@ At its start, before its admin port opens, a node installs each record:
   restore does, and undeploys a package that has no record. It writes no record. At every tick it
   tries again a package it lists `FAILED` because its commit could not be fetched. A node that cannot
   reconcile is `DEGRADED`, naming the packages, and tries again at the next tick.
-- **Retiring.** A flow that an undeploy or a redeploy removes stops taking messages on every node at
-  once, and its worker runs on until no node's work queue holds an item of it; only then does it stop
-  and, for an undeploy, the package's record go. A message accepted while the removal spreads is never
-  stranded.
+- **Retiring.** A removed flow retires only when no node holds its work. A flow that an undeploy or a
+  redeploy removes is marked in Postgres; every node stops taking messages for it, and its worker runs
+  on until no node's work queue holds an item of it; only then does it stop and, for an undeploy, the
+  package's record go. A message accepted while the removal spreads is never stranded. Until then, dev
+  and ci keep today's order, in which an undeploy deletes the record before the worker stops.
 
 Until this is built, a deployed environment refuses deploys and undeploys, as today, and a running
 node learns of a deploy on another node only at its next start.
@@ -224,8 +240,8 @@ reaches a deploy without a git origin.
 
 ## The git seam
 
-Only the runtime reads git, through one interface; a fake of it and the JGit implementation pass the
-same contract suite. Blocking: called on a virtual thread.
+The node and the command line read git only through one interface; a fake of it and the JGit
+implementation pass the same contract suite. Blocking: called on a virtual thread.
 
 ```java
 /** The package repositories of the node pool, read through the node's cache. */
@@ -313,27 +329,35 @@ The owner chose:
 
 These were decided on the owner's behalf, and stand until the owner says otherwise:
 
-- One base per pool, with repositories named by one segment under it; several bases may come later.
+- One base per pool, with repositories named by one segment under it. A name is stored as text, so
+  names of several segments (a group within a group) or several bases may come later with no
+  migration.
 - One read-only token for the base, rather than one per repository.
 - A dependency's files come from the commit its lock pins, whatever version of it runs.
+- `RAIL8_GIT_REF` names the same branch in every repository of the pool.
 - Until sign-in comes, whoever holds the admin token may deploy any package of the base; who may change
   a package and its release branch is the git host's to decide.
 
 ## What each stage builds
 
 1. **The git seam.** `PackageRepositories` on JGit, its fake and its contract suite, the `RAIL8_GIT_*`
-   settings, the token rules and the limits. Nothing calls it yet.
+   settings, the token rules and the limits, usable by the node and by the command line. Nothing calls
+   it yet.
 2. **A deploy from a folder.** `Deployments` deploys a folder instead of a zip; the upload unpacks into
-   a folder first, and `rail8 test` deploys copies of folders in process. Nothing changes for a caller.
+   a folder first, keeping its streamed checks of sizes and paths, and `rail8 test` deploys copies of
+   folders in process. Nothing changes for a caller.
 3. **A lock that pins commits.** `package.lock` pins each dependency's repository and commit;
    `rail8 lock` fills them in, and `rail8 validate` and `rail8 test` read dependencies from their pinned
    commits. The node reads the new lock and goes on resolving by content until the next stage.
 4. **Deploy and restore from git.** The record and its migration, `POST /admin/deploy` with its order,
-   dependencies from their pins, the restore from git, directories keyed by content digest, and the
-   removals above. Every caller in the repository moves in the same change, so that each keeps
-   working: `rail8 deploy` sends a repository and a commit, and CI, both compose files,
+   dependencies from their pins, the restore from git, directories keyed by content digest, and
+   `PUT /admin/packages/{name}` removed. Every caller in the repository moves in the same change, so
+   that each keeps working: `rail8 deploy` sends a repository and a commit, and CI, both compose files,
    `bin/run-adapter` and the quickstart deploy from git, as "The local run and the quickstart" says. A
    deployed environment still refuses deploys.
-5. **Several nodes.** The pool's lock, the catching up before a plan, the generation, following and
-   retiring; a deployed environment then takes deploys of commits reachable from its ref, and
-   undeploys.
+5. **The archive goes.** What the previous stage left unused is deleted: the archive store and its
+   settings, the AWS SDK in the runtime, `deploy/quickstart/deploy.sh` and the zip code of
+   `rail8 deploy`.
+6. **Several nodes.** Designed in full first, then built: the pool's lock, the catching up before a
+   plan, the generation, following and retiring; a deployed environment then takes deploys of commits
+   reachable from its ref, and undeploys.
