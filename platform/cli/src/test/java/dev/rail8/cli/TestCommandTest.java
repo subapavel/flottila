@@ -5,8 +5,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.net.ServerSocket;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -901,5 +905,42 @@ class TestCommandTest {
             assertEquals(INVOICE_PASSES, ran.outLines(), "the port is taken, the test binds nothing: " + ran);
             assertEquals(0, ran.exit(), ran.toString());
         }
+    }
+
+    /**
+     * A run copies the package folder once, before its first case, and every case deploys and reads that copy: once the first case
+     * is reported, every file of the working folder is overwritten, and the later cases pass as before.
+     */
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void anEditOfTheWorkingFolderDuringARunChangesNothingInIt() throws Exception {
+        Path pkg = CliRuns.copy(FLOWTEST, tmp.resolve("flowtest"));
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        List<String> edited = new ArrayList<>();
+        PrintStream editsAfterTheFirstCase = new PrintStream(out, true, StandardCharsets.UTF_8) {
+            @Override
+            public void println(String line) {
+                super.println(line);
+                if (edited.isEmpty() && line.startsWith("PASS ")) {
+                    try (Stream<Path> walk = Files.walk(pkg)) {
+                        for (Path f : walk.filter(Files::isRegularFile).toList()) {
+                            Files.writeString(f, "edited during the run");
+                            edited.add(f.toString());
+                        }
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                }
+            }
+        };
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        int exit = Cli.run(new String[] {"test", pkg.toString()}, Map.of(), editsAfterTheFirstCase, new PrintStream(err, true, StandardCharsets.UTF_8));
+
+        Ran ran = new Ran(exit, out.toString(StandardCharsets.UTF_8), err.toString(StandardCharsets.UTF_8));
+        assertFalse(edited.isEmpty(), "witness: the working folder was edited during the run");
+        assertEquals("edited during the run", Files.readString(pkg.resolve("flows/sync-order.yaml")), "witness: the edit stands");
+        assertEquals(FLOWTEST_REPORT, ran.outLines(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
     }
 }

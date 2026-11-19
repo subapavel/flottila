@@ -27,7 +27,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -105,12 +104,12 @@ class DeploymentsProducersTest {
     // --- fixture
 
     DeployedPackage deploy(PackageDraft p) throws Exception {
-        return OnVirtualThread.call(() -> deployments.deploy(p.manifest().getString("name"), Optional.empty(), p.zipTo(archives))).pkg();
+        return OnVirtualThread.call(() -> deployments.deploy(p.manifest().getString("name"), p.folderIn(archives))).pkg();
     }
 
     DeployRefusedException refused(PackageDraft p) {
         return assertThrows(DeployRefusedException.class,
-                () -> OnVirtualThread.call(() -> deployments.deploy(p.manifest().getString("name"), Optional.empty(), p.zipTo(archives))),
+                () -> OnVirtualThread.call(() -> deployments.deploy(p.manifest().getString("name"), p.folderIn(archives))),
                 "the deploy is refused");
     }
 
@@ -322,9 +321,9 @@ class DeploymentsProducersTest {
         Map<String, String> modes = new LinkedHashMap<>();
         modes.put("audit", "at-least-once");
         modes.put("zz", "sync");
-        Path archive = flows("shop", modes).zipTo(archives);
+        Path folder = flows("shop", modes).folderIn(archives);
         Doors.Gate second = doors.holdStart(2);
-        OnVirtualThread.Call<DeployResult> deploying = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), archive));
+        OnVirtualThread.Call<DeployResult> deploying = OnVirtualThread.start(() -> deployments.deploy("shop", folder));
         if (!second.reached().await(10, TimeUnit.SECONDS)) {
             fail("the second consumer start was not reached within 10 s; the deploy is at " + List.of(deploying.thread().getStackTrace()));
         }

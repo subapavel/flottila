@@ -409,7 +409,9 @@ CPI). A call needs no network, and the body is not copied on its way in. The moc
 
 `rail8 validate` checks a package against the schemas and builds every flow. `rail8 test` runs the
 `*.test.yaml` cases of each flow in process, with mock endpoints and a virtual clock, so a case with
-retries five minutes apart finishes in milliseconds. Both find the node's modules and load plugins
+retries five minutes apart finishes in milliseconds. It deploys a copy of the package's folder and of
+each dependency's, made once before the first case, with no archive and no record, so an edit of the
+folders during a run changes nothing in it. Both find the node's modules and load plugins
 as a node does (part 5), from `--plugins <dir>` or `RAIL8_PLUGINS`, and read no setting of theirs.
 `rail8 lock` writes `package.lock`.
 `rail8 deploy` zips the package and sends it to a node's admin API. `rail8 new-adapter` writes the
@@ -417,7 +419,8 @@ skeleton of a new adapter (part 5).
 
 ### Deployment
 
-A node unpacks and checks the archive, builds every flow and computes each flow's hash over its
+A node unpacks the archive into a folder, then deploys that folder: it checks the package, builds
+every flow and computes each flow's hash over its
 file, every file it read and its endpoints' options. The archive is stored by its hash (in S3, or a
 local folder in development), then the flows whose hash changed are stopped and started again; the
 others keep running. The commit point is a row in `deployments`. A failed start rolls back. A

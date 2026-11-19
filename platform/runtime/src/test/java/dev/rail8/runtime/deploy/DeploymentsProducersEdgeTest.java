@@ -17,7 +17,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static dev.rail8.runtime.deploy.DeploymentsTest.flows;
 import static dev.rail8.runtime.deploy.DeploymentsTest.shop;
@@ -63,7 +62,7 @@ class DeploymentsProducersEdgeTest {
         p.endpointDoc("audit-in").getJsonObject("config").put("refuse", "no door today");
 
         DeployRefusedException refused = assertThrows(DeployRefusedException.class,
-                () -> OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), p.zipTo(archives))));
+                () -> OnVirtualThread.call(() -> deployments.deploy("shop", p.folderIn(archives))));
 
         assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
         assertTrue(refused.problems().stream().anyMatch(s -> s.contains("no door today")), "fixture: audit's consumer was refused: " + refused.problems());
@@ -77,7 +76,7 @@ class DeploymentsProducersEdgeTest {
         Map<String, String> modes = new LinkedHashMap<>();
         modes.put("audit", "at-least-once");
         modes.put("orders", "sync");
-        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), flows("shop", modes).zipTo(archives)));
+        OnVirtualThread.call(() -> deployments.deploy("shop", flows("shop", modes).folderIn(archives)));
         assertEquals(2, doors.producers().size(), "fixture: two producers, one per flow: " + doors.producers());
         doors.failStop("shop/orders", "socket stuck");
 

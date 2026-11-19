@@ -148,6 +148,21 @@ public final class PackageDraft {
         return write(dir, zip());
     }
 
+    /** Writes {@link #files()} into a fresh folder under {@code dir}, each at its path; the folder. */
+    public Path folderIn(Path dir) {
+        try {
+            Path folder = Files.createDirectories(dir.resolve("folder-" + ARCHIVES.incrementAndGet()));
+            for (Map.Entry<String, byte[]> f : files().entrySet()) {
+                Path file = folder.resolve(f.getKey());
+                Files.createDirectories(file.getParent());
+                Files.write(file, f.getValue());
+            }
+            return folder;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     /** {@code bytes} in a fresh file under {@code dir}. */
     public static Path write(Path dir, byte[] bytes) {
         try {

@@ -181,7 +181,7 @@ class DeploymentsCustomCodeTest {
     }
 
     void deploy(PackageDraft p) throws Exception {
-        OnVirtualThread.call(() -> deployments.deploy(p.name(), Optional.empty(), p.zipTo(tmp.resolve("uploads"))));
+        OnVirtualThread.call(() -> deployments.deploy(p.name(), p.folderIn(tmp.resolve("uploads"))));
     }
 
     /** Package {@code name} @ {@code version}: flows {@code a} and {@code b} with a {@code count} step, flow {@code c} with a {@code count-too} step. */

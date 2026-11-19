@@ -22,7 +22,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static dev.rail8.runtime.deploy.DeploymentsTest.within;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -79,12 +78,12 @@ class DeploymentsQueueTest {
     }
 
     DeployRefusedException refused(PackageDraft p) {
-        return assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), p.zipTo(archives))),
+        return assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> deployments.deploy("shop", p.folderIn(archives))),
                 "the deploy is refused");
     }
 
     DeployedPackage deployed(PackageDraft p) throws Exception {
-        return OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), p.zipTo(archives))).pkg();
+        return OnVirtualThread.call(() -> deployments.deploy("shop", p.folderIn(archives))).pkg();
     }
 
     void nothingStarted() {
