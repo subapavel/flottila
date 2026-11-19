@@ -52,7 +52,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * P1-09c3b (D-070): restore at node start. {@code Deployments.restore()} blocks, under the deploy lock, and reads the pool's rows
  * ({@code records.list()}, by name); for each row it fetches the archive into a temporary file in {@code .incoming} (always
  * deleted), compares its SHA-256 with the row's and installs it in restore mode — no 403 in a deployed environment, no put, no
- * row written, {@code deployedAt} and {@code revision} from the row; a flow whose start fails is FAILED, the others run. A package
+ * row written, {@code deployedAt} and {@code revision} from the row; a flow whose consumer does not start is listed RESTARTING and
+ * tried again, the others run. A package
  * refused whole (its fetch failed, its SHA-256 differs, its unpack is refused, it has problems) is listed FAILED with its
  * problems and no flows or files, with an ERROR log, and the other packages run. Rows that cannot be read — and an IOException of
  * the node's own data directory — throw (the node does not start); nothing about one package does, S3 down included (every
