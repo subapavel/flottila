@@ -1,0 +1,731 @@
+{
+ "comment": "Cases of the rules of step names and process calls, run by the node's flow loader and by the flow editor's view, so that the two judge alike. Each case: the steps and processes of a flow, and the problems the editor finds, each at its path in the file. The node refuses a flow with problems at the place of one of them, and loads one without.",
+ "cases": [
+  {
+   "name": "unique names",
+   "steps": [
+    {
+     "type": "xsd",
+     "name": "validate",
+     "schema": "flows/a.xsd"
+    },
+    {
+     "type": "xsd",
+     "name": "check",
+     "schema": "flows/a.xsd"
+    }
+   ],
+   "problems": []
+  },
+  {
+   "name": "a name written twice",
+   "steps": [
+    {
+     "type": "xsd",
+     "name": "validate",
+     "schema": "flows/a.xsd"
+    },
+    {
+     "type": "xsd",
+     "name": "validate",
+     "schema": "flows/a.xsd"
+    }
+   ],
+   "problems": [
+    {
+     "path": [
+      "steps",
+      1,
+      "name"
+     ],
+     "message": "'validate' is the name of steps[0] too: step names are unique in a list"
+    }
+   ]
+  },
+  {
+   "name": "two steps of one type without names",
+   "steps": [
+    {
+     "type": "xsd",
+     "schema": "flows/a.xsd"
+    },
+    {
+     "type": "xsd",
+     "schema": "flows/a.xsd"
+    }
+   ],
+   "problems": [
+    {
+     "path": [
+      "steps",
+      1
+     ],
+     "message": "has no name, and its default 'xsd' is the name of steps[0] too: step names are unique in a list"
+    }
+   ]
+  },
+  {
+   "name": "a written name that is another step's default",
+   "steps": [
+    {
+     "type": "xsd",
+     "schema": "flows/a.xsd"
+    },
+    {
+     "type": "xsd",
+     "name": "xsd",
+     "schema": "flows/a.xsd"
+    }
+   ],
+   "problems": [
+    {
+     "path": [
+      "steps",
+      1,
+      "name"
+     ],
+     "message": "'xsd' is the name of steps[0] too: step names are unique in a list"
+    }
+   ]
+  },
+  {
+   "name": "the same name in the flow and in a process",
+   "steps": [
+    {
+     "type": "xsd",
+     "name": "check",
+     "schema": "flows/a.xsd"
+    },
+    {
+     "type": "process",
+     "process": "enrich"
+    }
+   ],
+   "processes": {
+    "enrich": {
+     "steps": [
+      {
+       "type": "xsd",
+       "name": "check",
+       "schema": "flows/a.xsd"
+      }
+     ]
+    }
+   },
+   "problems": []
+  },
+  {
+   "name": "a call is named after its process",
+   "steps": [
+    {
+     "type": "process",
+     "process": "enrich"
+    },
+    {
+     "type": "xsd",
+     "name": "enrich",
+     "schema": "flows/a.xsd"
+    }
+   ],
+   "processes": {
+    "enrich": {
+     "steps": [
+      {
+       "type": "xsd",
+       "schema": "flows/a.xsd"
+      }
+     ]
+    }
+   },
+   "problems": [
+    {
+     "path": [
+      "steps",
+      1,
+      "name"
+     ],
+     "message": "'enrich' is the name of steps[0] too: step names are unique in a list"
+    }
+   ]
+  },
+  {
+   "name": "a name in a process written twice",
+   "steps": [
+    {
+     "type": "process",
+     "process": "enrich"
+    }
+   ],
+   "processes": {
+    "enrich": {
+     "steps": [
+      {
+       "type": "xsd",
+       "name": "a",
+       "schema": "flows/a.xsd"
+      },
+      {
+       "type": "xsd",
+       "name": "a",
+       "schema": "flows/a.xsd"
+      }
+     ]
+    }
+   },
+   "problems": [
+    {
+     "path": [
+      "processes",
+      "enrich",
+      "steps",
+      1,
+      "name"
+     ],
+     "message": "'a' is the name of processes.enrich.steps[0] too: step names are unique in a list"
+    }
+   ]
+  },
+  {
+   "name": "a name of 64 characters",
+   "steps": [
+    {
+     "type": "xsd",
+     "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "schema": "flows/a.xsd"
+    }
+   ],
+   "problems": []
+  },
+  {
+   "name": "a name over 64 characters",
+   "steps": [
+    {
+     "type": "xsd",
+     "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "schema": "flows/a.xsd"
+    }
+   ],
+   "problems": [
+    {
+     "path": [
+      "steps",
+      0,
+      "name"
+     ],
+     "message": "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' is longer than the 64 characters of a step name"
+    }
+   ]
+  },
+  {
+   "name": "a default name over 64 characters",
+   "steps": [
+    {
+     "type": "process",
+     "process": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+   ],
+   "processes": {
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+     "steps": [
+      {
+       "type": "xsd",
+       "schema": "flows/a.xsd"
+      }
+     ]
+    }
+   },
+   "problems": [
+    {
+     "path": [
+      "steps",
+      0
+     ],
+     "message": "has no name, and its default 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' is longer than the 64 characters of a step name"
+    }
+   ]
+  },
+  {
+   "name": "a step named ingress",
+   "steps": [
+    {
+     "type": "xsd",
+     "name": "ingress",
+     "schema": "flows/a.xsd"
+    }
+   ],
+   "problems": [
+    {
+     "path": [
+      "steps",
+      0,
+      "name"
+     ],
+     "message": "'ingress' is the name of the arrival in a message's history"
+    }
+   ]
+  },
+  {
+   "name": "a call of a process named ingress",
+   "steps": [
+    {
+     "type": "process",
+     "process": "ingress"
+    }
+   ],
+   "processes": {
+    "ingress": {
+     "steps": [
+      {
+       "type": "xsd",
+       "schema": "flows/a.xsd"
+      }
+     ]
+    }
+   },
+   "problems": [
+    {
+     "path": [
+      "steps",
+      0
+     ],
+     "message": "has no name, and its default 'ingress' is the name of the arrival in a message's history"
+    }
+   ]
+  },
+  {
+   "name": "a call of no process",
+   "steps": [
+    {
+     "type": "process",
+     "process": "enrich"
+    }
+   ],
+   "problems": [
+    {
+     "path": [
+      "steps",
+      0,
+      "process"
+     ],
+     "message": "'enrich' names no process of this flow"
+    }
+   ]
+  },
+  {
+   "name": "a call with a key of its own",
+   "steps": [
+    {
+     "type": "process",
+     "process": "enrich",
+     "retryable": true
+    }
+   ],
+   "processes": {
+    "enrich": {
+     "steps": [
+      {
+       "type": "xsd",
+       "schema": "flows/a.xsd"
+      }
+     ]
+    }
+   },
+   "problems": [
+    {
+     "path": [
+      "steps",
+      0
+     ],
+     "message": "a process call takes only type, name and process, not retryable"
+    }
+   ]
+  },
+  {
+   "name": "a process no step calls",
+   "steps": [
+    {
+     "type": "xsd",
+     "schema": "flows/a.xsd"
+    }
+   ],
+   "processes": {
+    "spare": {
+     "steps": [
+      {
+       "type": "xsd",
+       "schema": "flows/a.xsd"
+      }
+     ]
+    }
+   },
+   "problems": []
+  },
+  {
+   "name": "a process that calls itself",
+   "steps": [
+    {
+     "type": "process",
+     "process": "a"
+    }
+   ],
+   "processes": {
+    "a": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "a"
+      }
+     ]
+    }
+   },
+   "problems": [
+    {
+     "path": [
+      "processes",
+      "a",
+      "steps",
+      0,
+      "process"
+     ],
+     "message": "process 'a' calls itself: a -> a"
+    }
+   ]
+  },
+  {
+   "name": "processes that call each other",
+   "steps": [
+    {
+     "type": "process",
+     "process": "a"
+    }
+   ],
+   "processes": {
+    "a": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "b"
+      }
+     ]
+    },
+    "b": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "a"
+      }
+     ]
+    }
+   },
+   "problems": [
+    {
+     "path": [
+      "processes",
+      "b",
+      "steps",
+      0,
+      "process"
+     ],
+     "message": "process 'a' calls itself: a -> b -> a"
+    }
+   ]
+  },
+  {
+   "name": "an uncalled process that calls itself",
+   "steps": [
+    {
+     "type": "xsd",
+     "schema": "flows/a.xsd"
+    }
+   ],
+   "processes": {
+    "a": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "a"
+      }
+     ]
+    }
+   },
+   "problems": [
+    {
+     "path": [
+      "processes",
+      "a",
+      "steps",
+      0,
+      "process"
+     ],
+     "message": "process 'a' calls itself: a -> a"
+    }
+   ]
+  },
+  {
+   "name": "processes 8 deep",
+   "steps": [
+    {
+     "type": "process",
+     "process": "p1"
+    }
+   ],
+   "processes": {
+    "p1": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p2"
+      }
+     ]
+    },
+    "p2": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p3"
+      }
+     ]
+    },
+    "p3": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p4"
+      }
+     ]
+    },
+    "p4": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p5"
+      }
+     ]
+    },
+    "p5": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p6"
+      }
+     ]
+    },
+    "p6": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p7"
+      }
+     ]
+    },
+    "p7": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p8"
+      }
+     ]
+    },
+    "p8": {
+     "steps": [
+      {
+       "type": "xsd",
+       "schema": "flows/a.xsd"
+      }
+     ]
+    }
+   },
+   "problems": []
+  },
+  {
+   "name": "processes 9 deep",
+   "steps": [
+    {
+     "type": "process",
+     "process": "p1"
+    }
+   ],
+   "processes": {
+    "p1": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p2"
+      }
+     ]
+    },
+    "p2": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p3"
+      }
+     ]
+    },
+    "p3": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p4"
+      }
+     ]
+    },
+    "p4": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p5"
+      }
+     ]
+    },
+    "p5": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p6"
+      }
+     ]
+    },
+    "p6": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p7"
+      }
+     ]
+    },
+    "p7": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p8"
+      }
+     ]
+    },
+    "p8": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p9"
+      }
+     ]
+    },
+    "p9": {
+     "steps": [
+      {
+       "type": "xsd",
+       "schema": "flows/a.xsd"
+      }
+     ]
+    }
+   },
+   "problems": [
+    {
+     "path": [
+      "processes",
+      "p8",
+      "steps",
+      0,
+      "process"
+     ],
+     "message": "processes run inside each other at most 8 deep, and this call goes deeper: p1 -> p2 -> p3 -> p4 -> p5 -> p6 -> p7 -> p8 -> p9"
+    }
+   ]
+  },
+  {
+   "name": "uncalled processes 9 deep",
+   "steps": [
+    {
+     "type": "xsd",
+     "schema": "flows/a.xsd"
+    }
+   ],
+   "processes": {
+    "p1": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p2"
+      }
+     ]
+    },
+    "p2": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p3"
+      }
+     ]
+    },
+    "p3": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p4"
+      }
+     ]
+    },
+    "p4": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p5"
+      }
+     ]
+    },
+    "p5": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p6"
+      }
+     ]
+    },
+    "p6": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p7"
+      }
+     ]
+    },
+    "p7": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p8"
+      }
+     ]
+    },
+    "p8": {
+     "steps": [
+      {
+       "type": "process",
+       "process": "p9"
+      }
+     ]
+    },
+    "p9": {
+     "steps": [
+      {
+       "type": "xsd",
+       "schema": "flows/a.xsd"
+      }
+     ]
+    }
+   },
+   "problems": [
+    {
+     "path": [
+      "processes",
+      "p8",
+      "steps",
+      0,
+      "process"
+     ],
+     "message": "processes run inside each other at most 8 deep, and this call goes deeper: p1 -> p2 -> p3 -> p4 -> p5 -> p6 -> p7 -> p8 -> p9"
+    }
+   ]
+  }
+ ]
+}

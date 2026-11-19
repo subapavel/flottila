@@ -1,0 +1,18 @@
+schemaVersion: 1
+kind: flow
+id: anchors
+version: 0.1.0
+from: { endpoint: http-in }
+delivery: { mode: sync }
+limits: &limits { maxBodyBytes: 1048576 }
+steps:
+  - &check
+    type: xsd
+    name: validate
+    schema: flows/invoice.xsd
+  - <<: *check
+    name: again
+  - type: xslt
+    stylesheet: !!str flows/invoice-to-partner.xsl
+  - type: to
+    endpoint: partner-domestic

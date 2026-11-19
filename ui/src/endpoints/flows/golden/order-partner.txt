@@ -1,0 +1,9 @@
+readable: true
+nodes:
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/from","kind":"from","path":["from"],"label":"order-partner-in","detail":"direct · /orders/partner","opens":{"endpoint":"demo/endpoints/order-partner-in.yaml"},"width":240,"height":56,"x":0,"y":0}
+  {"runsAs":["partner"],"runs":1,"defaultName":false,"id":"/steps/0","kind":"step","path":["steps",0],"label":"partner","type":"to","form":{"path":["steps",0],"fields":["endpoint","byProp","endpoints"]},"width":240,"height":56,"detail":"partner-domestic · http","opens":{"endpoint":"demo/endpoints/partner-domestic.yaml"},"x":0,"y":96}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps#end","kind":"end","path":["steps"],"label":"end","width":120,"height":32,"x":60,"y":192}
+edges:
+  {"id":"/from->/steps/0","source":"/from","target":"/steps/0","kind":"next","insertAt":["steps",0]}
+  {"id":"/steps/0->/steps#end","source":"/steps/0","target":"/steps#end","kind":"next","insertAt":["steps",1]}
+problems:

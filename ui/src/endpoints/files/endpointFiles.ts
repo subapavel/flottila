@@ -1,9 +1,10 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { basename, dirname, join, relative, sep } from 'node:path';
 import { foreign } from '../../../server/adminProxy.ts';
 import { EndpointFileError, readEndpoint, writeConfig, type EndpointDocument } from './endpointYaml.ts';
+import { etagOf, jsonBody, locate, Refusal, replaceFile, send, sendFailure, walk } from './workingFolder.ts';
+
+export { etagOf, MAX_FILE_BYTES, MAX_FILES } from './workingFolder.ts';
 
 /** The working folder whose endpoint files the settings form reads and writes, and who may reach them. */
 export interface EndpointFilesOptions {
@@ -24,91 +25,27 @@ export interface EndpointFile extends EndpointDocument {
   editable: boolean;
 }
 
-/** At most this many YAML files are looked at, this deep, and none longer than this. */
-export const MAX_FILES = 1000;
-const MAX_DEPTH = 16;
-export const MAX_FILE_BYTES = 1024 * 1024;
-const SKIPPED = new Set(['node_modules', 'target']);
 const PREFIX = '/files/endpoints';
-
-class Refusal extends Error {
-  readonly status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
 
 const isYaml = (name: string) => name.endsWith('.yaml') && !name.endsWith('.test.yaml');
 
 /**
  * The endpoint files under `root`: every `*.yaml` but a `*.test.yaml` whose `kind` is `endpoint`, sorted by path, and
- * whether the walk stopped at {@link MAX_FILES}. Hidden folders, `node_modules`, `target`, symbolic links and files over
- * {@link MAX_FILE_BYTES} are passed over, and so is a file that is no YAML unless it says `kind: endpoint`.
+ * whether the walk stopped at its limit of files. The folders and files the walk passes over are not looked at, and a
+ * file that is no YAML is passed over unless it says `kind: endpoint`.
  */
 export async function listEndpoints(root: string): Promise<{ items: EndpointItem[]; truncated: boolean }> {
+  const { files, truncated } = await walk(root, isYaml);
   const items: EndpointItem[] = [];
-  let seen = 0;
-  let truncated = false;
-  const walk = async (dir: string, depth: number) => {
-    const entries = await readdir(dir, { withFileTypes: true });
-    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-    for (const entry of entries) {
-      if (truncated || entry.name.startsWith('.')) continue;
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (!SKIPPED.has(entry.name) && depth < MAX_DEPTH) await walk(full, depth + 1);
-      } else if (entry.isFile() && isYaml(entry.name)) {
-        if (++seen > MAX_FILES) {
-          truncated = true;
-          continue;
-        }
-        if ((await stat(full)).size > MAX_FILE_BYTES) continue;
-        const path = relative(root, full).split(sep).join('/');
-        const text = await readFile(full, 'utf8');
-        try {
-          const doc = readEndpoint(text);
-          if (doc !== null) items.push({ path, id: doc.id, scheme: doc.scheme, direction: doc.direction });
-        } catch (error) {
-          if (error instanceof EndpointFileError && /^kind:\s*endpoint\s*$/m.test(text)) items.push({ path, problem: error.message });
-        }
-      }
-    }
-  };
-  await walk(root, 0);
-  items.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return { items, truncated };
-}
-
-/** The ETag of a file's bytes. */
-export function etagOf(bytes: Buffer | string): string {
-  return `"sha256-${createHash('sha256').update(bytes).digest('hex')}"`;
-}
-
-/** The real path of the endpoint file at `path` (relative, with `/`) under the real folder `root`, refused when it leaves it. */
-async function locate(root: string, path: string): Promise<string> {
-  const segments = path.split('/').map((s) => {
+  for (const { path, text } of files) {
     try {
-      return decodeURIComponent(s);
-    } catch {
-      throw new Refusal(400, 'the path is not well encoded');
+      const doc = readEndpoint(text);
+      if (doc !== null) items.push({ path, id: doc.id, scheme: doc.scheme, direction: doc.direction });
+    } catch (error) {
+      if (error instanceof EndpointFileError && /^kind:\s*endpoint\s*$/m.test(text)) items.push({ path, problem: error.message });
     }
-  });
-  if (segments.some((s) => s === '' || s === '.' || s === '..' || /[/\\\0]/.test(s)) || !isYaml(segments.at(-1)!)) {
-    throw new Refusal(400, 'the path names no endpoint file of the working folder');
   }
-  let real: string;
-  try {
-    real = await realpath(join(root, ...segments));
-  } catch {
-    throw new Refusal(404, `no file ${segments.join('/')} in the working folder`);
-  }
-  if (!real.startsWith(root + sep)) throw new Refusal(403, 'the path leaves the working folder');
-  const info = await stat(real);
-  if (!info.isFile()) throw new Refusal(404, `no file ${segments.join('/')} in the working folder`);
-  if (info.size > MAX_FILE_BYTES) throw new Refusal(413, 'the file is over 1 MiB');
-  return real;
+  return { items, truncated };
 }
 
 function endpointOf(text: string, path: string, editable: boolean): EndpointFile {
@@ -120,27 +57,6 @@ function endpointOf(text: string, path: string, editable: boolean): EndpointFile
     if (error instanceof EndpointFileError) throw new Refusal(422, error.message);
     throw error;
   }
-}
-
-async function body(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of req as AsyncIterable<Buffer>) {
-    size += chunk.length;
-    if (size > MAX_FILE_BYTES) throw new Refusal(413, 'the request is over 1 MiB');
-    chunks.push(chunk);
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  } catch {
-    throw new Refusal(400, 'the request is not JSON');
-  }
-}
-
-function send(res: ServerResponse, status: number, value: unknown, etag?: string) {
-  const headers: Record<string, string> = { 'content-type': 'application/json', 'cache-control': 'no-store' };
-  if (etag !== undefined) headers.etag = etag;
-  res.writeHead(status, headers).end(JSON.stringify(value));
 }
 
 /**
@@ -170,7 +86,7 @@ export function endpointFiles(options: EndpointFilesOptions) {
   };
 
   const read = async (path: string) => {
-    const file = await locate(await rootOf(), path);
+    const file = await locate(await rootOf(), path, isYaml, 'endpoint file');
     const bytes = await readFile(file);
     return { file: endpointOf(bytes.toString('utf8'), path, options.editable), etag: etagOf(bytes) };
   };
@@ -179,11 +95,11 @@ export function endpointFiles(options: EndpointFilesOptions) {
     if (!options.editable) throw new Refusal(403, 'this server shows endpoint files read-only');
     const ifMatch = req.headers['if-match'];
     if (ifMatch === undefined) throw new Refusal(428, 'a save names the version it changes in If-Match');
-    const sent = await body(req);
+    const sent = await jsonBody(req);
     if (typeof sent !== 'object' || sent === null || !('config' in sent)) throw new Refusal(400, 'a save sends {"config": {...}}');
     const config = sent.config;
     if (typeof config !== 'object' || config === null || Array.isArray(config)) throw new Refusal(400, 'config is a JSON object');
-    const file = await locate(await rootOf(), path);
+    const file = await locate(await rootOf(), path, isYaml, 'endpoint file');
     const bytes = await readFile(file);
     if (etagOf(bytes) !== ifMatch) throw new Refusal(412, 'the file changed since it was read; nothing was saved');
     const text = bytes.toString('utf8');
@@ -195,14 +111,7 @@ export function endpointFiles(options: EndpointFilesOptions) {
       if (error instanceof EndpointFileError) throw new Refusal(422, error.message);
       throw error;
     }
-    const temporary = join(dirname(file), `.${basename(file)}.${randomUUID()}.tmp`);
-    try {
-      await writeFile(temporary, written, { flag: 'wx', mode: (await stat(file)).mode & 0o777 });
-      await rename(temporary, file);
-    } catch (error) {
-      await rm(temporary, { force: true });
-      throw error;
-    }
+    await replaceFile(file, written);
     return { file: endpointOf(written, path, options.editable), etag: etagOf(written) };
   };
 
@@ -230,10 +139,6 @@ export function endpointFiles(options: EndpointFilesOptions) {
         send(res, 200, file, etag);
       } else send(res, 405, { error: 'the working folder takes GET, and PUT of one file' });
     };
-    answer().catch((error: unknown) => {
-      if (res.headersSent) res.destroy();
-      else if (error instanceof Refusal) send(res, error.status, { error: error.message });
-      else send(res, 500, { error: `the working folder could not be read or written: ${String(error)}` });
-    });
+    answer().catch((error: unknown) => sendFailure(res, error));
   };
 }
