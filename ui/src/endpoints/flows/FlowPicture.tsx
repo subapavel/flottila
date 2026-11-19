@@ -121,7 +121,8 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, c
   // the endpoint file a call of a flow is creating, and why that failed
   const [calling, setCalling] = useState<string | null>(null);
   const [callFailure, setCallFailure] = useState<string | null>(null);
-  const [newProcess, setNewProcess] = useState<{ name: string; type: string } | null>(null);
+  // the new process asked for, and why it was refused
+  const [newProcess, setNewProcess] = useState<{ name: string; type: string; refused?: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveFailure, setSaveFailure] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
@@ -262,18 +263,25 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, c
     if (at === null) return;
     const call = callOf(file.context, path, called);
     if (call.create !== undefined) {
-      setCalling(call.create.path);
+      const created = call.create.path;
+      setCalling(created);
       setCallFailure(null);
       try {
-        await createEndpoint(call.create.path, call.create.text);
+        await createEndpoint(created, call.create.text);
+      } catch (error) {
+        setCallFailure(`${created} was not created: ${messageOf(error)}`);
+        setCalling(null);
+        return;
+      }
+      try {
         const fresh = await api.read(path);
         setResult({ ...result, stored: { ...result.stored, file: { ...result.stored.file, context: fresh.file.context } } });
       } catch (error) {
-        setCallFailure(`${call.create.path} was not created: ${messageOf(error)}`);
-        return;
-      } finally {
+        setCallFailure(`${created} was created, but the flow's endpoints could not be read again: ${messageOf(error)}. Refresh after Save shows them.`);
         setCalling(null);
+        return;
       }
+      setCalling(null);
     }
     setAdding(null);
     if (change(addStep(picture, at, 'to', { endpoint: call.endpoint }))) setSelected(at);
@@ -284,7 +292,15 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, c
   const createProcess = () => {
     if (newProcess === null) return;
     const name = newProcess.name;
-    if (change(() => addProcess(picture, value, name, newProcess.type))) {
+    let ops: Op[];
+    try {
+      ops = addProcess(picture, value, name, newProcess.type);
+    } catch (failed) {
+      if (!(failed instanceof EditRefused)) throw failed;
+      setNewProcess({ ...newProcess, refused: failed.message });
+      return;
+    }
+    if (change(ops)) {
       setNewProcess(null);
       setSelected(['processes', name, 'steps']);
     }
@@ -646,7 +662,18 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, c
             }}
           >
             <FormGroup label="Name" isRequired fieldId={`${ids}-process-name`}>
-              <TextInput id={`${ids}-process-name`} isRequired value={newProcess?.name ?? ''} onChange={(_, name) => setNewProcess((p) => (p === null ? p : { ...p, name }))} />
+              <TextInput
+                id={`${ids}-process-name`}
+                isRequired
+                value={newProcess?.name ?? ''}
+                validated={newProcess?.refused === undefined ? 'default' : 'error'}
+                onChange={(_, name) => setNewProcess((p) => (p === null ? p : { name, type: p.type }))}
+              />
+              {newProcess?.refused !== undefined && (
+                <HelperText>
+                  <HelperTextItem variant="error">{newProcess.refused}</HelperTextItem>
+                </HelperText>
+              )}
             </FormGroup>
             <FormGroup label="First step" fieldId={`${ids}-process-type`}>
               <FormSelect id={`${ids}-process-type`} value={newProcess?.type ?? ''} onChange={(_, type) => setNewProcess((p) => (p === null ? p : { ...p, type }))}>
