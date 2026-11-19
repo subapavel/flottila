@@ -190,7 +190,7 @@ jobs:
       - name: Install the mapping engine the mapping step depends on (its tests run in mapping-ci)
         run: bin/install-mapping
       - name: Build the jars the node image and the deploy one-shot use
-        run: mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime,:rail8-cli -am
+        run: mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-node,:rail8-cli -am
       - name: Start the stack and wait for /health (60 s bound)
         working-directory: deploy/compose
         run: |
@@ -245,7 +245,7 @@ jobs:
         run: |
           set -euo pipefail
           bin/install-jq && bin/install-mapping
-          mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am
+          mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-node -am
           ./mvnw -B -ntp -q -f mapping/pom.xml -pl service -am package -DskipTests
           (cd ui && npm ci)
       - name: Start the node, wait for /health and deploy the demo

@@ -22,7 +22,7 @@ repository cloned inside the WSL file system.
 ```sh
 git clone https://github.com/subapavel/rail8.git && cd rail8
 bin/install-jq && bin/install-mapping                                           # the engines the jq and mapping steps depend on
-mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am   # the node's jar, which the image copies
+mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-node -am      # the node's jar, which the image copies
 ./mvnw -B -ntp -q -f mapping/pom.xml -pl service -am package -DskipTests        # the mapping service the studio talks to
 (cd ui && npm ci)
 
@@ -64,7 +64,7 @@ Stop the mapping service and the UI (Ctrl+C), then:
 ```sh
 git pull
 bin/install-jq && bin/install-mapping
-mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am
+mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-node -am
 ./mvnw -B -ntp -q -f mapping/pom.xml -pl service -am package -DskipTests
 (cd ui && npm ci)
 export RAIL8_ADMIN_TOKEN=<the token of the first run>   # a new shell has none, and the node refuses to start without it
