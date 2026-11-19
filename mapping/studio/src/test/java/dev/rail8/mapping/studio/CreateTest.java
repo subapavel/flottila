@@ -38,7 +38,7 @@ class CreateTest {
   }
 
   @Test
-  void createIs201WithModelEtagAndLocation() {
+  void createIs201WithTheNewModelInCanonicalForm() {
     String request = createRequest("creating/order-to-order", BUNDLE, ORDER);
 
     Calls.Answer answer = create(request);
@@ -187,7 +187,7 @@ class CreateTest {
    * here is a supplementary character, two UTF-16 units.
    */
   @Test
-  void createWithADescriptionOver4000CodePointsIs422AndNothingIsWritten() {
+  void createWithADescriptionOver4000CodePointsIs422() {
     String clef = "𝄞";
 
     Calls.Answer over = createDescribed("creating-long/over", clef.repeat(4001));

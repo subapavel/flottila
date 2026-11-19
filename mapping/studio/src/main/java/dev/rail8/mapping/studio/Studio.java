@@ -55,10 +55,10 @@ public final class Studio {
   private Studio() {}
 
   /** The most slots, contexts or occurrence records one trace entry of a test run keeps. */
-  public static final int TRACE_LIMIT = 10_000;
+  static final int TRACE_LIMIT = 10_000;
 
   /** How long a test run may take; past it, the run is the runtime error {@code rail8:TIMEOUT}. */
-  public static final Duration TEST_TIMEOUT = Duration.ofSeconds(10);
+  static final Duration TEST_TIMEOUT = Duration.ofSeconds(10);
 
   /**
    * The most bytes a test run's output may have, 16 MiB; past it, the run is the runtime error

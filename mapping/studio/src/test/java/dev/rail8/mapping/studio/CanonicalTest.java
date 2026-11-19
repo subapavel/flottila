@@ -30,7 +30,7 @@ class CanonicalTest {
   private static final Calls CALLS = Calls.studio();
 
   @Test
-  void getReturnsCanonicalModelAndEtag() {
+  void aStoredModelIsAnsweredInCanonicalForm() {
     Calls.Answer answer = CALLS.stored(corpusMapping());
 
     assertThat(answer.status()).as("%s", answer).isEqualTo(200);
@@ -88,7 +88,7 @@ class CanonicalTest {
   }
 
   @Test
-  void saveMalformedJsonIs400AndFileUnchanged() {
+  void aSentModelThatIsNoJsonIs400MalformedJson() {
     String wired = workingCopy("\"a1\"");
     byte[] withBom = new byte[3 + bytes(wired).length];
     withBom[0] = (byte) 0xEF;

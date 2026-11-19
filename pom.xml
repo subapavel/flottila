@@ -8,9 +8,10 @@
        platform/pom.xml; the mapping's is mapping/pom.xml (rail8-mapping-parent), built alone with
        `./mvnw -f mapping/pom.xml`; the jq engine's is jq/pom.xml (rail8-jq-parent), built alone with `./mvnw -f jq/pom.xml`.
        The platform's jq step depends on the engine's rail8-jq-core, and its mapping step, the only platform module that
-       depends on the mapping, on the engine's rail8-mapping-embed. So the platform is built from here, where -am brings
-       those engine modules into the same build: `./mvnw -B -ntp -q package -DskipTests -pl :rail8-node -am` for the node,
-       and with -Drail8.engines.skipTests the engines are built without running their own tests. -->
+       depends on the mapping, on the engine's rail8-mapping-embed and rail8-mapping-studio. So the platform is built from
+       here, where -am brings those engine modules into the same build:
+       `./mvnw -B -ntp -q package -DskipTests -pl :rail8-node -am` for the node, and with -Drail8.engines.skipTests the
+       engines are built without running their own tests. -->
   <groupId>dev.rail8</groupId>
   <artifactId>rail8</artifactId>
   <version>0.1.0-SNAPSHOT</version>
