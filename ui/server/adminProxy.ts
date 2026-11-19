@@ -12,6 +12,14 @@ export interface AdminProxyOptions {
   token?: string;
 }
 
+/**
+ * The node the development server calls, from its environment: RAIL8_ADMIN_URL, by default http://127.0.0.1:8081, and
+ * RAIL8_ADMIN_TOKEN, when it is set and not blank. Both are read on the server and never reach the browser.
+ */
+export function nodeOf(env: Readonly<Record<string, string | undefined>>): { target: string; token?: string } {
+  return { target: env.RAIL8_ADMIN_URL ?? 'http://127.0.0.1:8081', token: env.RAIL8_ADMIN_TOKEN?.trim() || undefined };
+}
+
 /** The request headers passed on to the node. Every other one, `Origin`, `Referer`, `Cookie`, `Authorization` and `Sec-Fetch-*` among them, stays behind. */
 const PASSED = ['accept', 'content-type'] as const;
 

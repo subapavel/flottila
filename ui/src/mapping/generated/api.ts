@@ -30,6 +30,24 @@ export interface paths {
                         "application/json": components["schemas"]["function-catalogue.schema"];
                     };
                 };
+                /** @description node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
             };
         };
         put?: never;
@@ -57,13 +75,24 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
+                /** @description The mappings of the working folder, sorted by id */
                 200: {
                     headers: {
+                        /** @description true when the walk of the working folder stopped at 1,000 mapping files, so that more may exist; absent otherwise */
+                        "Rail8-Truncated"?: string;
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": components["schemas"]["MappingSummary"][];
+                    };
+                };
+                /** @description not-found: no working folder is set */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
             };
@@ -105,6 +134,15 @@ export interface paths {
                         "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
+                /** @description read-only: the working folder is shown read-only; or foreign-origin: the request does not come from a page of this server */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
                 /** @description not-found: the mapping's directory */
                 404: {
                     headers: {
@@ -116,6 +154,15 @@ export interface paths {
                 };
                 /** @description mapping-exists */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description too-large: the request, or it and the bundle files it reads, are over 12 MiB */
+                413: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -139,6 +186,24 @@ export interface paths {
                     };
                     content: {
                         "application/problem+json": components["schemas"]["RefusedProblem"];
+                    };
+                };
+                /** @description node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
             };
@@ -197,6 +262,15 @@ export interface paths {
                         "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
+                /** @description too-large: the request, or it and the bundle files it reads, are over 12 MiB */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
                 /** @description model-refused: the stored file is no JSON document or no valid model */
                 422: {
                     headers: {
@@ -204,6 +278,24 @@ export interface paths {
                     };
                     content: {
                         "application/problem+json": components["schemas"]["RefusedProblem"];
+                    };
+                };
+                /** @description node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
             };
@@ -247,6 +339,15 @@ export interface paths {
                         "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
+                /** @description read-only: the working folder is shown read-only; or foreign-origin: the request does not come from a page of this server */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
                 /** @description not-found: no mapping of this id */
                 404: {
                     headers: {
@@ -258,6 +359,15 @@ export interface paths {
                 };
                 /** @description mapping-changed: If-Match differs from the stored file's ETag */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description too-large: the request, or it and the bundle files it reads, are over 12 MiB */
+                413: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -281,6 +391,24 @@ export interface paths {
                     };
                     content: {
                         "application/problem+json": components["schemas"]["RefusedProblem"];
+                    };
+                };
+                /** @description node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
             };
@@ -335,6 +463,15 @@ export interface paths {
                         "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
+                /** @description foreign-origin: the request does not come from a page of this server */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
                 /** @description not-found: the mapping's directory */
                 404: {
                     headers: {
@@ -344,8 +481,35 @@ export interface paths {
                         "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
+                /** @description too-large: the request, or it and the bundle files it reads, are over 12 MiB */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
                 /** @description unsupported-media-type */
                 415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -404,8 +568,26 @@ export interface paths {
                         "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
+                /** @description foreign-origin: the request does not come from a page of this server */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
                 /** @description not-found: the mapping's directory */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description too-large: the request, or it and the bundle files it reads, are over 12 MiB */
+                413: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -429,6 +611,24 @@ export interface paths {
                     };
                     content: {
                         "application/problem+json": components["schemas"]["RefusedProblem"];
+                    };
+                };
+                /** @description node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
             };
@@ -482,6 +682,15 @@ export interface paths {
                         "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
+                /** @description foreign-origin: the request does not come from a page of this server */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
                 /** @description not-found: the mapping's directory */
                 404: {
                     headers: {
@@ -491,8 +700,35 @@ export interface paths {
                         "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
+                /** @description too-large: the request, or it and the bundle files it reads, are over 12 MiB */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
                 /** @description unsupported-media-type */
                 415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -549,6 +785,15 @@ export interface paths {
                         "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
+                /** @description foreign-origin: the request does not come from a page of this server */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
                 /** @description not-found: the base directory */
                 404: {
                     headers: {
@@ -558,8 +803,35 @@ export interface paths {
                         "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
+                /** @description too-large: the request, or it and the bundle files it reads, are over 12 MiB */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
                 /** @description unsupported-media-type */
                 415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
