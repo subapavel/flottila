@@ -67,7 +67,8 @@ mutation tests, a second Postgres, Windows and performance are switched off for 
   Verticles own sockets and timers and never run a pipeline.
 - Dependencies point `api` ← `core` ← `runtime`, enforced by ArchUnit. Components and steps depend
   on `api` only; only `runtime` talks to Postgres, S3, Valkey or ClickHouse.
-- All contact with the outside world goes through the Component SPI. Every component ships with a
+- All contact with the systems a flow talks to goes through the Component SPI; the platform's own
+  stores (Postgres, S3, Valkey, ClickHouse) are not part of that. Every component ships with a
   mock that passes the same contract suite as the real one.
 - State whose loss loses messages lives in Postgres, never in a cache.
 - Clock, timers and ids are injected. Tests use a fake clock, never sleep.

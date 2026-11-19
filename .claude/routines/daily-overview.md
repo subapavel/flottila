@@ -16,6 +16,8 @@ before the run.
 - **Daily run**: the latest scheduled run on `main` of each workflow `ci`, `mapping-ci`, `jq-ci` and
   `ui-ci` (`actions_list`, then the run's jobs): each job green or red. The job `nightly · quickstart`
   of `ci` runs the start commands of `docs/QUICKSTART.md`; when it is red, the quickstart is broken.
+- **Waiting for Codex**: open issues labelled `codex-wanted`: number, title and the time the label
+  was added.
 - **Usage**: the number of sessions whose title starts with `dispatcher-worker:` created yesterday
   (`list_sessions` with `mine: true`), and `external_metadata.rate_limit_info` from `get_session`
   with no `session_id` (status, and the reset time from `resetsAt`).
@@ -38,7 +40,7 @@ Write in Czech, at most ten lines, no abbreviations, plain words a person reads 
 the first line is the state of the daily run on `main`: either "main is fine, this is how to start it"
 (then the start commands of `docs/QUICKSTART.md`, in a few words) or "this task broke it, the fix is
 running" (then the issue number and its title from step 2); then what was built, what the owner-proxy decided and which assumptions wait for confirmation, the open
-questions, the daily run job by job (with the new issue number if step 2 opened one), and usage.
+questions, the issues waiting for Codex, the daily run job by job (with the new issue number if step 2 opened one), and usage.
 Say "nic" for an empty part instead of leaving it out.
 
 Find the open issue titled "Daily overview" with label `owner-report`; if there is none, create it
