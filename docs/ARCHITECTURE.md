@@ -360,6 +360,13 @@ flow, a `split` runs the rest of the flow once per part, and an `extractKey` may
 
 ### Calls between flows
 
+The component `direct` is a module of its own, which the node does not ship yet, so no flow calls
+another. An endpoint names its `address`, a path such as `/orders` of at most 256 characters. A
+component says which node-local address an endpoint serves or calls with `Component.internalAddress`,
+empty by default. The mock of `direct` is the `mock` component, which passes the same contract suite.
+A flow file may not name a key, a prop or `partitionBy` that starts with `rail8.`: those are the
+platform's own.
+
 **Planned**
 
 One flow calls another through an internal adapter, scheme `direct` (like ProcessDirect in CPI). A
@@ -392,11 +399,8 @@ call needs no network, and the body is not copied on its way in.
   the path. A call to an address that no flow serves is only a warning in the node's log, so
   packages deploy in any order.
 - **Depth.** At run time a chain of calls is at most 8 deep. The depth travels as the prop
-  `rail8.depth`, and a call past the cap is refused for good. A flow file may not name a key, a prop
-  or `partitionBy` that starts with `rail8.`.
-- **Contract.** A component says which node-local address an endpoint serves or calls
-  (`Component.internalAddress`, empty by default), and the deploy checks use that address. The mock
-  of `direct` is the `mock` component, which passes the same contract suite.
+  `rail8.depth`, and a call past the cap is refused for good.
+- **Contract.** The deploy checks use the address `Component.internalAddress` names.
 - **Storage.** For a body whose key names another message, the save writes the body's kept
   reference in the same transaction. Retention keeps that reference while any work row points at the
   same place in the journal.

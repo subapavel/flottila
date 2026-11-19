@@ -33,6 +33,11 @@
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
+      <artifactId>rail8-component-direct</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-http</artifactId>
       <scope>test</scope>
     </dependency>

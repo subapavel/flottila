@@ -93,4 +93,19 @@ public interface Component {
     default Optional<String> target(EndpointConfig cfg) {
         return Optional.empty();
     }
+
+    /**
+     * The node-local address an endpoint of {@code cfg} serves (an in endpoint) or calls (an out endpoint), if the component
+     * joins flows of one node; empty if it reaches outside the node. One answer for both directions: the node knows which side
+     * an endpoint is on. Two endpoints name one address when their schemes are equal and their answers are equal strings,
+     * matched exactly. Answered from {@code cfg} alone — already checked against {@link #settings()} — nothing is opened or
+     * claimed, and the answer is the same on every call. The node calls it at deploy and at restore, on a virtual thread, to
+     * refuse two flows on one address and calls between flows that would form a cycle; a throw is a problem line of that
+     * deploy.
+     *
+     * @since 0.1
+     */
+    default Optional<String> internalAddress(EndpointConfig cfg) {
+        return Optional.empty();
+    }
 }

@@ -101,6 +101,11 @@
       </dependency>
       <dependency>
         <groupId>dev.rail8</groupId>
+        <artifactId>rail8-component-direct</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-component-http</artifactId>
         <version>${project.version}</version>
       </dependency>

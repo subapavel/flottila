@@ -1,0 +1,10 @@
+# expect: /partitionBy
+schemaVersion: 1
+kind: flow
+id: f
+version: 1.0.0
+from: { endpoint: e }
+delivery: { mode: at-least-once }
+limits: { maxBodyBytes: 10 }
+partitionBy: rail8.ref
+steps: [ { type: extractKey, name: k, key: orderId, xpath: /Order/Id } ]

@@ -42,6 +42,12 @@ public record Envelope(String id, String flow, int step, Headers headers, Props 
      */
     public static final Key<Integer> ATTEMPT = new Key<>("attempt");
 
+    /**
+     * The start of the names of the keys and props the platform sets itself, such as the reference that every message of a
+     * chain of calls between flows carries. A flow file may not name a key, a prop or {@code partitionBy} that starts with it.
+     */
+    public static final String RESERVED_PREFIX = "rail8.";
+
     /** Between a part's name and the attempt that wrote it, in a key of {@link #nextKey(String)}; never in a part's own name. */
     private static final char ATTEMPT_SEPARATOR = '~';
 
