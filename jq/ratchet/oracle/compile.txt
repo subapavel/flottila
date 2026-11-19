@@ -8646,6 +8646,8 @@ jq.test#504b626851af	504b626851af	conservative
 jq.test#504b626851af	504b626851af	trampoline
 jq.test#50a8dd7ee578	50a8dd7ee578	conservative
 jq.test#50a8dd7ee578	50a8dd7ee578	trampoline
+jq.test#51200beb445c	51200beb445c	conservative
+jq.test#51200beb445c	51200beb445c	trampoline
 jq.test#51dd8fe1848d	51dd8fe1848d	conservative
 jq.test#51dd8fe1848d	51dd8fe1848d	trampoline
 jq.test#529480120c42	529480120c42	conservative
@@ -8704,6 +8706,8 @@ jq.test#60ea650c4e1b	60ea650c4e1b	conservative
 jq.test#60ea650c4e1b	60ea650c4e1b	trampoline
 jq.test#62183b6c83a9	62183b6c83a9	conservative
 jq.test#62183b6c83a9	62183b6c83a9	trampoline
+jq.test#626e8564b948	626e8564b948	conservative
+jq.test#626e8564b948	626e8564b948	trampoline
 jq.test#630c96e6c06d	630c96e6c06d	conservative
 jq.test#630c96e6c06d	630c96e6c06d	trampoline
 jq.test#64215a29d656	64215a29d656	conservative
@@ -8718,6 +8722,8 @@ jq.test#666c81527b86	666c81527b86	conservative
 jq.test#666c81527b86	666c81527b86	trampoline
 jq.test#6ad20475b077	6ad20475b077	conservative
 jq.test#6ad20475b077	6ad20475b077	trampoline
+jq.test#6b08eea44eca	6b08eea44eca	conservative
+jq.test#6b08eea44eca	6b08eea44eca	trampoline
 jq.test#6b5532332fa0	6b5532332fa0	conservative
 jq.test#6b5532332fa0	6b5532332fa0	trampoline
 jq.test#6b9b5e5c13be	6b9b5e5c13be	conservative
@@ -8762,6 +8768,8 @@ jq.test#76320f9665f3	76320f9665f3	conservative
 jq.test#76320f9665f3	76320f9665f3	trampoline
 jq.test#763a005cfeb5	763a005cfeb5	conservative
 jq.test#763a005cfeb5	763a005cfeb5	trampoline
+jq.test#764e349c1f10	764e349c1f10	conservative
+jq.test#764e349c1f10	764e349c1f10	trampoline
 jq.test#76fbd70601d2	76fbd70601d2	conservative
 jq.test#76fbd70601d2	76fbd70601d2	trampoline
 jq.test#772cfdc498c1	772cfdc498c1	conservative
@@ -8824,6 +8832,8 @@ jq.test#87b875b8d0ef	87b875b8d0ef	conservative
 jq.test#87b875b8d0ef	87b875b8d0ef	trampoline
 jq.test#89289c499a59	89289c499a59	conservative
 jq.test#89289c499a59	89289c499a59	trampoline
+jq.test#8976a17b3bf5	8976a17b3bf5	conservative
+jq.test#8976a17b3bf5	8976a17b3bf5	trampoline
 jq.test#899b7211f67f	899b7211f67f	conservative
 jq.test#899b7211f67f	899b7211f67f	trampoline
 jq.test#89a1f7b1b067	89a1f7b1b067	conservative
@@ -8894,8 +8904,12 @@ jq.test#9b89c2a0890b	9b89c2a0890b	conservative
 jq.test#9b89c2a0890b	9b89c2a0890b	trampoline
 jq.test#9c3b0d2c8b49	9c3b0d2c8b49	conservative
 jq.test#9c3b0d2c8b49	9c3b0d2c8b49	trampoline
+jq.test#9ceb5974c0d1	9ceb5974c0d1	conservative
+jq.test#9ceb5974c0d1	9ceb5974c0d1	trampoline
 jq.test#9cebd1c7524a	9cebd1c7524a	conservative
 jq.test#9cebd1c7524a	9cebd1c7524a	trampoline
+jq.test#9d97fc39646e	9d97fc39646e	conservative
+jq.test#9d97fc39646e	9d97fc39646e	trampoline
 jq.test#9d9b0ca693b8	9d9b0ca693b8	conservative
 jq.test#9d9b0ca693b8	9d9b0ca693b8	trampoline
 jq.test#9dfa2ccc089a	9dfa2ccc089a	conservative
@@ -8924,6 +8938,8 @@ jq.test#a271da33fe01	a271da33fe01	conservative
 jq.test#a271da33fe01	a271da33fe01	trampoline
 jq.test#a33f53dfa710	a33f53dfa710	conservative
 jq.test#a33f53dfa710	a33f53dfa710	trampoline
+jq.test#a34fd049efdb	a34fd049efdb	conservative
+jq.test#a34fd049efdb	a34fd049efdb	trampoline
 jq.test#a3fde6bda96a	a3fde6bda96a	conservative
 jq.test#a3fde6bda96a	a3fde6bda96a	trampoline
 jq.test#a456ff5ede3b	a456ff5ede3b	conservative
@@ -8972,6 +8988,8 @@ jq.test#ac80f8845bd0	ac80f8845bd0	conservative
 jq.test#ac80f8845bd0	ac80f8845bd0	trampoline
 jq.test#ac88d93274ab	ac88d93274ab	conservative
 jq.test#ac88d93274ab	ac88d93274ab	trampoline
+jq.test#adac7e14b47b	adac7e14b47b	conservative
+jq.test#adac7e14b47b	adac7e14b47b	trampoline
 jq.test#ae752864b192	ae752864b192	conservative
 jq.test#ae752864b192	ae752864b192	trampoline
 jq.test#af2408bd1c91	af2408bd1c91	conservative
@@ -9042,6 +9060,8 @@ jq.test#bfebdc6a90e3	bfebdc6a90e3	conservative
 jq.test#bfebdc6a90e3	bfebdc6a90e3	trampoline
 jq.test#c25920696c9d	c25920696c9d	conservative
 jq.test#c25920696c9d	c25920696c9d	trampoline
+jq.test#c29b16cc2c6d	c29b16cc2c6d	conservative
+jq.test#c29b16cc2c6d	c29b16cc2c6d	trampoline
 jq.test#c2a8cb6b0b12	c2a8cb6b0b12	conservative
 jq.test#c2a8cb6b0b12	c2a8cb6b0b12	trampoline
 jq.test#c39efc0d3ee2	c39efc0d3ee2	conservative
@@ -9108,8 +9128,12 @@ jq.test#d0a100bb7aad	d0a100bb7aad	conservative
 jq.test#d0a100bb7aad	d0a100bb7aad	trampoline
 jq.test#d0c8f503ef76	d0c8f503ef76	conservative
 jq.test#d0c8f503ef76	d0c8f503ef76	trampoline
+jq.test#d1c985cb7475	d1c985cb7475	conservative
+jq.test#d1c985cb7475	d1c985cb7475	trampoline
 jq.test#d2f27494d27c	d2f27494d27c	conservative
 jq.test#d2f27494d27c	d2f27494d27c	trampoline
+jq.test#d37ca909eb67	d37ca909eb67	conservative
+jq.test#d37ca909eb67	d37ca909eb67	trampoline
 jq.test#d390b87de5ff	d390b87de5ff	conservative
 jq.test#d390b87de5ff	d390b87de5ff	trampoline
 jq.test#d4e968bdaff6	d4e968bdaff6	conservative
@@ -9140,6 +9164,8 @@ jq.test#da40100f483d	da40100f483d	conservative
 jq.test#da40100f483d	da40100f483d	trampoline
 jq.test#db16f3380e9f	db16f3380e9f	conservative
 jq.test#db16f3380e9f	db16f3380e9f	trampoline
+jq.test#db37a6d34466	db37a6d34466	conservative
+jq.test#db37a6d34466	db37a6d34466	trampoline
 jq.test#dbeecc083607	dbeecc083607	conservative
 jq.test#dbeecc083607	dbeecc083607	trampoline
 jq.test#dcc547ee570b	dcc547ee570b	conservative
@@ -9190,6 +9216,8 @@ jq.test#e5fd7cd60864	e5fd7cd60864	conservative
 jq.test#e5fd7cd60864	e5fd7cd60864	trampoline
 jq.test#e618b5e06608	e618b5e06608	conservative
 jq.test#e618b5e06608	e618b5e06608	trampoline
+jq.test#e65cd4a040c1	e65cd4a040c1	conservative
+jq.test#e65cd4a040c1	e65cd4a040c1	trampoline
 jq.test#e7239b689ffd	e7239b689ffd	conservative
 jq.test#e7239b689ffd	e7239b689ffd	trampoline
 jq.test#e7d275ceb161	e7d275ceb161	conservative
@@ -9204,6 +9232,8 @@ jq.test#e9c4a135de33	e9c4a135de33	conservative
 jq.test#e9c4a135de33	e9c4a135de33	trampoline
 jq.test#e9f541befc2b	e9f541befc2b	conservative
 jq.test#e9f541befc2b	e9f541befc2b	trampoline
+jq.test#ea556b956973	ea556b956973	conservative
+jq.test#ea556b956973	ea556b956973	trampoline
 jq.test#eaab1d801a76	eaab1d801a76	conservative
 jq.test#eaab1d801a76	eaab1d801a76	trampoline
 jq.test#eb50ea279de5	eb50ea279de5	conservative
@@ -9578,6 +9608,8 @@ man.test#3a256787eb78	3a256787eb78	conservative
 man.test#3a256787eb78	3a256787eb78	trampoline
 man.test#3c0d9891d22c	3c0d9891d22c	conservative
 man.test#3c0d9891d22c	3c0d9891d22c	trampoline
+man.test#3d46a96440eb	3d46a96440eb	conservative
+man.test#3d46a96440eb	3d46a96440eb	trampoline
 man.test#42865e81b74e	42865e81b74e	conservative
 man.test#42865e81b74e	42865e81b74e	trampoline
 man.test#42e9e6126d1e	42e9e6126d1e	conservative
@@ -9614,6 +9646,8 @@ man.test#4f52aef61f90	4f52aef61f90	conservative
 man.test#4f52aef61f90	4f52aef61f90	trampoline
 man.test#4fe93311a7e8	4fe93311a7e8	conservative
 man.test#4fe93311a7e8	4fe93311a7e8	trampoline
+man.test#51bc0b5af9c2	51bc0b5af9c2	conservative
+man.test#51bc0b5af9c2	51bc0b5af9c2	trampoline
 man.test#529fa268669c	529fa268669c	conservative
 man.test#529fa268669c	529fa268669c	trampoline
 man.test#540989358145	540989358145	conservative
@@ -9702,6 +9736,8 @@ man.test#8001815b6b29	8001815b6b29	conservative
 man.test#8001815b6b29	8001815b6b29	trampoline
 man.test#8020ba493d80	8020ba493d80	conservative
 man.test#8020ba493d80	8020ba493d80	trampoline
+man.test#8182281bc190	8182281bc190	conservative
+man.test#8182281bc190	8182281bc190	trampoline
 man.test#81a0136cdeac	81a0136cdeac	conservative
 man.test#81a0136cdeac	81a0136cdeac	trampoline
 man.test#81e570f3a96b	81e570f3a96b	conservative
@@ -9818,6 +9854,8 @@ man.test#cb57fa775e03	cb57fa775e03	conservative
 man.test#cb57fa775e03	cb57fa775e03	trampoline
 man.test#cb71a15b95ff	cb71a15b95ff	conservative
 man.test#cb71a15b95ff	cb71a15b95ff	trampoline
+man.test#ce328809fb44	ce328809fb44	conservative
+man.test#ce328809fb44	ce328809fb44	trampoline
 man.test#cf1b0ae15f45	cf1b0ae15f45	conservative
 man.test#cf1b0ae15f45	cf1b0ae15f45	trampoline
 man.test#d081c6d8d944	d081c6d8d944	conservative
@@ -9834,12 +9872,18 @@ man.test#dacfe75eed6e	dacfe75eed6e	conservative
 man.test#dacfe75eed6e	dacfe75eed6e	trampoline
 man.test#dafaa56949d8	dafaa56949d8	conservative
 man.test#dafaa56949d8	dafaa56949d8	trampoline
+man.test#dd7c502fcb76	dd7c502fcb76	conservative
+man.test#dd7c502fcb76	dd7c502fcb76	trampoline
 man.test#df6906c9a205	df6906c9a205	conservative
 man.test#df6906c9a205	df6906c9a205	trampoline
 man.test#e04aa5ca9531	e04aa5ca9531	conservative
 man.test#e04aa5ca9531	e04aa5ca9531	trampoline
+man.test#e1635fe90df0	e1635fe90df0	conservative
+man.test#e1635fe90df0	e1635fe90df0	trampoline
 man.test#e2285d04ed5a	e2285d04ed5a	conservative
 man.test#e2285d04ed5a	e2285d04ed5a	trampoline
+man.test#e32543c18748	e32543c18748	conservative
+man.test#e32543c18748	e32543c18748	trampoline
 man.test#e43bb4f0b1f6	e43bb4f0b1f6	conservative
 man.test#e43bb4f0b1f6	e43bb4f0b1f6	trampoline
 man.test#e44ec97f66e7	e44ec97f66e7	conservative
@@ -9862,6 +9906,8 @@ man.test#f0369f71e866	f0369f71e866	conservative
 man.test#f0369f71e866	f0369f71e866	trampoline
 man.test#f7cadd1b1936	f7cadd1b1936	conservative
 man.test#f7cadd1b1936	f7cadd1b1936	trampoline
+man.test#f921dd30f2fe	f921dd30f2fe	conservative
+man.test#f921dd30f2fe	f921dd30f2fe	trampoline
 man.test#faa710a245f3	faa710a245f3	conservative
 man.test#faa710a245f3	faa710a245f3	trampoline
 man.test#fd889c36b42c	fd889c36b42c	conservative
