@@ -1,5 +1,5 @@
 import { isSeq } from 'yaml';
-import { placeOf } from './edit';
+import { matching, placeOf } from './edit';
 import { readFlow, yamlFindings } from './flowYaml';
 import { layout, type Block } from './layout';
 import { BUILT_IN, checkStep, checkStepTab, describeSchema, settingsOf, UNDESCRIBED, type StepType } from './steps';
@@ -41,18 +41,6 @@ interface StepList {
   path: Path;
   items: unknown[];
   owner: string | null;
-}
-
-/** The paths inside `value` that `pattern` matches, below `at`, where `*` is any key or index. */
-function matching(value: unknown, pattern: readonly string[], at: Path): Path[] {
-  if (pattern.length === 0) return [at];
-  const [head, ...rest] = pattern;
-  if (head === '*') {
-    if (Array.isArray(value)) return value.flatMap((v, i) => matching(v, rest, [...at, i]));
-    if (isRecord(value)) return Object.entries(value).flatMap(([k, v]) => matching(v, rest, [...at, k]));
-    return [];
-  }
-  return isRecord(value) && head !== undefined && head in value ? matching(value[head], rest, [...at, head]) : [];
 }
 
 /** A step entry as the rules of names and calls see it. */

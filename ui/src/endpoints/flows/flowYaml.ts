@@ -117,7 +117,7 @@ export function yamlFindings(doc: Document.Parsed, text: string, problems: FlowP
  * Whether the node reads the plain value `source` as the browser does: `browser` is the browser's reading, `node11` the
  * YAML 1.1 reading. The node keeps yes, no, on, off, y and n as text, and numbers with colons (1:30) too.
  */
-export function sameReading(browser: unknown, node11: unknown, source: string): boolean {
+function sameReading(browser: unknown, node11: unknown, source: string): boolean {
   const keptAsText =
     typeof browser === 'string' &&
     ((typeof node11 === 'boolean' && /^(y|n|yes|no|on|off)$/i.test(browser)) || /^[-+]?[0-9][0-9_]*(:[0-5]?[0-9])+(\.[0-9_]*)?$/.test(source));

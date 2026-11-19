@@ -42,10 +42,10 @@ import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent, t
 import { DiscardDialog } from '../../DiscardDialog';
 import type { CloseGuard } from '../EndpointForm';
 import { FlowsError, type FlowsApi, type StoredFlow } from './api';
-import { edit, EditRefused, follow, type Op } from './edit';
+import { edit, EditRefused, follow, placeOf, type Op } from './edit';
 import { FlowCanvas } from './FlowCanvas';
 import { readFlow } from './flowYaml';
-import { FlowPanel, placeOf, type PanelEdit } from './FlowPanel';
+import { FlowPanel, type PanelEdit } from './FlowPanel';
 import { addStep, deleteStep, moveStep } from './ops';
 import { BUILT_IN } from './steps';
 import type { FlowNode, FlowProblem, Path, ServedSteps } from './types';
@@ -103,6 +103,8 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, g
   // a new generation remounts the controls that hold text of their own, so that text goes with the text it belonged to
   const [generation, setGeneration] = useState(0);
   const [invalid, setInvalid] = useState<ReadonlySet<string>>(new Set());
+  // the id of the node whose form the drawer shows, whose controls `invalid` speaks of
+  const [formShown, setFormShown] = useState<string | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
   const [check, setCheck] = useState<FlowProblem[] | null>(null);
   const [adding, setAdding] = useState<Path | null>(null);
@@ -174,6 +176,12 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, g
   // the selection is kept while its path is in the view
   const node: FlowNode | null = selected === null ? null : (picture.nodes.find((n) => n.id === pointer(selected)) ?? null);
   if (selected !== null && node === null) setSelected(null);
+  // the form of another node, or of the selected step at its new place, starts from the text: what the controls before
+  // it held that could not become a value is gone with them
+  if ((node?.id ?? null) !== formShown) {
+    setFormShown(node?.id ?? null);
+    if (invalid.size > 0) setInvalid(new Set());
+  }
   const calls = node === null ? undefined : picture.nodes.find((n) => n.id === `${node.id}#calls`);
   const canEdit = file.editable && picture.readable && picture.readOnly === undefined;
 

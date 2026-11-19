@@ -24,13 +24,17 @@ const demo: FlowContext = {
   steps: [{ type: 'xsd', configSchema: { type: 'object', required: ['schema'], properties: { schema: { type: 'string' } } } }],
 };
 
-/** The flow files under examples/, and the awkward files of the fixtures, by the name of their golden file. */
+/**
+ * The texts of the flow files under examples/, of the awkward files of the fixtures, and of the comments fixture with
+ * CRLF line ends, by the name of their golden file.
+ */
 const files: [string, string][] = [
-  ...['invoice-async', 'invoice-sync', 'order-jq', 'order-partner', 'sftp-invoice'].map((n) => [n, join(repo, 'examples', 'demo', 'flows', `${n}.yaml`)] as [string, string]),
-  ['relay', join(repo, 'examples', 'webhook-plugin', 'package', 'flows', 'relay.yaml')],
+  ...['invoice-async', 'invoice-sync', 'order-jq', 'order-partner', 'sftp-invoice'].map((n) => [n, readFileSync(join(repo, 'examples', 'demo', 'flows', `${n}.yaml`), 'utf8')] as [string, string]),
+  ['relay', readFileSync(join(repo, 'examples', 'webhook-plugin', 'package', 'flows', 'relay.yaml'), 'utf8')],
   ...readdirSync(fixtures)
     .filter((f) => f.endsWith('.yaml'))
-    .map((f) => [f.replace('.yaml', ''), join(fixtures, f)] as [string, string]),
+    .map((f) => [f.replace('.yaml', ''), readFileSync(join(fixtures, f), 'utf8')] as [string, string]),
+  ['comments-crlf', readFileSync(join(fixtures, 'comments.yaml'), 'utf8').replace(/\n/g, '\r\n')],
 ];
 
 /** A text as the editor reads it: keys used twice and merge keys taken as they stand. */
@@ -111,8 +115,7 @@ function cases(text: string): [string, Op[]][] {
 }
 
 describe('edit, on golden pairs', () => {
-  it.each(files)('edits %s as its golden pairs say', async (name, file) => {
-    const before = readFileSync(file, 'utf8');
+  it.each(files)('edits %s as its golden pairs say', async (name, before) => {
     const out = cases(before).map(([label, ops]) => {
       const after = attempt(() => edit(before, ...ops));
       return `=== ${label}\n${ops.map((op) => `${JSON.stringify(op)}\n`).join('')}${after instanceof EditRefused ? `refused: ${after.message}\n` : hunk(before, after)}`;
@@ -121,10 +124,7 @@ describe('edit, on golden pairs', () => {
   });
 
   it('keeps the file as it is when the edits change nothing', () => {
-    for (const [, file] of files) {
-      const text = readFileSync(file, 'utf8');
-      expect(edit(text)).toBe(text);
-    }
+    for (const [, text] of files) expect(edit(text)).toBe(text);
   });
 });
 
@@ -513,7 +513,7 @@ describe('edit, on random series of operations', () => {
   it.each(files)('keeps its promises on %s', (name, file) => {
     for (let series = 0; series < SERIES; series++) {
       const r = random(series * 7919 + name.length);
-      let text = readFileSync(file, 'utf8');
+      let text = file;
       const model = parse(text) as Record<string, unknown>;
       // every step of the file, by where it stands now
       const tracked = new Map<object, Path>(stepLists(model).flatMap((l) => (valueAt(model, l) as unknown[]).map((s, i) => [s as object, [...l, i]] as [object, Path])));

@@ -264,6 +264,18 @@ describe('Editing a flow', () => {
     await expect.element(button('Move down')).toBeDisabled();
   });
 
+  test('a field holding what cannot become a value blocks Save until its form is gone', async () => {
+    await open(fakeFlows(undefined, { steps: vi.fn(async () => ({ missing: 'the server does not answer' })) }));
+    await button('Edit').click();
+    await nodeOf('route').click();
+    await button('Move up').click();
+    await nodeOf('validate').click();
+    await page.getByRole('textbox', { name: 'Settings', exact: true }).fill('{ not json');
+    await expect.element(button('Save')).toBeDisabled();
+    await button('Delete').click();
+    await expect.element(button('Save')).toBeEnabled();
+  });
+
   test("an undo that takes away the selection's place shows the flow's own settings", async () => {
     await open();
     await button('Edit').click();
