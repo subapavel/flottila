@@ -1,9 +1,20 @@
 import { createServer, request, type IncomingHttpHeaders, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { adminProxy, forward } from './adminProxy';
+import { adminProxy, forward, nodeOf } from './adminProxy';
 
 const origins = ['http://localhost:5173'];
+
+describe('nodeOf', () => {
+  it('is the node at 127.0.0.1:8081 without a token when nothing is set', () => {
+    expect(nodeOf({})).toEqual({ target: 'http://127.0.0.1:8081', token: undefined });
+  });
+
+  it('follows RAIL8_ADMIN_URL and RAIL8_ADMIN_TOKEN, and takes a blank token for none', () => {
+    expect(nodeOf({ RAIL8_ADMIN_URL: 'http://node:9000', RAIL8_ADMIN_TOKEN: ' t0ken ' })).toEqual({ target: 'http://node:9000', token: 't0ken' });
+    expect(nodeOf({ RAIL8_ADMIN_TOKEN: '  ' }).token).toBeUndefined();
+  });
+});
 
 describe('forward', () => {
   it('refuses a request without Sec-Fetch-Site', () => {

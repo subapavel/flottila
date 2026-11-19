@@ -106,18 +106,29 @@ export async function createFile(root: string, path: string, takes: (name: strin
   if (folder !== root && !folder.startsWith(root + sep)) throw new Refusal(403, 'the path leaves the working folder');
   if (!(await stat(folder)).isDirectory()) throw new Refusal(404, `no folder ${folders.join('/')} in the working folder`);
   const file = join(folder, segments.at(-1)!);
-  const exists = new Refusal(412, 'the file exists already; nothing was written');
-  if (await lstat(file).then(() => true, () => false)) throw exists;
-  const temporary = join(folder, `.${segments.at(-1)!}.${randomUUID()}.tmp`);
+  if (!(await writeNew(file, text))) throw new Refusal(412, 'the file exists already; nothing was written');
+  return file;
+}
+
+/**
+ * Writes `content` to the new file `file`, whole to a temporary file beside it that is then linked to its name, so it
+ * never replaces a file. False, with nothing written, when a file, or a link, of that name exists.
+ */
+export async function writeNew(file: string, content: string | Uint8Array): Promise<boolean> {
+  if (await lstat(file).then(() => true, () => false)) return false;
+  const temporary = join(dirname(file), `.${basename(file)}.${randomUUID()}.tmp`);
   try {
-    await writeFile(temporary, text, { flag: 'wx' });
-    await link(temporary, file).catch((error: unknown) => {
-      throw (error as NodeJS.ErrnoException).code === 'EEXIST' ? exists : error;
-    });
+    await writeFile(temporary, content, { flag: 'wx' });
+    return await link(temporary, file).then(
+      () => true,
+      (error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+        throw error;
+      },
+    );
   } finally {
     await rm(temporary, { force: true });
   }
-  return file;
 }
 
 /** The decoded segments of `path`, refused with 400 when it is malformed or its last segment is no name `takes`. */
@@ -139,7 +150,7 @@ function segmentsOf(path: string, takes: (name: string) => boolean, what: string
  * Writes `text` over `file` through a temporary file beside it, renamed over it, keeping the file's mode. `before`, when
  * given, runs just before the rename, and a failure of it leaves the file as it was.
  */
-export async function replaceFile(file: string, text: string, before?: () => Promise<void>): Promise<void> {
+export async function replaceFile(file: string, text: string | Uint8Array, before?: () => Promise<void>): Promise<void> {
   const temporary = join(dirname(file), `.${basename(file)}.${randomUUID()}.tmp`);
   try {
     await writeFile(temporary, text, { flag: 'wx', mode: (await stat(file)).mode & 0o777 });

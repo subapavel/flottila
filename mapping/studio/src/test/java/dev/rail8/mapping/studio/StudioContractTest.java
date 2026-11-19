@@ -34,14 +34,14 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * The studio's answers are the browser's contract, {@code contract/openapi.json}, which the mapping
- * service's build writes. Its types are checked against the contract's schemas, and a set of
- * answers reaches every status the studio gives, every kind of every union, every problem type and
- * every member of every schema an answer uses.
+ * The studio's answers are the browser's contract, {@code contract/openapi.json}, which is written
+ * by hand. Its types are checked against the contract's schemas, and a set of answers reaches every
+ * status the studio gives, every kind of every union, every problem type and every member of every
+ * schema an answer uses.
  */
 class StudioContractTest {
 
-  /** The listing of mappings is the node's: the studio lists nothing. */
+  /** The listing of mappings is the development server's: the studio lists nothing. */
   private static final String LISTING = "get /api/mappings";
 
   /** The schema of a listed mapping, the listing's. */

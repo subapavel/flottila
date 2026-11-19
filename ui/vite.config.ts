@@ -1,6 +1,6 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
-import { adminProxy } from './server/adminProxy.ts';
+import { adminProxy, nodeOf } from './server/adminProxy.ts';
 import { moduleServers } from './server/modules.ts';
 
 // The development server listens on localhost only, on a fixed port, so the origins its own pages send are known.
@@ -16,13 +16,7 @@ function adminApi(): Plugin {
   return {
     name: 'rail8-admin-api',
     configureServer(server) {
-      server.middlewares.use(
-        adminProxy({
-          target: process.env.RAIL8_ADMIN_URL ?? 'http://127.0.0.1:8081',
-          origins,
-          token: process.env.RAIL8_ADMIN_TOKEN?.trim() || undefined,
-        }),
-      );
+      server.middlewares.use(adminProxy({ ...nodeOf(process.env), origins }));
     },
   };
 }

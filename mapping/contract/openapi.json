@@ -630,6 +630,26 @@
                 }
               }
             }
+          },
+          "502" : {
+            "description" : "node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         },
         "summary" : "Get",
@@ -640,7 +660,15 @@
       "get" : {
         "responses" : {
           "200" : {
-            "description" : "OK",
+            "description" : "The mappings of the working folder, sorted by id",
+            "headers" : {
+              "Rail8-Truncated" : {
+                "description" : "true when the walk of the working folder stopped at 1,000 mapping files, so that more may exist; absent otherwise",
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            },
             "content" : {
               "application/json" : {
                 "schema" : {
@@ -648,6 +676,16 @@
                   "items" : {
                     "$ref" : "#/components/schemas/MappingSummary"
                   }
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "not-found: no working folder is set",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
                 }
               }
             }
@@ -704,6 +742,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "read-only: the working folder is shown read-only; or foreign-origin: the request does not come from a page of this server",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "404" : {
             "description" : "not-found: the mapping's directory",
             "content" : {
@@ -716,6 +764,16 @@
           },
           "409" : {
             "description" : "mapping-exists",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413" : {
+            "description" : "too-large: the request, or it and the bundle files it reads, are over 12 MiB",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -740,6 +798,26 @@
               "application/problem+json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/RefusedProblem"
+                }
+              }
+            }
+          },
+          "502" : {
+            "description" : "node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
                 }
               }
             }
@@ -807,6 +885,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "read-only: the working folder is shown read-only; or foreign-origin: the request does not come from a page of this server",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "404" : {
             "description" : "not-found: no mapping of this id",
             "content" : {
@@ -819,6 +907,16 @@
           },
           "409" : {
             "description" : "mapping-changed: If-Match differs from the stored file's ETag",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413" : {
+            "description" : "too-large: the request, or it and the bundle files it reads, are over 12 MiB",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -843,6 +941,26 @@
               "application/problem+json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/RefusedProblem"
+                }
+              }
+            }
+          },
+          "502" : {
+            "description" : "node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
                 }
               }
             }
@@ -901,12 +1019,42 @@
               }
             }
           },
+          "413" : {
+            "description" : "too-large: the request, or it and the bundle files it reads, are over 12 MiB",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "422" : {
             "description" : "model-refused: the stored file is no JSON document or no valid model",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/RefusedProblem"
+                }
+              }
+            }
+          },
+          "502" : {
+            "description" : "node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
                 }
               }
             }
@@ -958,6 +1106,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "foreign-origin: the request does not come from a page of this server",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "404" : {
             "description" : "not-found: the mapping's directory",
             "content" : {
@@ -968,8 +1126,38 @@
               }
             }
           },
+          "413" : {
+            "description" : "too-large: the request, or it and the bundle files it reads, are over 12 MiB",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "415" : {
             "description" : "unsupported-media-type",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502" : {
+            "description" : "node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1025,8 +1213,28 @@
               }
             }
           },
+          "403" : {
+            "description" : "foreign-origin: the request does not come from a page of this server",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "404" : {
             "description" : "not-found: the mapping's directory",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413" : {
+            "description" : "too-large: the request, or it and the bundle files it reads, are over 12 MiB",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1051,6 +1259,26 @@
               "application/problem+json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/RefusedProblem"
+                }
+              }
+            }
+          },
+          "502" : {
+            "description" : "node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
                 }
               }
             }
@@ -1102,6 +1330,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "foreign-origin: the request does not come from a page of this server",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "404" : {
             "description" : "not-found: the mapping's directory",
             "content" : {
@@ -1112,8 +1350,38 @@
               }
             }
           },
+          "413" : {
+            "description" : "too-large: the request, or it and the bundle files it reads, are over 12 MiB",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "415" : {
             "description" : "unsupported-media-type",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502" : {
+            "description" : "node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1160,6 +1428,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "foreign-origin: the request does not come from a page of this server",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "404" : {
             "description" : "not-found: the base directory",
             "content" : {
@@ -1170,8 +1448,38 @@
               }
             }
           },
+          "413" : {
+            "description" : "too-large: the request, or it and the bundle files it reads, are over 12 MiB",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "415" : {
             "description" : "unsupported-media-type",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502" : {
+            "description" : "node-unavailable: the node is down, refuses the token, has no mapping module or does not answer within 30 s; the detail gives its status",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "busy (urn:rail8:admin:problem:busy): the node runs as many calls of the mapping module as it takes; nothing was done, and the request may be sent again",
             "content" : {
               "application/problem+json" : {
                 "schema" : {

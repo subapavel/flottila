@@ -33,7 +33,7 @@ const half = (name: string) => `export default () => ({ name: '${name}' });\n`;
 describe('moduleServers', () => {
   test("gives the halves of today's modules, then the plugin that restarts the server", async () => {
     const plugins = await moduleServers(dev);
-    expect(plugins.map((plugin) => plugin.name)).toEqual(['rail8-working-folder', 'rail8-mapping-service', 'rail8-module-servers']);
+    expect(plugins.map((plugin) => plugin.name)).toEqual(['rail8-working-folder', 'rail8-mapping-studio', 'rail8-module-servers']);
   });
 
   test('calls each half with the development server, in the order of the folder names, and passes over a module without one', async () => {
@@ -108,13 +108,15 @@ describe('the development server of vite.config.ts', () => {
     });
 
   test('answers every route of the shell and of the modules', async () => {
-    // one service stands in for the node and the mapping service, and answers with the path it was asked
-    upstream = createHttpServer((req, res) => res.end(`upstream ${req.url}`));
+    // the node answers with the path it was asked, a module's service in JSON
+    upstream = createHttpServer((req, res) => {
+      if (req.url?.startsWith('/admin/modules/')) res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ asked: req.url }));
+      else res.end(`upstream ${req.url}`);
+    });
     const upstreamPort = await listen(upstream);
     const workspace = await mkdtemp(join(tmpdir(), 'rail8-workspace-'));
     temp = workspace;
     vi.stubEnv('RAIL8_ADMIN_URL', `http://127.0.0.1:${upstreamPort}`);
-    vi.stubEnv('QUARKUS_HTTP_PORT', String(upstreamPort));
     vi.stubEnv('RAIL8_WORKSPACE', workspace);
 
     vite = await createServer({
@@ -126,7 +128,8 @@ describe('the development server of vite.config.ts', () => {
     const port = await listen(front);
 
     expect(await get(port, '/admin/messages')).toEqual({ status: 200, body: 'upstream /admin/messages' });
-    expect(await get(port, '/api/mappings')).toEqual({ status: 200, body: 'upstream /api/mappings' });
+    expect(await get(port, '/api/mappings')).toEqual({ status: 200, body: '[]' });
+    expect(await get(port, '/api/catalogue')).toEqual({ status: 200, body: '{"asked":"/admin/modules/mapping/catalogue"}' });
     const endpoints = await get(port, '/files/endpoints');
     expect(endpoints.status).toBe(200);
     expect(JSON.parse(endpoints.body)).toMatchObject({ configured: true, items: [] });
