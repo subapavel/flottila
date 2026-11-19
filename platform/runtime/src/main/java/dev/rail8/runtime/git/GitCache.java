@@ -399,6 +399,9 @@ public final class GitCache {
                     });
                     https = connections;
                     http.setHttpConnectionFactory(connections);
+                    // The deadline may have passed after this fetch's check of it and before its connections were set: the timer
+                    // then found nothing to close. Read after both were set, so either this thread or the timer's closes them.
+                    if (expired) connections.abort();
                 }
             }
 

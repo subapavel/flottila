@@ -254,10 +254,19 @@ abstract class PackageRepositoriesContract {
     void refusesMoreThanTenThousandFiles() throws Exception {
         Map<String, Entry> tree = new HashMap<>(pkg("orders"));
         File same = file("x\n");
-        for (int i = 0; i < PackageTree.MAX_FILES; i++) tree.put("data/" + i + ".txt", same);
-        String id = source.commit("orders", "main", tree);
-        Commit commit = cache(Options.defaults()).open().forDeploy("orders", id);
-        Path dir = empty("orders");
+        for (int i = 1; i < PackageTree.MAX_FILES; i++) tree.put("data/" + i + ".txt", same);
+        String fits = source.commit("orders", "main", tree);
+        tree.put("data/" + PackageTree.MAX_FILES + ".txt", same);
+        String over = source.commit("orders", "main", tree);
+        PackageRepositories repositories = cache(Options.defaults()).open();
+
+        Path written = empty("fits");
+        repositories.forDeploy("orders", fits).write(written);
+        try (Stream<Path> files = Files.walk(written)) {
+            assertEquals(PackageTree.MAX_FILES, files.filter(Files::isRegularFile).count(), "exactly 10000 files are written");
+        }
+        Commit commit = repositories.forDeploy("orders", over);
+        Path dir = empty("over");
         IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> commit.write(dir));
         assertTrue(refused.getMessage().contains("more than 10000 files"), refused.getMessage());
         assertTrue(isEmpty(dir));
