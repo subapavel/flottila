@@ -32,21 +32,21 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * {@code Main.shipped(int)} is the one place that names what a node ships — the node ({@code Main.start}) and
- * the CLI both take it from there. It ships the http and sftp components (no mock: a node never names one), the xslt steps of
+ * the CLI both take it from there. It ships the http, sftp and direct components (no mock: a node never names one), the xslt steps of
  * {@link SaxonXml}, the xsd step of {@link XsdValidate}, the jq step and the mapping step, in that order, and the xpath language. Its argument is the
  * jq step's recursion depth for a flow that sets none. What plugins bring comes after.
  */
 class MainShippedTest {
 
     @Test
-    void shippedIsTheHttpAndSftpComponentsTheXsltXsdJqAndMappingStepsAndXpath() {
+    void shippedIsTheHttpSftpAndDirectComponentsTheXsltXsdJqAndMappingStepsAndXpath() {
         Main.Shipped shipped = Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT);
         FakeRuntime rt = FakeRuntime.create();
         Vertx vertx = Vertx.vertx();
         try {
             List<Component> components = shipped.components().apply(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock()));
 
-            assertEquals(List.of("http", "sftp"), components.stream().map(Component::scheme).toList(), "the components a node serves");
+            assertEquals(List.of("http", "sftp", "direct"), components.stream().map(Component::scheme).toList(), "the components a node serves");
         } finally {
             vertx.close().await();
         }
@@ -59,7 +59,7 @@ class MainShippedTest {
     }
 
     /**
-     * What a plugin brings follows what the node ships: its component after http and sftp, built over the node's context, its
+     * What a plugin brings follows what the node ships: its component after http, sftp and direct, built over the node's context, its
      * step after the mapping step and its language after xpath.
      */
     @Test
@@ -70,7 +70,7 @@ class MainShippedTest {
         try (Plugins plugins = Plugins.load(dir)) {
             Main.Shipped shipped = Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT, plugins);
             List<Component> components = shipped.components().apply(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock()));
-            assertEquals(List.of("http", "sftp", "acme"), components.stream().map(Component::scheme).toList());
+            assertEquals(List.of("http", "sftp", "direct", "acme"), components.stream().map(Component::scheme).toList());
             List<String> steps = shipped.steps().stream().map(StepFactory::type).toList();
             assertEquals(Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT).steps().size() + 1, steps.size());
             assertEquals(List.of("mapping", "sign"), steps.subList(steps.size() - 2, steps.size()));

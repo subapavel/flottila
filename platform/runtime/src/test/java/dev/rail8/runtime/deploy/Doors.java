@@ -58,6 +58,9 @@ import java.util.function.Function;
  * unresolved and as configured. An endpoint whose options carry {@code listenRefuse} makes it throw with that text. Every call is
  * recorded by the endpoint's name ({@link #listensOnAsked()}). {@link #Doors(String)} serves another scheme than {@value #SCHEME}.
  *
+ * <p>{@link #internalAddress} answers an endpoint's {@code address} option, empty when it sets none; {@code addressRefuse} makes it
+ * throw with that text, {@code addressNull} answer null. Every call is recorded by the endpoint's name ({@link #internalAddressAsked()}).
+ *
  * <p>P2-09b (D-099): {@link #target} names no target unless a case sets a naming with {@link #targets} — then every {@code to}
  * on this component sends under the node's limit of the key that naming answers.
  */
@@ -73,11 +76,13 @@ public final class Doors implements Component {
             {"type":"object","additionalProperties":false,"properties":{
               "path":{"type":"string"},"url":{"type":"string"},"level":{"enum":["low","high"]},"tags":{"type":"object"},
               "refuse":{"type":"string"},"flow":{"type":"string"},"maxBodyBytes":{"type":"integer","minimum":1},
-              "host":{"type":"string"},"port":{"type":"integer","minimum":0,"maximum":65535},"listenRefuse":{"type":"string"}}}""";
+              "host":{"type":"string"},"port":{"type":"integer","minimum":0,"maximum":65535},"listenRefuse":{"type":"string"},
+              "address":{"type":"string"},"addressRefuse":{"type":"string"},"addressNull":{"type":"boolean"}}}""";
 
     private final String scheme;
     private final RecordingComponent partner;
     private final List<String> listensOnAsked = new CopyOnWriteArrayList<>();
+    private final List<String> internalAddressAsked = new CopyOnWriteArrayList<>();
     private final List<String> events = new CopyOnWriteArrayList<>();
     private final List<Door> doors = new CopyOnWriteArrayList<>();
     private final List<EndpointConfig> producerConfigs = new CopyOnWriteArrayList<>();
@@ -246,6 +251,22 @@ public final class Doors implements Component {
 
     /** The name of the endpoint of every {@link #listensOn} call, in order. */
     public List<String> listensOnAsked() { return List.copyOf(listensOnAsked); }
+
+    /**
+     * The node-local address {@code cfg} names: its {@code address} option, empty without one. {@code addressRefuse} makes it throw
+     * an {@link IllegalStateException} with that text, {@code addressNull} answer null. Every call is recorded first
+     * ({@link #internalAddressAsked()}).
+     */
+    @Override
+    public Optional<String> internalAddress(EndpointConfig cfg) {
+        internalAddressAsked.add(cfg.name());
+        if (cfg.options().get("addressRefuse") instanceof String why) throw new IllegalStateException(why);
+        if (Boolean.TRUE.equals(cfg.options().get("addressNull"))) return null;
+        return Optional.ofNullable((String) cfg.options().get("address"));
+    }
+
+    /** The name of the endpoint of every {@link #internalAddress} call, in order. */
+    public List<String> internalAddressAsked() { return List.copyOf(internalAddressAsked); }
 
     @Override
     public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {
