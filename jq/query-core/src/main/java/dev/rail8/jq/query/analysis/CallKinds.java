@@ -117,8 +117,9 @@ public final class CallKinds {
           tail[numbering.id(b.body())] = true;
         }
       }
-      // A tail position passes to no part of any other kind: Try, Label, Reduce, Foreach, Collect, AltBind, Advance and
-      // a Call's closure arguments run their parts with something left to do after them, or in a frame of their own.
+      // A tail position passes to no part of any other kind: Try, Label, Reduce, Foreach, Collect, AltBind, Advance,
+      // PathOf, Update and a Call's closure arguments run their parts with something left to do after them, or in a
+      // frame of their own.
       default -> {
         // No part is a tail position.
       }

@@ -52,11 +52,13 @@ import dev.rail8.jq.query.ir.Label;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.Operation;
 import dev.rail8.jq.query.ir.ParamCall;
+import dev.rail8.jq.query.ir.PathOf;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Source;
 import dev.rail8.jq.query.ir.Try;
+import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
 import dev.rail8.jq.query.run.Fn0;
 import dev.rail8.jq.query.run.Fn1;
@@ -569,6 +571,8 @@ public final class Resolver {
       case Reduce r -> List.of(r.init(), r.each());
       case Foreach f -> List.of(f.init(), f.each());
       case Advance a -> List.of(a.update());
+      case PathOf p -> List.of(p.body());
+      case Update u -> List.of(u.lhs(), u.rhs());
     };
   }
 

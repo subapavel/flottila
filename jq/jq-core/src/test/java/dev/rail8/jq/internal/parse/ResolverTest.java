@@ -32,11 +32,13 @@ import dev.rail8.jq.query.ir.Intrinsic;
 import dev.rail8.jq.query.ir.Label;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.ParamCall;
+import dev.rail8.jq.query.ir.PathOf;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Source;
 import dev.rail8.jq.query.ir.Try;
+import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
 import dev.rail8.jq.value.JqNull;
 import java.time.Duration;
@@ -889,6 +891,8 @@ class ResolverTest {
           case Reduce r -> List.of(r.init(), r.each());
           case Foreach f -> List.of(f.init(), f.each());
           case Advance a -> List.of(a.update());
+          case PathOf p -> List.of(p.body());
+          case Update u -> List.of(u.lhs(), u.rhs());
           case ParamCall _ -> List.of();
           case Call c -> {
             List<Node> all = new ArrayList<>(c.closures());
@@ -1063,6 +1067,8 @@ class ResolverTest {
       case Reduce r -> List.of(r.init(), r.each());
       case Foreach f -> List.of(f.init(), f.each());
       case Advance a -> List.of(a.update());
+      case PathOf p -> List.of(p.body());
+      case Update u -> List.of(u.lhs(), u.rhs());
       case Call c -> {
         List<Node> all = new ArrayList<>(c.closures());
         all.addAll(c.values());

@@ -54,10 +54,12 @@ import dev.rail8.jq.query.ir.Intrinsic;
 import dev.rail8.jq.query.ir.Label;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.ParamCall;
+import dev.rail8.jq.query.ir.PathOf;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Try;
+import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
 import dev.rail8.jq.query.run.Fn0;
 import dev.rail8.jq.query.run.Fn1;
@@ -124,7 +126,7 @@ public final class Compiler {
    * Compiles {@code root}, which has no parameter slot, in {@code mode}: {@link #compile(Node, int, CompileMode)} with
    * none.
    *
-   * @throws IllegalStateException when the tree breaks a rule of the IR
+   * @throws IllegalStateException when the tree breaks a rule of the IR, or holds a PathOf or an Update
    */
   public static Executable compile(Node root, CompileMode mode) {
     return compile(root, 0, mode);
@@ -134,7 +136,7 @@ public final class Compiler {
    * Compiles {@code root} in {@code mode}, with slots {@code 0 .. parameters - 1} its parameter slots: the
    * program of {@code root} and no function, {@link #compile(Program, int, CompileMode)}.
    *
-   * @throws IllegalStateException when the tree breaks a rule of the IR
+   * @throws IllegalStateException when the tree breaks a rule of the IR, or holds a PathOf or an Update
    */
   public static Executable compile(Node root, int parameters, CompileMode mode) {
     return compile(new Program(root, List.of()), parameters, mode);
@@ -145,7 +147,7 @@ public final class Compiler {
    * slots: in scope everywhere in the main tree, bound by no node, and set by each run from its parameters.
    * {@link #compile(Program, int, CompileMode, int)} under {@link Specialiser#SPECIALISE_CAP}.
    *
-   * @throws IllegalStateException when the program breaks a rule of the IR
+   * @throws IllegalStateException when the program breaks a rule of the IR, or holds a PathOf or an Update
    */
   public static Executable compile(Program program, int parameters, CompileMode mode) {
     return compile(program, parameters, mode, Specialiser.SPECIALISE_CAP);
@@ -161,7 +163,7 @@ public final class Compiler {
    * only the optimised compile stores. The executable runs the frozen program and carries it
    * ({@link Frozen}).
    *
-   * @throws IllegalStateException when the program breaks a rule of the IR
+   * @throws IllegalStateException when the program breaks a rule of the IR, or holds a PathOf or an Update
    */
   static Executable compile(Program program, int parameters, CompileMode mode, int cap) {
     IrVerifier.Layout verified = IrVerifier.verify(program, parameters);
@@ -221,7 +223,14 @@ public final class Compiler {
         At at = parameter(p.param());
         yield new ParamCallOp(at.level(), at.cell(), nesting.units(p), nesting.starterUnits());
       }
+      case PathOf p -> throw noPathMode(p);
+      case Update u -> throw noPathMode(u);
     };
+  }
+
+  /** The error for a PathOf or an Update: the interpreter has no path mode, so it has no op for either. */
+  static IllegalStateException noPathMode(Node node) {
+    return new IllegalStateException("the interpreter has no path mode, so it cannot run the " + node.getClass().getSimpleName() + " at bytes " + node.source());
   }
 
   /** The cell of {@code slot}, which a node of the running frame binds (the verifier keeps a loop's Advance in it). */

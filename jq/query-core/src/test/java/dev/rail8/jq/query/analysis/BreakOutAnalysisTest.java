@@ -22,13 +22,17 @@ import dev.rail8.jq.query.ir.Label;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.Operation;
 import dev.rail8.jq.query.ir.ParamCall;
+import dev.rail8.jq.query.ir.PathOf;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Source;
 import dev.rail8.jq.query.ir.Try;
+import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
 import dev.rail8.jq.query.run.Fn1;
+import dev.rail8.jq.query.run.InertPaths;
+import dev.rail8.jq.query.run.PathFormat;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -49,6 +53,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class BreakOutAnalysisTest {
   private static final Source AT = new Source(0, 1);
+
+  private static final PathFormat PATHS = new InertPaths();
 
   /** The slot of the Label each rule's node stands under; no rule's node names it otherwise. */
   private static final int OUTER = 9;
@@ -153,7 +159,10 @@ class BreakOutAnalysisTest {
         Arguments.argumentSet("a Foreach's each", (Kind) p -> new Foreach(AT, c(), 0, pipe(p, new Advance(AT, 0, id())))),
         Arguments.argumentSet("an Advance's update", (Kind) p -> new Advance(AT, 0, p)),
         Arguments.argumentSet("a Label of another slot", (Kind) p -> label(8, p)),
-        Arguments.argumentSet("a Call's closure, its callee quiet", (Kind) p -> call(0, p)));
+        Arguments.argumentSet("a Call's closure, its callee quiet", (Kind) p -> call(0, p)),
+        Arguments.argumentSet("a PathOf's body", (Kind) p -> new PathOf(AT, p, PATHS)),
+        Arguments.argumentSet("an Update's lhs", (Kind) p -> new Update(AT, Update.Kind.MODIFY, p, c(), PATHS)),
+        Arguments.argumentSet("an Update's rhs", (Kind) p -> new Update(AT, Update.Kind.MODIFY, c(), p, PATHS)));
   }
 
   /**

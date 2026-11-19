@@ -27,18 +27,22 @@ import dev.rail8.jq.query.ir.Label;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.Operation;
 import dev.rail8.jq.query.ir.ParamCall;
+import dev.rail8.jq.query.ir.PathOf;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Source;
 import dev.rail8.jq.query.ir.Try;
+import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
 import dev.rail8.jq.query.run.CallForm;
 import dev.rail8.jq.query.run.Fn0;
 import dev.rail8.jq.query.run.Fn1;
 import dev.rail8.jq.query.run.Fn2;
 import dev.rail8.jq.query.run.FnN;
+import dev.rail8.jq.query.run.InertPaths;
 import dev.rail8.jq.query.run.Many;
+import dev.rail8.jq.query.run.PathFormat;
 import dev.rail8.jq.query.run.RunState;
 import java.util.List;
 import java.util.function.Supplier;
@@ -56,6 +60,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class CardinalityAnalysisTest {
   private static final Source AT = new Source(0, 1);
+
+  private static final PathFormat PATHS = new InertPaths();
 
   /** An operation of a one-result call form. */
   private static Intrinsic fn0() {
@@ -210,7 +216,22 @@ class CardinalityAnalysisTest {
         Arguments.argumentSet("an Alt after a MANY left side is MANY", (Supplier<Node>) () -> new Alt(AT, many(), c(), v -> true), MANY),
         Arguments.argumentSet("a Try of an AT_MOST_ONE body is join(body, handler)", (Supplier<Node>) () -> new Try(AT, fn0(), c()), AT_MOST_ONE),
         Arguments.argumentSet("a Try of a MANY body is MANY", (Supplier<Node>) () -> new Try(AT, many(), c()), MANY),
-        Arguments.argumentSet("a Label is join(body, NONE)", (Supplier<Node>) () -> label(0, c()), AT_MOST_ONE));
+        Arguments.argumentSet("a Label is join(body, NONE)", (Supplier<Node>) () -> label(0, c()), AT_MOST_ONE),
+        Arguments.argumentSet("a PathOf is its body's", (Supplier<Node>) () -> new PathOf(AT, many(), PATHS), MANY),
+        Arguments.argumentSet("a PathOf of a one-result body", (Supplier<Node>) () -> new PathOf(AT, fn0(), PATHS), AT_MOST_ONE),
+        Arguments.argumentSet(
+            "a PathOf of a NEVER body is NEVER", (Supplier<Node>) () -> label(0, comma(new PathOf(AT, brk(0), PATHS), c())), NONE),
+        Arguments.argumentSet("an Update of a MANY lhs is ONE", (Supplier<Node>) () -> new Update(AT, Update.Kind.MODIFY, many(), many(), PATHS), ONE),
+        Arguments.argumentSet("an assign is ONE", (Supplier<Node>) () -> new Update(AT, Update.Kind.ASSIGN, fn0(), c(), PATHS), ONE),
+        Arguments.argumentSet(
+            "an Update of a NEVER lhs is NEVER",
+            (Supplier<Node>) () -> label(0, comma(new Update(AT, Update.Kind.MODIFY, brk(0), id(), PATHS), c())),
+            NONE),
+        // The lhs may give no result, so the rhs may never run: the Comma's right side follows a result.
+        Arguments.argumentSet(
+            "an Update whose rhs is NEVER is ONE",
+            (Supplier<Node>) () -> label(0, comma(new Update(AT, Update.Kind.MODIFY, many(), brk(0), PATHS), c())),
+            MANY));
   }
 
   @ParameterizedTest(name = "{argumentSetName}")
