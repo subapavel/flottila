@@ -45,4 +45,13 @@ describe('httpFlowsApi', () => {
     expect(await httpFlowsApi(async () => answer(401, { error: 'no token' })).steps()).toEqual({ missing: 'no token' });
     expect(await httpFlowsApi(async () => Promise.reject(new Error('refused'))).steps()).toEqual({ missing: 'the server does not answer: Error: refused' });
   });
+
+  it("gives where the node takes requests, the prefix of each scheme that has one, or nothing when it cannot be asked", async () => {
+    const settings = { format: 1, described: false, tabs: [], fields: [], rules: [] };
+    const components = { environment: 'dev', httpOrigin: 'http://localhost:8080', items: [{ scheme: 'http', httpPrefix: '/http', settings }, { scheme: 'sftp', httpPrefix: null, settings }] };
+    const send = vi.fn(async () => answer(200, components));
+    expect(await httpFlowsApi(send).ingress()).toEqual({ environment: 'dev', httpOrigin: 'http://localhost:8080', prefixes: { http: '/http' } });
+    expect(send).toHaveBeenCalledWith('/admin/components', expect.anything());
+    expect(await httpFlowsApi(async () => answer(502, { error: 'down' })).ingress()).toBeUndefined();
+  });
 });

@@ -20,14 +20,14 @@ environments:
 `;
 
 describe('readEndpoint', () => {
-  test('reads the envelope, the options and what each environment overrides', () => {
+  test('reads the envelope, the options and what each environment overrides, with the values it sets', () => {
     expect(readEndpoint(partner)).toEqual({
       id: 'partner-domestic',
       scheme: 'http',
       direction: 'out',
       description: null,
       config: { url: 'http://localhost:8090/echo', maxBodyBytes: 1048576, timeoutMs: 5000 },
-      environments: [{ name: 'prod', options: ['url'] }],
+      environments: [{ name: 'prod', options: ['url'], config: { url: 'https://partner.example/invoices' } }],
     });
   });
 

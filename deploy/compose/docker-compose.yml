@@ -156,6 +156,8 @@ services:
       RAIL8_VALKEY_URI: redis://valkey:6379
       # the node's HTTP port, shared by every inbound HTTP endpoint, listens on the container's network as the admin API does
       RAIL8_HTTP_HOST: 0.0.0.0
+      # the URL senders call that port at, through the port published above; the UI shows it before each endpoint's path
+      RAIL8_HTTP_ORIGIN: http://localhost:8080
       RAIL8_ADMIN_HOST: 0.0.0.0
       RAIL8_ADMIN_TOKEN: "${RAIL8_ADMIN_TOKEN:?set RAIL8_ADMIN_TOKEN: the admin API on 0.0.0.0 needs a token}"
       # the demo's sftp-inbox names both as secret:// references (D-086); the host key's fingerprint is read below

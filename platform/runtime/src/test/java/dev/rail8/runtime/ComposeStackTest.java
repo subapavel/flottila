@@ -310,6 +310,14 @@ class ComposeStackTest {
         }
     }
 
+    @Test
+    void bothStacksAdvertiseThePublishedHttpPortAsTheOriginSendersCall() throws IOException {
+        for (Path file : NODE_PORTS.keySet()) {
+            assertEquals("http://localhost:8080", environment(serviceIn(file, "rail8")).get("RAIL8_HTTP_ORIGIN"),
+                    file + ": senders call the node's HTTP port at the port published on loopback, not at the container's own");
+        }
+    }
+
     // ---- FIX-105: a network-namespace holder outlives the node and the echo, in both compose files -----------------------------
 
     private static final Path ROOT_FILE = Path.of("..", "..", "docker-compose.yml").toAbsolutePath().normalize();

@@ -100,7 +100,11 @@ const StepNode = memo(function StepNode({ data }: NodeProps<CanvasNode>) {
         <span>{node.label}</span>
         {what !== undefined && <span style={{ ...subtle, fontWeight: 'normal' }}> · {what}</span>}
       </div>
-      {node.detail !== undefined && <div style={subtle}>{node.detail}</div>}
+      {node.detail !== undefined && (
+        <div style={subtle} title={node.detail}>
+          {node.detail}
+        </div>
+      )}
       {node.rows?.map((row, i) => (
         <div key={i} style={subtle}>
           {row}

@@ -27,10 +27,11 @@ import {
   Title,
 } from '@patternfly/react-core';
 import { CheckCircleIcon, EditIcon, SaveIcon } from '@patternfly/react-icons';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { DiscardDialog } from '../DiscardDialog';
 import type { EndpointsApi, StoredEndpoint } from './api';
 import { FieldControl } from './FieldControl';
+import { inboundAddress, optionsIn, type NodeIngress } from './inbound';
 import { RawOptions } from './RawOptions';
 import { sameValue } from './same-value';
 import { checkOptions, shownFields, type Options, type Problem, type SettingsDescription, type SettingsField } from './settings';
@@ -46,8 +47,36 @@ export interface EndpointFormProps {
   guardClose?: (guard: CloseGuard | null) => void;
 }
 
-/** The component's description, while it is read, once read, or why it could not be. */
-type Described = { kind: 'reading' } | { kind: 'read'; settings: SettingsDescription } | { kind: 'missing'; why: string };
+/**
+ * The component's description, while it is read, once read with its HTTP prefix and where the node takes requests, or
+ * why it could not be.
+ */
+type Described =
+  | { kind: 'reading' }
+  | { kind: 'read'; settings: SettingsDescription; httpPrefix: string | null; ingress: NodeIngress }
+  | { kind: 'missing'; why: string };
+
+/**
+ * Under the address of an in endpoint: a preview of the URL senders call, or of the path on the node's HTTP port when
+ * the node names no origin, built from the options shown with the node environment's overlay laid over them.
+ */
+function ArrivalNote({ url, ingress, overlaid }: { url: string; ingress: NodeIngress; overlaid: boolean }) {
+  const where = ingress.httpOrigin === null ? (
+    <>
+      The path <strong>{url}</strong> on the node&apos;s HTTP port; the node names no origin for it (RAIL8_HTTP_ORIGIN).
+    </>
+  ) : (
+    <>
+      Senders call <strong>{url}</strong>.
+    </>
+  );
+  return (
+    <>
+      <Label isCompact>Preview</Label> {where} Built from these settings
+      {overlaid ? `, with the address environment ${ingress.environment} sets` : ` in environment ${ingress.environment}`}, not from what is deployed.
+    </>
+  );
+}
 
 type Discarding = { then: 'return to view mode' } | { then: 'close its tab'; close: () => void };
 
@@ -123,8 +152,13 @@ export function EndpointForm({ api, path, guardClose }: EndpointFormProps) {
     api.components().then(
       (components) => {
         if (!current) return;
-        const found = components.find((c) => c.scheme === scheme);
-        setDescribed(found ? { kind: 'read', settings: found.settings } : { kind: 'missing', why: `The node serves no component of the scheme ${scheme}.` });
+        const found = components.items.find((c) => c.scheme === scheme);
+        const ingress = { environment: components.environment, httpOrigin: components.httpOrigin };
+        setDescribed(
+          found
+            ? { kind: 'read', settings: found.settings, httpPrefix: found.httpPrefix, ingress }
+            : { kind: 'missing', why: `The node serves no component of the scheme ${scheme}.` },
+        );
       },
       (error: unknown) => current && setDescribed({ kind: 'missing', why: `The node's components could not be read: ${error instanceof Error ? error.message : String(error)}` }),
     );
@@ -240,6 +274,13 @@ export function EndpointForm({ api, path, guardClose }: EndpointFormProps) {
   };
 
   const canEdit = file.editable && settings !== null;
+  let arrival: ReactNode;
+  if (described.kind === 'read' && described.httpPrefix !== null && file.direction === 'in') {
+    const { ingress } = described;
+    const overlay = file.environments.find((env) => env.name === ingress.environment);
+    const url = inboundAddress(described.httpPrefix, optionsIn(present(options), file.environments, ingress.environment).address, ingress.httpOrigin);
+    if (url !== null) arrival = <ArrivalNote url={url} ingress={ingress} overlaid={overlay !== undefined && Object.hasOwn(overlay.config, 'address')} />;
+  }
   const tabs = settings?.tabs ?? [];
   const activeTab = tabs.some((t) => t.id === tab) ? tab : (tabs[0]?.id ?? 'general');
 
@@ -371,6 +412,7 @@ export function EndpointForm({ api, path, guardClose }: EndpointFormProps) {
                               onChange={(value) => change(field.name, value)}
                               onInvalid={(bad) => markInvalid(field.name, bad)}
                               problem={problemOf.get(field.name)}
+                              {...(field.name === 'address' && arrival !== undefined ? { note: arrival } : {})}
                             />
                           ))}
                         </Form>

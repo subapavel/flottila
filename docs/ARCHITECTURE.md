@@ -490,6 +490,11 @@ producer calls.
   path in its `address` option (`/orders`), so `http` serves that endpoint at `/http/orders`, matched
   exactly; an address is written as it is, never as a secret reference. A prefix of the wrong form, a prefix two components declare, or one whose component
   describes no `address` refuses the node's start, naming the owners, and `rail8 validate` reports it.
+  Behind a proxy or a published container port, senders call the port at another URL than the one the
+  node binds: `RAIL8_HTTP_ORIGIN` names it (`https://rail8.example.com`; `http` or `https`, a host and
+  an optional port, nothing after them). The node binds and routes nothing by it; `GET /admin/components`
+  tells it with the node's environment and each component's prefix, so that the UI can show the URL
+  senders call.
   The deploy refuses two flows at one path, within a package or against another package's running
   flow; a redeploy keeps its own paths. The consumer mounts its endpoint on the port when it starts
   and closes the mount when it stops (`HttpIngress`, reached through `ComponentContext.http()`), and
@@ -932,7 +937,10 @@ are found by their `kind`, hidden folders, `node_modules` and `target` passed ov
 own: the endpoint's settings form, drawn from its component's settings description (`GET /admin/components`), the same
 for a shipped component and a plugin's. It shows the platform's tabs around the component's own, the fields that serve
 the endpoint's direction and are visible, with their help texts, defaults and required marks, the environments that
-override settings, and the problems the check finds, judged in the browser by the rules the deploy uses (one file of
+override settings, under the `address` of an in endpoint of a component with an HTTP prefix a preview of the URL
+senders call (the node's advertised origin, the prefix and the address, or the path alone when the node names no
+origin; built from the settings shown with the node environment's overlay laid over them, labelled a preview because
+the working folder is not what is deployed), and the problems the check finds, judged in the browser by the rules the deploy uses (one file of
 cases runs against both). A component that describes nothing, and a field type the form does not know, get a raw JSON
 editor. The form opens read-only; Edit, Cancel, Check and Save as in the mapping studio. Save sends only `config`, with
 `If-Match`, and the development server rewrites only the lines of the settings that changed, keeping comments and
@@ -949,7 +957,8 @@ path check and the `ETag` with the endpoint files. The browser reads the text wi
 its own block layout, which keeps the file's order and gives the same picture for the same file: where messages arrive,
 the steps of each list (the flow's own, each process's in a lane of its own to the right), the fork of a `to` by prop
 into its endpoints, a filter's end, a frame around what a split repeats, a call of another flow beside the `to` that
-makes it, and an end at the end of every list. Node ids are the paths of what they draw. It finds the problems the
+makes it, and an end at the end of every list. Where messages arrive shows a `direct` address, or for an endpoint of a
+component with an HTTP prefix the same preview of the URL senders call as its form. Node ids are the paths of what they draw. It finds the problems the
 node would refuse the flow for (step names, process calls and their nesting, judged by one file of cases that the
 node's tests run too), references to endpoints and processes, and what the browser would read otherwise than the node,
 and locks the parts of the file an editor could not change line by line. Choosing a node shows its settings in a drawer:

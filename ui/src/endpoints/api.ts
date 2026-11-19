@@ -1,3 +1,4 @@
+import type { NodeIngress } from './inbound';
 import type { Options, SettingsDescription } from './settings';
 
 /** One endpoint file of the working folder: its path relative to the folder, and its envelope or why it cannot be read. */
@@ -21,8 +22,8 @@ export interface EndpointFile {
   direction: 'in' | 'out';
   description: string | null;
   config: Options;
-  /** Each environment that overrides options, with the names of the options it overrides. */
-  environments: { name: string; options: string[] }[];
+  /** Each environment that overrides options, with the names of the options it overrides and the options it sets. */
+  environments: { name: string; options: string[]; config: Options }[];
 }
 
 /** An endpoint file and the version it was read at, sent back when it is saved. */
@@ -31,10 +32,16 @@ export interface StoredEndpoint {
   etag: string;
 }
 
-/** A component the node serves, with its settings description. */
+/** A component the node serves, with the path its in endpoints are served under on the node's HTTP port, if any, and its settings description. */
 export interface ComponentSettings {
   scheme: string;
+  httpPrefix: string | null;
   settings: SettingsDescription;
+}
+
+/** What `GET /admin/components` answers: where the node takes requests, and every component it serves. */
+export interface NodeComponents extends NodeIngress {
+  items: ComponentSettings[];
 }
 
 /** What the endpoint screens ask of the server. Every call rejects with an {@link EndpointsError} when it is refused. */
@@ -45,8 +52,8 @@ export interface EndpointsApi {
   save(path: string, config: Options, etag: string): Promise<StoredEndpoint>;
   /** Creates the file at `path` holding `text`; a 412 refusal means a file of that name exists. */
   create(path: string, text: string): Promise<StoredEndpoint>;
-  /** The components the node serves, from its admin API. */
-  components(): Promise<ComponentSettings[]>;
+  /** The components the node serves, and where it takes requests, from its admin API. */
+  components(): Promise<NodeComponents>;
 }
 
 /** A refusal: its HTTP status (0 when the server did not answer) and the error text it gave. */
@@ -111,7 +118,7 @@ export function httpEndpointsApi(send: typeof fetch = (input, init) => fetch(inp
       return stored(await call(fileUrl(path), init));
     },
     async components() {
-      return ((await (await call('/admin/components')).json()) as { items: ComponentSettings[] }).items;
+      return (await (await call('/admin/components')).json()) as NodeComponents;
     },
   };
 }

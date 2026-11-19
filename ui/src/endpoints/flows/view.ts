@@ -3,6 +3,7 @@ import { matching, placeOf } from './edit';
 import { readFlow, yamlFindings } from './flowYaml';
 import { layout, type Block } from './layout';
 import { BUILT_IN, checkFields, checkStep, checkStepTab, describeSchema, FLOW_FIELDS, settingsOf, UNDESCRIBED, type StepType } from './steps';
+import { inboundAddress } from '../inbound';
 import type { FlowContext, FlowEdge, FlowNode, FlowProblem, FlowView, Path, StepField, StepForm } from './types';
 
 /** The most nodes drawn, rules listed on a route's node, names listed in `runsAs`, processes inside each other, and the deepest path. */
@@ -477,12 +478,23 @@ export function view(text: string, context: FlowContext, types: Readonly<Record<
 
   const from = isRecord(flow.from) ? flow.from : {};
   const inbound = referTo(from.endpoint, ['from', 'endpoint'], 'in');
+  /** Where messages arrive: a `direct` address, or a preview of the URL senders call, built from the working folder. */
+  const arrival = (endpoint: FlowContext['endpoints'][number]): string => {
+    if (endpoint.scheme === 'direct') return endpoint.address === undefined ? 'direct' : `direct · ${endpoint.address}`;
+    const ingress = context.ingress;
+    const prefix = ingress?.prefixes[endpoint.scheme];
+    if (ingress === undefined || prefix === undefined) return endpoint.scheme;
+    const overlay = endpoint.addressIn ?? {};
+    const address = Object.hasOwn(overlay, ingress.environment) ? overlay[ingress.environment] : endpoint.address;
+    const url = inboundAddress(prefix, address, ingress.httpOrigin);
+    return url === null ? endpoint.scheme : `${endpoint.scheme} · preview · ${url}`;
+  };
   const fromNode = node({
     id: pointer(['from']),
     kind: 'from',
     path: ['from'],
     label: typeof from.endpoint === 'string' ? from.endpoint : 'no endpoint',
-    ...(inbound === undefined ? {} : { detail: inbound.scheme === 'direct' && inbound.address !== undefined ? `direct · ${inbound.address}` : inbound.scheme, opens: { endpoint: inbound.path } }),
+    ...(inbound === undefined ? {} : { detail: arrival(inbound), opens: { endpoint: inbound.path } }),
     ...SIZE.from,
   });
   const main = lists.find((l) => l.owner === null && l.path.length === 1);

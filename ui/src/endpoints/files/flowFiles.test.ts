@@ -127,7 +127,7 @@ describe('flowFiles', () => {
           { id: 'call-partner', path: 'demo/endpoints/call-partner.yaml', scheme: 'direct', direction: 'out', address: '/partner' },
           { id: 'http-in', path: 'demo/endpoints/http-in.yaml', scheme: 'http', direction: 'in' },
           { id: 'partner-in', path: 'demo/endpoints/partner-in.yaml', scheme: 'direct', direction: 'in', address: '/partner' },
-          { id: 'partner-out', path: 'demo/endpoints/partner-out.yaml', scheme: 'direct', direction: 'out', address: '/far', overlaid: true },
+          { id: 'partner-out', path: 'demo/endpoints/partner-out.yaml', scheme: 'direct', direction: 'out', address: '/far', overlaid: true, addressIn: { prod: '/farther' } },
         ],
         flows: [
           { path: 'demo/flows/caller.yaml', id: 'caller', mode: 'sync' },

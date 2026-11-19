@@ -1,5 +1,6 @@
 import type { FlowFile, FlowItem } from '../files/flowFiles';
-import type { ServedSteps } from './types';
+import type { NodeComponents } from '../api';
+import type { FlowIngress, ServedSteps } from './types';
 
 export type { FlowFile, FlowItem };
 
@@ -29,6 +30,8 @@ export interface FlowsApi {
   save(path: string, text: string, etag: string | null): Promise<StoredFlow>;
   /** The step types of the node's modules and plugins, from its admin API, or why they could not be read. */
   steps(): Promise<ServedSteps>;
+  /** Where the node takes requests, from its admin API, or undefined when it could not be asked. */
+  ingress(): Promise<FlowIngress | undefined>;
 }
 
 /** A refusal: its HTTP status (0 when the server did not answer) and the error text it gave. */
@@ -54,8 +57,8 @@ async function refusal(res: Response): Promise<FlowsError> {
 }
 
 /**
- * The working folder's flow files at `/files/flows`, and the node's step types at `/admin/steps`, of the server that
- * serves the UI, through `send` (the browser's `fetch` by default).
+ * The working folder's flow files at `/files/flows`, and the node's step types at `/admin/steps` and components at
+ * `/admin/components`, of the server that serves the UI, through `send` (the browser's `fetch` by default).
  */
 export function httpFlowsApi(send: typeof fetch = (input, init) => fetch(input, init)): FlowsApi {
   async function call(url: string, init: RequestInit = {}): Promise<Response> {
@@ -93,6 +96,15 @@ export function httpFlowsApi(send: typeof fetch = (input, init) => fetch(input, 
         return ((await (await call('/admin/steps')).json()) as { items: { type: string; configSchema: unknown }[] }).items;
       } catch (failed) {
         return { missing: failed instanceof Error ? failed.message : String(failed) };
+      }
+    },
+    async ingress() {
+      try {
+        const { environment, httpOrigin, items } = (await (await call('/admin/components')).json()) as NodeComponents;
+        const prefixes = Object.fromEntries(items.flatMap((c) => (c.httpPrefix === null ? [] : [[c.scheme, c.httpPrefix]])));
+        return { environment, httpOrigin, prefixes };
+      } catch {
+        return undefined;
       }
     },
   };

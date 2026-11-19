@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { Shell } from '../../Shell';
-import type { ComponentSettings, EndpointFile, EndpointsApi } from '../api';
+import type { EndpointFile, EndpointsApi } from '../api';
 import { flowsScreen } from '../screen';
 import { FlowsError, type FlowFile, type FlowsApi } from './api';
 
@@ -38,7 +38,7 @@ steps:
 
 const context: FlowFile['context'] = {
   endpoints: [
-    { id: 'http-in', path: 'demo/endpoints/http-in.yaml', scheme: 'http', direction: 'in' },
+    { id: 'http-in', path: 'demo/endpoints/http-in.yaml', scheme: 'http', direction: 'in', address: '/in' },
     { id: 'order-call', path: 'demo/endpoints/order-call.yaml', scheme: 'direct', direction: 'out', address: '/orders' },
     { id: 'partner-domestic', path: 'demo/endpoints/partner-domestic.yaml', scheme: 'http', direction: 'out' },
     { id: 'partner-foreign', path: 'demo/endpoints/partner-foreign.yaml', scheme: 'http', direction: 'out' },
@@ -92,6 +92,7 @@ function fakeFlows(texts: Record<string, string> = { 'demo/flows/invoice.yaml': 
       return { file: { path, text, editable: true, context }, etag: etag(path) };
     }),
     steps: vi.fn(async () => [{ type: 'xsd', configSchema: { type: 'object', required: ['schema'], properties: { schema: { type: 'string', description: 'The XSD file.' } } } }]),
+    ingress: vi.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -113,18 +114,23 @@ function fakeEndpoints(): EndpointsApi {
     read: vi.fn(async () => ({ file: httpIn, etag: '"1"' })),
     save: vi.fn(),
     create: vi.fn(async (path: string) => ({ file: { ...httpIn, path }, etag: '"1"' })),
-    components: vi.fn(async (): Promise<ComponentSettings[]> => [
-      {
-        scheme: 'http',
-        settings: {
-          format: 1,
-          described: true,
-          tabs: [{ id: 'general', label: 'General', common: true }],
-          fields: [{ name: 'port', type: 'integer', help: 'The port.', tab: 'general', required: true, directions: ['in', 'out'] }],
-          rules: [],
+    components: vi.fn(async () => ({
+      environment: 'dev',
+      httpOrigin: null,
+      items: [
+        {
+          scheme: 'http',
+          httpPrefix: null,
+          settings: {
+            format: 1,
+            described: true,
+            tabs: [{ id: 'general' as const, label: 'General', common: true }],
+            fields: [{ name: 'port', type: 'integer' as const, help: 'The port.', tab: 'general', required: true, directions: ['in' as const, 'out' as const] }],
+            rules: [],
+          },
         },
-      },
-    ]),
+      ],
+    })),
   };
 }
 
@@ -608,5 +614,10 @@ steps:
       null,
     );
     await expect.element(page.getByRole('heading', { name: 'payment', level: 1 })).toBeVisible();
+  });
+
+  test("shows where messages arrive: a preview of the URL senders call, from the node's origin and prefix", async () => {
+    await open(fakeFlows(undefined, { ingress: vi.fn(async () => ({ environment: 'dev', httpOrigin: 'http://localhost:8080', prefixes: { http: '/http' } })) }));
+    await expect.element(canvas().getByText('http · preview · http://localhost:8080/http/in', { exact: true })).toBeVisible();
   });
 });

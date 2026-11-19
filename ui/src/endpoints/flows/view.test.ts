@@ -275,3 +275,30 @@ steps:
     ]);
   });
 });
+
+describe('where messages arrive', () => {
+  const flow = 'schemaVersion: 1\nkind: flow\nid: invoice\nversion: 0.1.0\nfrom: { endpoint: http-in }\ndelivery: { mode: sync }\nsteps:\n  - type: log\n';
+  const httpIn = { id: 'http-in', path: 'demo/endpoints/http-in.yaml', scheme: 'http', direction: 'in' as const, address: '/in' };
+  const ingress = { environment: 'dev', httpOrigin: 'http://localhost:8080', prefixes: { http: '/http' } };
+  const from = (context: Partial<FlowContext>) => view(flow, { ...demo, ...context }).nodes.find((n) => n.kind === 'from')?.detail;
+
+  it("shows a preview of the URL senders call, the node's origin, prefix and the endpoint's address", () => {
+    expect(from({ endpoints: [httpIn], ingress })).toBe('http · preview · http://localhost:8080/http/in');
+  });
+
+  it('shows the path alone when the node names no origin', () => {
+    expect(from({ endpoints: [httpIn], ingress: { ...ingress, httpOrigin: null } })).toBe('http · preview · /http/in');
+  });
+
+  it("takes the address the node's environment sets, and the endpoint's own in an environment that sets none", () => {
+    const overlaid = { ...httpIn, overlaid: true as const, addressIn: { prod: '/orders' } };
+    expect(from({ endpoints: [overlaid], ingress: { ...ingress, environment: 'prod' } })).toBe('http · preview · http://localhost:8080/http/orders');
+    expect(from({ endpoints: [overlaid], ingress })).toBe('http · preview · http://localhost:8080/http/in');
+  });
+
+  it('shows the scheme alone without the node, for a scheme with no prefix, or without an address', () => {
+    expect(from({ endpoints: [httpIn] })).toBe('http');
+    expect(from({ endpoints: [httpIn], ingress: { ...ingress, prefixes: {} } })).toBe('http');
+    expect(from({ endpoints: [{ ...httpIn, address: undefined }], ingress })).toBe('http');
+  });
+});

@@ -57,6 +57,8 @@ services:
       RAIL8_PG_SSL_MODE: disable
       # the node's HTTP port, shared by every inbound HTTP endpoint, listens on the container's network as the admin API does
       RAIL8_HTTP_HOST: 0.0.0.0
+      # the URL senders call that port at, through the port published above; the UI shows it before each endpoint's path
+      RAIL8_HTTP_ORIGIN: http://localhost:8080
       RAIL8_ADMIN_HOST: 0.0.0.0
       # an admin API off loopback needs a token: the node refuses to start without one (export it, docs/QUICKSTART.md)
       RAIL8_ADMIN_TOKEN: ${RAIL8_ADMIN_TOKEN:-}

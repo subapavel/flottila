@@ -89,7 +89,8 @@ import java.util.regex.Pattern;
  *                      alone, which no peer could read with: with more than one copy it is refused
  * @param http the node's HTTP port, which every in endpoint of an adapter with an HTTP prefix shares: {@code RAIL8_HTTP_HOST}
  *             (127.0.0.1), {@code RAIL8_HTTP_PORT} (8080, 0..65535, 0 any free port); a port other than 0 that is
- *             {@code RAIL8_ADMIN_PORT} or {@code RAIL8_PEER_PORT} is refused
+ *             {@code RAIL8_ADMIN_PORT} or {@code RAIL8_PEER_PORT} is refused. {@code RAIL8_HTTP_ORIGIN} (none) is the origin
+ *             senders call it at ({@link Http#origin})
  * @param git the {@code RAIL8_GIT_*} keys: the pool's package repositories, absent without {@code RAIL8_GIT_BASE}. The base is an
  *            {@code https://} URI in every environment, a {@code file://} one in dev and ci only, and never carries user information;
  *            a deployed environment that sets it sets {@code RAIL8_GIT_REF} too. {@code RAIL8_GIT_USER} and {@code RAIL8_GIT_TOKEN}
@@ -326,15 +327,37 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      *
      * @param host {@code RAIL8_HTTP_HOST} (127.0.0.1)
      * @param port {@code RAIL8_HTTP_PORT} (8080), 0 to 65535: 0 any free port
+     * @param origin {@code RAIL8_HTTP_ORIGIN} (none): the origin senders call the port at, such as {@code https://rail8.example.com}
+     *               behind a proxy or {@code http://localhost:8080} for a published container port; {@code http} or {@code https},
+     *               a host and an optional port, with no path, query, fragment or user information. The node only tells it: the UI
+     *               shows it before an in endpoint's prefix and address, and nothing binds or routes by it
      */
-    public record Http(String host, int port) {
+    public record Http(String host, int port, Optional<String> origin) {
 
-        /** 127.0.0.1:8080: the HTTP port of a node whose env sets neither key. */
-        public static final Http DEFAULTS = new Http("127.0.0.1", 8080);
+        /** 127.0.0.1:8080, no origin: the HTTP port of a node whose env sets none of the keys. */
+        public static final Http DEFAULTS = new Http("127.0.0.1", 8080, Optional.empty());
 
         public Http {
             Objects.requireNonNull(host, "host");
+            Objects.requireNonNull(origin, "origin");
             if (port < 0 || port > 65535) throw new IllegalArgumentException("RAIL8_HTTP_PORT " + port + " must be from 0 to 65535");
+            origin.ifPresent(Http::checkOrigin);
+        }
+
+        /** Refuses, naming the key, an origin that is not {@code http://} or {@code https://}, a host and an optional port. */
+        private static void checkOrigin(String origin) {
+            URI uri;
+            try {
+                uri = new URI(origin);
+            } catch (URISyntaxException e) {
+                throw new IllegalArgumentException("RAIL8_HTTP_ORIGIN " + origin + " is no URI: " + e.getReason(), e);
+            }
+            boolean http = "http".equals(uri.getScheme()) || "https".equals(uri.getScheme());
+            if (!http || uri.getHost() == null || uri.getRawUserInfo() != null || uri.getPort() > 65535 || !uri.getRawPath().isEmpty()
+                    || uri.getRawQuery() != null || uri.getRawFragment() != null) {
+                throw new IllegalArgumentException("RAIL8_HTTP_ORIGIN " + origin + " must be http:// or https://, a host and an optional port,"
+                        + " with nothing after them, such as https://rail8.example.com");
+            }
         }
     }
 
@@ -765,7 +788,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.intakePoolSize()), duration(env, "RAIL8_NODE_LEASE", NODE_LEASE_DEFAULT),
                 duration(env, "RAIL8_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT), retries(env), peer(env, nodeId),
                 (int) number(env, "RAIL8_JOURNAL_COPIES", deployed(name) ? COPIES_MAX : 1, 1, COPIES_MAX),
-                new Http(env.getOrDefault("RAIL8_HTTP_HOST", Http.DEFAULTS.host()), (int) number(env, "RAIL8_HTTP_PORT", Http.DEFAULTS.port(), 0, 65535)),
+                new Http(env.getOrDefault("RAIL8_HTTP_HOST", Http.DEFAULTS.host()), (int) number(env, "RAIL8_HTTP_PORT", Http.DEFAULTS.port(), 0, 65535),
+                        Optional.ofNullable(env.get("RAIL8_HTTP_ORIGIN"))),
                 git(env));
     }
 
