@@ -97,7 +97,7 @@ in `run` names a type of `ir`.
 - **Paths** (`run`): `record Path(Path parent, Object key, int length)` with `static final Path ROOT`
   (non-null and empty) and `Path child(Object key)`; `interface PathSink { boolean emit(Object v,
   Path p); }`, answering as `Sink` does, a null `p` untracked. Paths are immutable and may be shared;
-  they are not charged.
+  a Path node is not charged, a key that a step's `extend` builds (a slice key) is.
 - **The format** (`run`, the `paths` field of `PathOf` and `Update`, one instance per program,
   which the IrVerifier checks):
   ```java
@@ -117,8 +117,15 @@ in `run` names a type of `ir`.
   The Edit holds the root, the delete list and its charges, both depth limits (MODIFY's after an
   rhs result included) and every message. MODIFY calls, per lhs result in lhs order, `get`, then
   the rhs until its first result, then `set` with it or `delete` when there is none; ASSIGN calls
-  `set` only, with the rhs read once on the Update's input. A break or an error abandons the Edit:
-  `end` is never called and nothing is restored. The Edit lives in a local of the push form and in
+  `set` only, with the rhs read once on the Update's input. A break, or an error that leaves the
+  Update, abandons the Edit: `end` is never called and nothing is restored. An error the lhs
+  catches while the Edit is in use (an AltBind trying its next alternative after an rhs error)
+  leaves the Edit in use: a `get`, `set` or `delete` that raises leaves it unchanged, the next
+  alternative goes on with it, and `end` runs once the lhs runs out. jq loses its reduce state
+  there instead: on `{"a":[1],"b":3,"c":5,"d":0} | (.a as $x ?// $y | if $x then (.b, .d) else
+  .c end) |= (if . == 0 then error("e") else 7 end)` jq-ref 1.8.2 raises "Paths must be specified
+  as an array" (observed 2026-11-19 in this amendment's review), where this engine gives
+  `{"a":[1],"b":7,"c":7,"d":0}`; that case joins `DEVIATIONS.md` with the Update. The Edit lives in a local of the push form and in
   a field of the Update's heap form, never in a frame slot. `value` and `invalid` arrive with
   PathOf, `modify` and `assign` with the TRACKED Update.
 - **Steps** (`run`): the call form of every operation whose rule is KEY, INDEX, DYNAMIC, SLICE,
@@ -129,22 +136,37 @@ in `run` names a type of `ir`.
     default Path extend(RunState s, Path at, Object in, Object key, Object end) { return at.child(key); }
   }
   ```
-  An Fn0 passes `(null, null)`, an Fn1 `(k, null)`, an Fn2 `(k, end)`, and a `Many` the key of its
-  cursor, which `Many` gains as `default Object key(RunState s, Object in, Object[] args, long
-  cursor)` (it throws unless overridden). A step's key lives with its form: Field keeps its name,
+  An Fn0 passes `(null, null)` to both methods, an Fn1 `(k, null)` and an Fn2 `(k, end)`. A `Many`
+  passes `(null, null)` to `untracked`, which is raised before `first`, when no cursor exists yet,
+  and to `extend` the key of each cursor, which `Many` gains as `default Object key(RunState s,
+  Object in, Object[] args, long cursor)` (it throws unless overridden).
+  A step's key lives with its form: Field keeps its name,
   SLICE builds its slice key, KEY_LIST (getpath) appends each key of its list, DYNAMIC appends the
-  run-time key, whose kind only the format reads. A fused chain (`StepRun`) implements PathStep
-  over its steps, each one a PathStep: `untracked` is its first step's, `extend` calls each step's
-  own in order, so in path mode each step still extends the path by its own rule. Its Operation
-  declares its first step's rule, which ops read only as "a step". The IrVerifier refuses a step
-  rule whose form is not a PathStep of Fn0, Fn1 or Fn2, and ALL whose form is not a PathStep Many.
+  run-time key, whose kind only the format reads. A fused chain (`StepRun`) keeps its fusion in
+  path mode: its form calls its steps in turn, as in value mode, and implements PathStep over
+  them, each a PathStep Fn0 (a Field, or an Index or a Slice with constant keys). `untracked` is
+  its first step's; `extend` calls each step's own in order with `(null, null)` and the chain's
+  input, which none of them reads, so each step still extends the path by its own rule. Its
+  Operation declares its first step's rule, which ops read only as "a step". This replaces "A
+  fused chain (F-44) has no rule of its own …" in the Decision above and the last bullet of
+  ADR-0010's amendment for spec 3 ("A fused chain (F-44) in a path variant runs its steps one by
+  one …"). The IrVerifier checks both ways: the rule is KEY, INDEX, DYNAMIC, SLICE or KEY_LIST
+  if and only if the form is a PathStep Fn0, Fn1 or Fn2, and ALL if and only if it is a PathStep
+  Many, so a StepRun declared NONE is refused.
 - **Ops** (`internal.interpret`): `Op` gains `boolean runPath(RunState s, Object[] slots, Object
   in, Path at, PathSink out)` and its heap form `void startPath(Trampoline t, HeapForm under,
   Object[] slots, Object in, Path at, HeapPathSink out)`, with `interface HeapPathSink { void
   accept(Trampoline t, HeapForm under, Object v, Path p); }`. Both default to the untracked
-  variant: the op's value or push form, each result emitted with a null path. A path variant has
-  the results, order, ticks, charges and slot writes of `run` on the same node; only the paths
-  differ. A parent calls `eval` on a value-form child and `run` on a push one, in path mode too.
+  variant: `runPath` runs the op's `run` (or evaluates its value form), and `startPath` starts the
+  op's own `start` with a heap sink that adds the path, so the heap form stays on the trampoline;
+  each result is emitted with a null path. A path variant has the ticks of `run` on the same node,
+  and its results, order, charges and slot writes but for three differences: an untracked step
+  (`.a?` on an untracked input) and a PATH-tracked bind value raise where `run` does not,
+  `extend` charges the keys it builds (a slice key), and the hidden path cells are written. A
+  child that runs in value mode (a condition, a VALUE bind's value, the rhs, a default
+  `runPath`) is called as now, by `eval` on a value form and `run` on a push one. A child in path
+  mode is called by `runPath` or `startPath`, whatever its forms, so `.a` under a Pipe keeps its
+  path; Call and ParamCall path variants stay push-only (ADR-0010's amendment).
   The Trampoline gains the actions START_PATH and EMIT_PATH and the starter `static boolean
   runPath(RunState, Op body, Object[] frame, Object in, Path at, PathSink out)`. A test over
   `Op`'s permitted subclasses classifies every kind as passing paths on or untracked, and fails on
@@ -160,10 +182,10 @@ in `run` names a type of `ir`.
   Update emits once, `end`'s result, after the lhs ran out; a break passes on with no result. The
   heap form starts the rhs above the lhs producer, as Pipe's right side, so an rhs error passes
   back through the lhs's Try (wrapped) and AltBind (the next alternative) as in jq.
-- **Hidden cells** (counted in the frame's one size, ADR-0045): each ITEM bind has one for its
-  Path; a lifted function has one for its input Path, written at entry and before each tail jump,
-  in programs that hold a PathOf or an Update, and none otherwise, so a program without paths
-  keeps its frames.
+- **Hidden cells** (counted in the frame's one size, ADR-0045): in a program that holds a PathOf
+  or an Update, each ITEM bind has one for its Path, and a lifted function one for its input
+  Path, written at entry and before each tail jump. A program that holds neither has none of
+  them, so a program without paths keeps its frames.
 
 Rejected: a parallel tree of path ops (a second build of functions and closures, twin heap
 forms); a six-parameter format `step` that dispatches on the call form (a step's key would live in
