@@ -1,6 +1,6 @@
 # Quickstart: run Rail8 and its UI on your machine
 
-One node with its Postgres and a partner echo in Docker, the mapping service, and the UI in your browser. The demo
+One node with its Postgres and a partner echo in Docker, and the UI in your browser, all from one terminal. The demo
 package (`examples/demo`) is deployed to the node, an invoice is sent in and found in the UI. Commands run from the
 repository root.
 
@@ -21,7 +21,7 @@ repository cloned inside the WSL file system.
 
 ```sh
 git clone https://github.com/subapavel/rail8.git && cd rail8
-./mvnw -B -ntp -q package -DskipTests -pl :rail8-node,:rail8-mapping-service -am   # the node's jar, which the image copies, and the mapping service the studio talks to
+./mvnw -B -ntp -q package -DskipTests -pl :rail8-node -am   # the node's jar, which the image copies
 (cd ui && npm ci)
 
 export RAIL8_ADMIN_TOKEN=rail8-local               # the admin API's bearer token; any string will do, keep it for later shells
@@ -30,22 +30,23 @@ until curl -sf localhost:8081/health >/dev/null; do sleep 2; done
 deploy/quickstart/deploy.sh examples/demo          # the demo flows, deployed to the node
 ```
 
-Then start the mapping service and the UI, each in its own terminal (the same `RAIL8_ADMIN_TOKEN` exported in the UI's):
-
-```sh
-cp -r mapping/corpus ~/rail8-mapping-workspace     # once: the mapping studio's working copy
-java -Dquarkus.http.port=18080 -Drail8.mapping.workspace=$HOME/rail8-mapping-workspace -jar mapping/service/target/quarkus-app/quarkus-run.jar
-```
+Then start the UI in the same terminal, where `RAIL8_ADMIN_TOKEN` is exported; it runs until Ctrl+C:
 
 ```sh
 mkdir -p ~/rail8-workspace && cp -r examples/demo ~/rail8-workspace/demo   # once: the packages the endpoint forms edit
-cd ui && QUARKUS_HTTP_PORT=18080 RAIL8_WORKSPACE=$HOME/rail8-workspace npm run dev   # port 18080: the node's HTTP port already uses 8080
+cp -r mapping/corpus ~/rail8-workspace/mapping-corpus                     # once: the mappings the mapping studio edits
+cd ui && RAIL8_WORKSPACE=$HOME/rail8-workspace npm run dev
 ```
 
 Open **http://localhost:5173**. The UI has **Messages**, the list of the messages the node recorded, **Endpoints**, the
 settings form of each endpoint file in `RAIL8_WORKSPACE`, **Flows**, the picture of each flow file in it, and
 **Mappings**, the mapping studio. The UI sends its
 `/admin` requests to the node on `localhost:8081` and adds the token itself, so the browser never sees it.
+
+The studio's mappings are the `*.mapping.json` files in `RAIL8_WORKSPACE`, such as
+`mapping-corpus/mappings/order-id-copy`, and the schemas a mapping reads are the files its bundles name, relative to its
+file. **Mappings** lists them without the node; opening, saving, compiling and testing a mapping ask the node, so they
+need it running. With `RAIL8_READ_ONLY=true` the studio saves and creates nothing.
 
 An endpoint's form is drawn from its component's settings description, which the node serves, so it needs the node
 running. It opens read-only; Edit, change a setting, Check, and Save writes the file in the working folder, changing only
@@ -84,19 +85,23 @@ with "the admin API on 0.0.0.0 is not loopback-only: it needs a token" (`docker 
 
 ## Every morning
 
-Stop the mapping service and the UI (Ctrl+C), then:
+Stop the UI (Ctrl+C) and go back to the repository root (`cd ..`), then:
 
 ```sh
 git pull
-./mvnw -B -ntp -q package -DskipTests -pl :rail8-node,:rail8-mapping-service -am
+./mvnw -B -ntp -q package -DskipTests -pl :rail8-node -am
 (cd ui && npm ci)
 export RAIL8_ADMIN_TOKEN=<the token of the first run>   # a new shell has none, and the node refuses to start without it
 docker compose up -d --build --force-recreate           # the node restores the deployed demo from its volume
 deploy/quickstart/deploy.sh examples/demo               # only when the demo itself changed
 ```
 
-Then start the mapping service and the UI again with the commands of the first run (not the copies, which are made
-once), with the same token exported in the UI's terminal.
+A working copy of the mapping corpus made by an older checkout, `~/rail8-mapping-workspace`, is moved into the working
+folder once, which keeps its edits: `mv ~/rail8-mapping-workspace ~/rail8-workspace/mapping-corpus`. The studio then
+finds its mappings under `mapping-corpus/`, and nothing else reads the old folder.
+
+Then start the UI again in the same terminal, with the last command of the first run (not the copies, which are made
+once): `cd ui && RAIL8_WORKSPACE=$HOME/rail8-workspace npm run dev`.
 
 If the node does not start after a pull, the database volume may be from an older checkout. `docker compose down -v`
 removes this stack's database and archives; start again from `docker compose up`, then deploy the demo again.
@@ -186,7 +191,7 @@ docker compose down      # keeps the database and the archives in their volumes
 docker compose down -v   # also removes them: the next start is empty, deploy the demo again
 ```
 
-Ctrl+C stops the mapping service and the UI.
+Ctrl+C stops the UI.
 
 ## Notes
 

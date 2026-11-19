@@ -7,7 +7,7 @@ import { displayQueue, edit, node, openStudio, processingLog, result, runTest, s
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-// Test runs in the studio over the real service, and their display queues.
+// Test runs in the studio over the real node, and their display queues.
 const corpus = (path: string) => new URL(`../../mapping/corpus/${path}`, import.meta.url);
 
 /** Opens a mapping in the studio on Definition, in edit mode: a test run needs it. */

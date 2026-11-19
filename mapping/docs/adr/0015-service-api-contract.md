@@ -4,6 +4,8 @@ Status: accepted (2026-10-30, grilling #12); refined by ADR-0020 (UDF scan endpo
 
 Amended 2026-11-15 (D-151): the name reads `rail8`
 
+Amended 2026-11-19: `openapi.json` is written by hand, no longer generated from code; the development server's tests check its answers against it.
+
 ADR-0013 makes the editor reach the service only through `ApiClient`, with compile and test
 on the unsaved working copy, and generated wire types only. This ADR fixes the contract and
 its type source. The owner prefers Quarkus OpenAPI → TypeScript.

@@ -4,6 +4,8 @@ Status: accepted (2026-10-30, grilling #12); amended by F-3 (no `--add-modules` 
 
 Amended 2026-11-15 (D-151): the name reads `rail8`
 
+Replaced 2026-11-19: there is no mapping service any more. The UI's development server answers the studio's `/api` over the working folder, and the node's mapping module runs the engine.
+
 FOUNDING §11 sketches JPMS modules for everything, "the service" included. The owner wants the
 service in Quarkus, the same as Flottila's future backend. Quarkus builds and runs an
 application on the class path. So the engine stays JPMS and the service does not.

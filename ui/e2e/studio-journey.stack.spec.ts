@@ -11,7 +11,7 @@ const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `/${ORDER}/OrderId`;
 const transformOf = (page: Page, name: RegExp) => node(page, name).evaluate((element) => (element as HTMLElement).style.transform);
 
-// The studio's author journey over the real service: the Mappings screen, New mapping, the messages chosen on
+// The studio's author journey over the real node: the Mappings screen, New mapping, the messages chosen on
 // Signature, a wire and a moved box on Definition, Save; the page loaded again opens the saved file on the tab it was
 // left on, with the wire and the box where it was put.
 test('@stack list, New mapping, Signature, a wire and a moved box on Definition, Save; a reload keeps the wire and the position', async ({ page }) => {

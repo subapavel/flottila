@@ -935,13 +935,13 @@ attempt and every attempt step by step: outcome, start, wall and CPU time, paylo
 The payload after a step opens in a dialog (its first MiB) when its bytes were kept; when the latest
 attempt failed, its error is shown with Restart (`POST /admin/dlq/{id}/retry`).
 
-The Mappings screen lists the mappings of the mapping service's workspace, finds them and creates
+The Mappings screen lists the mappings of the working folder (`RAIL8_WORKSPACE`), finds them and creates
 them, and opens each one in a tab of its own, so that several mappings can be open at once. A
 mapping's tab is the mapping studio: it opens read-only; Edit, then Save (with `If-Match`, and a
 dialog when the file changed on disk), Cancel and Check; and its tabs Overview, Signature,
 Definition (the message trees, the field mappings and the expression canvas, on React Flow), Test
 and Functions. Closing the tab of a mapping with unsaved changes asks first. The studio's types are
-generated from the mapping service's contract (`mapping/contract/`, `npm run gen:types`), and CI
+generated from its contract (`mapping/contract/openapi.json`, written by hand, `npm run gen:types`), and CI
 fails when they differ from it.
 
 The Endpoints screen lists the endpoint files of a working folder (`RAIL8_WORKSPACE`, a folder of packages; files
@@ -1000,13 +1000,18 @@ passes the UI's `/admin` requests on to the node (`RAIL8_ADMIN_URL`, default
 `http://127.0.0.1:8081`), as the node answers no browser: it takes only GET and POST from its own
 pages (`Sec-Fetch-Site: same-origin`, an `Origin` from its fixed list), drops every header but
 `Accept` and `Content-Type`, and adds the token from `RAIL8_ADMIN_TOKEN` itself, so the browser
-never holds it. The mapping studio's `/api` requests go to the mapping service on the same machine
-(port `QUARKUS_HTTP_PORT`, default 8080). The endpoint forms' `/files/endpoints` and the flow screen's `/files/flows`
-requests are answered by the development server itself, under the same same-origin rule.
+never holds it. The mapping studio's `/api` requests are answered by the development server itself: it lists the
+`*.mapping.json` files of the working folder without the node, and asks the node's mapping module
+(`/admin/modules/mapping/*`, with the same token) to read, check, create, compile, test and refresh a mapping, sending
+the files of its bundles that the node asks for: those inside the mapping's package (the nearest folder holding
+`package.yaml`), or else inside the working folder. It writes a save or a create in the form the node gives back, one
+at a time, through a temporary file; a node that is down or slower than 30 s is answered 502. Its writes take the same same-origin rule.
+The endpoint forms' `/files/endpoints` and the flow screen's `/files/flows` requests are answered by the development
+server too, all of them under that rule.
 
 The UI's end-to-end scenarios (`ui/e2e/`, Playwright) run nightly: the 20,128-field tree scrolled
 over a fake mapping service on a development-only page, and the `@stack` scenarios against the
-mapping service's jar. The admin API answers JSON and refuses browsers. `site/` is the project's
+development server and the quickstart's node in Docker. The admin API answers JSON and refuses browsers. `site/` is the project's
 public web page.
 
 **Planned**

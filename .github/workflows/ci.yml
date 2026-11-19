@@ -4,7 +4,7 @@
 # Once a day and on demand, before the owner's morning overview: the build of main with unit and integration
 # tests on the pinned Postgres, Error Prone, the name guard, the change guard and the demo package, and then the
 # whole stack started in Docker with the demo deployed, and the quickstart's first-run and start commands run as
-# written (node, mapping service and UI, an invoice found), and the adapter kit's commands run as docs/ADAPTERS.md writes
+# written (node and UI, a mapping read through the node, an invoice found), and the adapter kit's commands run as docs/ADAPTERS.md writes
 # them (a new adapter built and tested, run with a node and the UI, a test message sent through it and found). It blocks
 # nothing; a red run is the first task of the day.
 # The larger reports (the oldest supported Postgres, coverage, the benchmark, mutation testing and the fork kill
@@ -215,7 +215,7 @@ jobs:
         run: docker compose --profile history --profile kafka down -v
 
   quickstart:
-    name: "nightly · quickstart (docs/QUICKSTART.md: first-run commands, node, mapping service and UI started, an invoice found, listed and counted)"
+    name: "nightly · quickstart (docs/QUICKSTART.md: first-run commands, node and UI started, a mapping read through the node, an invoice found, listed and counted)"
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
@@ -233,10 +233,10 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
       # The commands of the quickstart's first run, in its order.
-      - name: Build the node's jar and the mapping service, install the UI
+      - name: Build the node's jar, install the UI
         run: |
           set -euo pipefail
-          ./mvnw -B -ntp -q package -DskipTests -pl :rail8-node,:rail8-mapping-service -am
+          ./mvnw -B -ntp -q package -DskipTests -pl :rail8-node -am
           (cd ui && npm ci)
       - name: Start the node, wait for /health and deploy the demo
         run: |
@@ -248,20 +248,26 @@ jobs:
             sleep 2
           done
           deploy/quickstart/deploy.sh examples/demo
-      - name: Start the mapping service and the UI as the quickstart does
+      - name: Start the UI as the quickstart does
         run: |
           set -euo pipefail
-          cp -r mapping/corpus ~/rail8-mapping-workspace
-          nohup java -Dquarkus.http.port=18080 -Drail8.mapping.workspace=$HOME/rail8-mapping-workspace -jar mapping/service/target/quarkus-app/quarkus-run.jar > "$RUNNER_TEMP/mapping.log" 2>&1 &
           mkdir -p ~/rail8-workspace && cp -r examples/demo ~/rail8-workspace/demo
-          (cd ui && QUARKUS_HTTP_PORT=18080 RAIL8_WORKSPACE=$HOME/rail8-workspace nohup npm run dev > "$RUNNER_TEMP/ui.log" 2>&1 &)
-          for url in localhost:18080/api/mappings localhost:5173/; do
-            start=$(date +%s)
-            until curl -sf "$url" > /dev/null; do
-              if [ $(( $(date +%s) - start )) -ge 90 ]; then echo "::error::$url not answering within 90 s"; exit 1; fi
-              sleep 2
-            done
+          cp -r mapping/corpus ~/rail8-workspace/mapping-corpus
+          (cd ui && RAIL8_WORKSPACE=$HOME/rail8-workspace nohup npm run dev > "$RUNNER_TEMP/ui.log" 2>&1 &)
+          start=$(date +%s)
+          until curl -sf localhost:5173/ > /dev/null; do
+            if [ $(( $(date +%s) - start )) -ge 90 ]; then echo "::error::the UI not answering within 90 s"; exit 1; fi
+            sleep 2
           done
+      - name: The mapping studio lists the corpus copy and opens a mapping through the node
+        run: |
+          set -euo pipefail
+          listed=$(curl -sf localhost:5173/api/mappings || true)
+          echo "$listed" | grep -q '"id":"mapping-corpus/mappings/order-id-copy"' \
+            || { echo "::error::the studio does not list mapping-corpus/mappings/order-id-copy: $listed"; exit 1; }
+          code=$(curl -s -o "$RUNNER_TEMP/mapping.json" -D "$RUNNER_TEMP/mapping.headers" -w '%{http_code}' localhost:5173/api/mappings/mapping-corpus/mappings/order-id-copy)
+          [ "$code" = 200 ] && grep -qi '^etag: "sha256:' "$RUNNER_TEMP/mapping.headers" \
+            || { echo "::error::opening order-id-copy through the node answered $code: $(cat "$RUNNER_TEMP/mapping.json")"; exit 1; }
       - name: An invoice is sent in, found, listed and counted through the UI's server
         run: |
           set -euo pipefail
@@ -348,7 +354,7 @@ jobs:
         if: failure()
         run: |
           docker compose logs --no-color | tail -200
-          tail -100 "$RUNNER_TEMP/mapping.log" "$RUNNER_TEMP/ui.log" || true
+          tail -100 "$RUNNER_TEMP/ui.log" || true
       - name: Tear down
         if: always()
         run: docker compose down -v

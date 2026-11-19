@@ -24,9 +24,9 @@ async function expectTracedSkus(page: Page) {
   await expect(queue).not.toContainText('stale');
 }
 
-// Display Queue before any run loads the corpus input.xml (edit mode), runs the working copy on it on the real service
+// Display Queue before any run loads the corpus input.xml (edit mode), runs the working copy on it on the real node
 // and shows the traced queue; opened again in read mode with that source, it runs at once.
-test('@stack Display Queue loads a test file, runs it on the service and shows the queue; with a source it runs at once', async ({ page }) => {
+test('@stack Display Queue loads a test file, runs it on the node and shows the queue; with a source it runs at once', async ({ page }) => {
   const problems = collectProblems(page);
   await openStudio(page, MAPPING, 'Definition');
   await edit(page);
