@@ -92,6 +92,12 @@ class ModuleBoundaryViolationTest {
     @Test void cliTouchingAPostgresClientIsStillCaughtByTheClientRule() {
         assertFails(Rules.ONLY_RUNTIME_TOUCHES_STORE_CLIENTS, "CliUsesAPostgresClient");
     }
+    @Test void coreUsingJGitIsCaught() { assertFails(Rules.ONLY_RUNTIME_TOUCHES_JGIT, "CoreUsesJGit"); }
+    @Test void cliUsingJGitIsCaught() { assertFails(Rules.ONLY_RUNTIME_TOUCHES_JGIT, "CliUsesJGit"); }
+    @Test void runtimeUsingJGitIsAllowed() {
+        AssertionError e = assertThrows(AssertionError.class, () -> Rules.ONLY_RUNTIME_TOUCHES_JGIT.check(fixtures));
+        assertFalse(e.getMessage().contains("RuntimeUsesJGit"), () -> "runtime may use JGit, but the report says:\n" + e.getMessage());
+    }
     // --- rail8-sim (F-36, D-143): over api, core and testkit only; nothing depends on it
     @Test void simDependingOnRuntimeIsCaught() { assertFails(Rules.SIM_DEPENDS_ON_API_CORE_TESTKIT, "SimDependsOnRuntime"); }
     @Test void coreDependingOnSimIsCaught() { assertFails(Rules.NOTHING_DEPENDS_ON_SIM, "CoreDependsOnSim"); }

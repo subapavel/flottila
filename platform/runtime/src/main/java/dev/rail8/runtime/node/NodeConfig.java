@@ -5,6 +5,7 @@ import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.RetryPolicy;
 import dev.rail8.runtime.admin.AdminServer;
 import dev.rail8.runtime.deploy.Secrets;
+import dev.rail8.runtime.git.GitSettings;
 import dev.rail8.runtime.journal.JournalConfig;
 import dev.rail8.runtime.journal.MasterKeySource;
 import dev.rail8.runtime.journal.Replicas;
@@ -89,13 +90,18 @@ import java.util.regex.Pattern;
  * @param http the node's HTTP port, which every in endpoint of an adapter with an HTTP prefix shares: {@code RAIL8_HTTP_HOST}
  *             (127.0.0.1), {@code RAIL8_HTTP_PORT} (8080, 0..65535, 0 any free port); a port other than 0 that is
  *             {@code RAIL8_ADMIN_PORT} or {@code RAIL8_PEER_PORT} is refused
+ * @param git the {@code RAIL8_GIT_*} keys: the pool's package repositories, absent without {@code RAIL8_GIT_BASE}. The base is an
+ *            {@code https://} URI in every environment, a {@code file://} one in dev and ci only, and never carries user information;
+ *            a deployed environment that sets it sets {@code RAIL8_GIT_REF} too. {@code RAIL8_GIT_USER} and {@code RAIL8_GIT_TOKEN}
+ *            come together, for an https base only. No refusal repeats the base or the token
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
                          long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
                          Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal,
                          MasterKeySource journalKey, SweepConfig journalSweep, IntakeGroup intakeGroup, Duration nodeLease,
-                         Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies, Http http) {
+                         Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies, Http http,
+                         Optional<GitSettings> git) {
 
     /**
      * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
@@ -120,6 +126,21 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Objects.requireNonNull(retries, "retries");
         Objects.requireNonNull(peer, "peer");
         Objects.requireNonNull(http, "http");
+        Objects.requireNonNull(git, "git");
+        git.ifPresent(settings -> {
+            if (settings.local() && deployed(env)) {
+                throw new IllegalArgumentException("RAIL8_GIT_BASE is refused: a file:// base serves dev and ci only; a deployed environment reads"
+                        + " its repositories over https:// (the value is not shown)");
+            }
+            if (settings.local() && settings.credentials().isPresent()) {
+                throw new IllegalArgumentException("RAIL8_GIT_USER and RAIL8_GIT_TOKEN are sent to an https:// base only; a file:// base takes"
+                        + " neither");
+            }
+            if (settings.ref().isEmpty() && deployed(env)) {
+                throw new IllegalArgumentException("RAIL8_GIT_REF must be set in a deployed environment that sets RAIL8_GIT_BASE: every commit it"
+                        + " deploys is reachable from that branch or tag");
+            }
+        });
         if (http.port() != 0 && (http.port() == admin.port() || http.port() == peer.port())) {
             throw new IllegalArgumentException("RAIL8_HTTP_PORT " + http.port() + " is " + (http.port() == admin.port() ? "RAIL8_ADMIN_PORT" : "RAIL8_PEER_PORT")
                     + " too: the node's HTTP port, its admin API and its peer link each listen on a port of their own");
@@ -174,6 +195,16 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException("RAIL8_PG_POOL_QUEUE " + pg.poolQueue() + " must be from 1 to " + POOL_QUEUE_MAX
                     + ": the most callers waiting per pool (D-132)");
         }
+    }
+
+    /** A node with no package repositories, as {@link #from} reads an env without {@code RAIL8_GIT_BASE}. */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
+                      IntakeGroup intakeGroup, Duration nodeLease, Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies,
+                      Http http) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies, http, Optional.empty());
     }
 
     /** A node whose HTTP port has the default keys (127.0.0.1:8080), as {@link #from} reads an env without them. */
@@ -285,7 +316,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
         return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention,
-                cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies, http);
+                cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies, http,
+                git);
     }
 
     /**
@@ -733,7 +765,30 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.intakePoolSize()), duration(env, "RAIL8_NODE_LEASE", NODE_LEASE_DEFAULT),
                 duration(env, "RAIL8_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT), retries(env), peer(env, nodeId),
                 (int) number(env, "RAIL8_JOURNAL_COPIES", deployed(name) ? COPIES_MAX : 1, 1, COPIES_MAX),
-                new Http(env.getOrDefault("RAIL8_HTTP_HOST", Http.DEFAULTS.host()), (int) number(env, "RAIL8_HTTP_PORT", Http.DEFAULTS.port(), 0, 65535)));
+                new Http(env.getOrDefault("RAIL8_HTTP_HOST", Http.DEFAULTS.host()), (int) number(env, "RAIL8_HTTP_PORT", Http.DEFAULTS.port(), 0, 65535)),
+                git(env));
+    }
+
+    /**
+     * The {@code RAIL8_GIT_*} keys, absent without {@code RAIL8_GIT_BASE}; a refusal names the key, and none repeats the base or the
+     * token.
+     */
+    private static Optional<GitSettings> git(Map<String, String> env) {
+        String raw = env.get("RAIL8_GIT_BASE");
+        if (raw == null) return Optional.empty();
+        URI base;
+        try {
+            base = new URI(raw);
+        } catch (URISyntaxException notAUri) {
+            throw new IllegalArgumentException("RAIL8_GIT_BASE is refused: it is not a URI (the value is not shown)");
+        }
+        String user = env.get("RAIL8_GIT_USER");
+        String token = env.get("RAIL8_GIT_TOKEN");
+        if ((user == null) != (token == null)) throw new IllegalArgumentException("RAIL8_GIT_USER and RAIL8_GIT_TOKEN are given both or neither");
+        Optional<GitSettings.Credentials> credentials = user == null ? Optional.empty() : Optional.of(new GitSettings.Credentials(user, token));
+        return Optional.of(new GitSettings(base, env.getOrDefault("RAIL8_GIT_PATH", ""), Optional.ofNullable(env.get("RAIL8_GIT_REF")), credentials,
+                span(env, "RAIL8_GIT_TIMEOUT", GitSettings.TIMEOUT_DEFAULT, GitSettings.TIMEOUT_MIN.toString(), GitSettings.TIMEOUT_MAX.toString()),
+                number(env, "RAIL8_GIT_MAX_BYTES", GitSettings.MAX_BYTES_DEFAULT, GitSettings.MAX_BYTES_MIN, GitSettings.MAX_BYTES_MAX)));
     }
 
     /** The {@code RAIL8_PEER_*} keys: each range-checked naming its key. */

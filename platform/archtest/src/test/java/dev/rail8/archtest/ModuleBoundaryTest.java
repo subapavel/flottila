@@ -59,6 +59,10 @@ class ModuleBoundaryTest {
         }
     }
     @Test void onlyRuntimeTouchesStoreClients() { Rules.ONLY_RUNTIME_TOUCHES_STORE_CLIENTS.check(tree); }
+    @Test void onlyRuntimeTouchesJGit() {
+        assertTrue(tree.contain("dev.rail8.runtime.git.GitCache"), "the rule checks the git cache, not an empty set");
+        Rules.ONLY_RUNTIME_TOUCHES_JGIT.check(tree);
+    }
     @Test void rail8PackagesAreFreeOfCycles() { Rules.NO_CYCLES.check(tree); }
     @Test void noRuntimeClassNamesAComponentOrStep() { Rules.RUNTIME_NAMES_NO_COMPONENT_OR_STEP.check(tree); }
     @Test void theCliNamesNoComponentOrStepButTheMockAndTheHttpComponent() { Rules.CLI_NAMES_NO_COMPONENT_OR_STEP.check(tree); }
