@@ -882,14 +882,30 @@ would not read back as sent. With `RAIL8_READ_ONLY=true`, as on a server, the fi
 Without the description the form shows the file's settings read-only and says why. The UI never changes the running
 node: an edited package is deployed as any other.
 
+The Flows screen, in the same UI module, lists the flow files of the working folder (`*.yaml` and `*.yml` of the kind
+`flow`) and opens each one in a tab of its own as a picture, read-only for now. The development server answers a flow
+file with its text, its `ETag` and its context: the endpoints of its package (the nearest folder holding
+`package.yaml`) and the flows of the working folder with the `direct` address each one serves; it shares the walk, the
+path check and the `ETag` with the endpoint files. The browser reads the text with the `yaml` library and draws it in
+its own block layout, which keeps the file's order and gives the same picture for the same file: where messages arrive,
+the steps of each list (the flow's own, each process's in a lane of its own to the right), the fork of a `to` by prop
+into its endpoints, a filter's end, a frame around what a split repeats, a call of another flow beside the `to` that
+makes it, and an end at the end of every list. Node ids are the paths of what they draw. It finds the problems the
+node would refuse the flow for (step names, process calls and their nesting, judged by one file of cases that the
+node's tests run too), references to endpoints and processes, and what the browser would read otherwise than the node,
+and locks the parts of the file an editor could not change line by line. Choosing a node shows its settings in a drawer:
+the built-in steps as the UI describes them, a module's or plugin's from its `configSchema` (`GET /admin/steps`), the
+platform's keys on a "Step" tab, an endpoint in its component's form, and the flow's own settings when nothing is
+chosen. A file that cannot be drawn shows its text with its problems.
+
 No node serves the UI yet; `npm run dev` runs it. In development the Vite server, on localhost:5173,
 passes the UI's `/admin` requests on to the node (`RAIL8_ADMIN_URL`, default
 `http://127.0.0.1:8081`), as the node answers no browser: it takes only GET and POST from its own
 pages (`Sec-Fetch-Site: same-origin`, an `Origin` from its fixed list), drops every header but
 `Accept` and `Content-Type`, and adds the token from `RAIL8_ADMIN_TOKEN` itself, so the browser
 never holds it. The mapping studio's `/api` requests go to the mapping service on the same machine
-(port `QUARKUS_HTTP_PORT`, default 8080). The endpoint forms' `/files/endpoints` requests are answered by the
-development server itself, under the same same-origin rule.
+(port `QUARKUS_HTTP_PORT`, default 8080). The endpoint forms' `/files/endpoints` and the flow screen's `/files/flows`
+requests are answered by the development server itself, under the same same-origin rule.
 
 The UI's end-to-end scenarios (`ui/e2e/`, Playwright) run nightly: the 20,128-field tree scrolled
 over a fake mapping service on a development-only page, and the `@stack` scenarios against the
@@ -901,8 +917,7 @@ public web page.
 - Helper actions on a field of an endpoint's settings form. No screens of a plugin's own.
 - Editing endpoint files on a shared server, written to git with an author, with deploy from git and sign-in.
 - Writing a view of a payload (how a body is shown), later and simply.
-- The flow editor beside the Endpoints screen, over the working folder's flow files
-  (`/files/flows`), as part 4 plans it.
+- Editing flow files on the Flows screen: Edit, Check and Save, as the endpoint forms do.
 
 ## 10. Operations
 
@@ -950,6 +965,7 @@ Bearer token; without one the API may only listen on loopback. There are no user
 | `PUT`, `DELETE /admin/packages/{name}`; `GET /admin/packages`, `GET /admin/flows` | deploy, undeploy, what runs (a `RESTARTING` flow with its failures, next attempt and cause) |
 | `GET /admin/targets`, `GET /admin/flows/{flow}/cpu` | limits per target system, CPU by step |
 | `GET /admin/components` | the components the node serves and their settings descriptions |
+| `GET /admin/steps` | the step types of the node's modules and plugins, each with its `configSchema`, sorted by type |
 
 The list of recent messages reads Postgres only. `from` and `to` are ISO-8601 instants at most 31 days
 apart; it lists the messages whose arrival started at `from` or later and before `to`, each with its id,
