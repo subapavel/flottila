@@ -91,11 +91,15 @@ export async function locate(root: string, path: string, takes: (name: string) =
   return real;
 }
 
-/** Writes `text` over `file` through a temporary file beside it, renamed over it, keeping the file's mode. */
-export async function replaceFile(file: string, text: string): Promise<void> {
+/**
+ * Writes `text` over `file` through a temporary file beside it, renamed over it, keeping the file's mode. `before`, when
+ * given, runs just before the rename, and a failure of it leaves the file as it was.
+ */
+export async function replaceFile(file: string, text: string, before?: () => Promise<void>): Promise<void> {
   const temporary = join(dirname(file), `.${basename(file)}.${randomUUID()}.tmp`);
   try {
     await writeFile(temporary, text, { flag: 'wx', mode: (await stat(file)).mode & 0o777 });
+    await before?.();
     await rename(temporary, file);
   } catch (error) {
     await rm(temporary, { force: true });

@@ -1,4 +1,5 @@
 import { isSeq } from 'yaml';
+import { placeOf } from './edit';
 import { readFlow, yamlFindings } from './flowYaml';
 import { layout, type Block } from './layout';
 import { BUILT_IN, checkStep, checkStepTab, describeSchema, settingsOf, UNDESCRIBED, type StepType } from './steps';
@@ -85,8 +86,11 @@ export function view(text: string, context: FlowContext, types: Readonly<Record<
     partial ? { message: `${what}: not found in the working folder`, warning: true } : { message: what };
 
   if (read.documents > 1) problems.push({ path: [], message: 'the file holds a second document, which the node does not read', warning: true });
+  // why the editor shows the flow read-only, when it does
+  let readOnly: string | undefined;
   if (flow.schemaVersion !== 1) {
-    problems.push({ path: ['schemaVersion'], message: `schemaVersion is ${JSON.stringify(flow.schemaVersion ?? null)}, not 1: the editor shows this flow read-only` });
+    readOnly = `schemaVersion is ${JSON.stringify(flow.schemaVersion ?? null)}, not 1`;
+    problems.push({ path: ['schemaVersion'], message: `${readOnly}: the editor shows this flow read-only` });
   }
 
   // the lists of steps: the flow's, each process's, and those inside a step whose type holds lists of steps
@@ -129,6 +133,7 @@ export function view(text: string, context: FlowContext, types: Readonly<Record<
     const node = read.doc.getIn(list.path, true);
     if (isSeq(node) && node.flow === true) {
       problems.push({ path: list.path, message: 'the list is written on one line ([ … ]): the editor shows this flow read-only', warning: true });
+      readOnly ??= `${placeOf(list.path)} is written on one line ([ … ])`;
     }
   }
 
@@ -505,7 +510,7 @@ export function view(text: string, context: FlowContext, types: Readonly<Record<
   // a frame is listed before the nodes drawn in it, so that it is drawn below them
   const order = (n: FlowNode) => (n.kind === 'lane' ? 0 : n.kind === 'group' ? 1 : 2);
   const sorted = nodes.map((n, i) => ({ n, i })).sort((a, b) => order(a.n) - order(b.n) || a.i - b.i).map(({ n }) => n);
-  return { readable: true, nodes: sorted, edges, problems };
+  return { readable: true, nodes: sorted, edges, problems, ...(readOnly === undefined ? {} : { readOnly }) };
 }
 
 function tooDeep(chain: string[]): string {

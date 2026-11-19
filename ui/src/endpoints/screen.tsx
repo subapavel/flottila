@@ -45,11 +45,15 @@ function readOnly(api: EndpointsApi): EndpointsApi {
 
 /**
  * The tab of one flow file: its id is `flow:` and the file's path, its title the flow's id. Its picture opens the
- * endpoints and flows it links to in tabs of their own.
+ * endpoints and flows it links to in tabs of their own. Closing it while the flow has unsaved changes asks first.
  */
 export function flowTab(flows: FlowsApi, endpoints: EndpointsApi, path: string, id: string): Screen {
   const shown = readOnly(endpoints);
   const idOf = (file: string) => file.split('/').at(-1)!.replace(/\.ya?ml$/, '');
+  let guard: CloseGuard | null = null;
+  const guardClose = (next: CloseGuard | null) => {
+    guard = next;
+  };
   return {
     id: `flow:${path}`,
     title: id,
@@ -60,8 +64,10 @@ export function flowTab(flows: FlowsApi, endpoints: EndpointsApi, path: string, 
         endpointForm={(file) => <EndpointForm key={file} api={shown} path={file} />}
         openEndpoint={(file) => open(endpointTab(endpoints, file, idOf(file)))}
         openFlow={(file) => open(flowTab(flows, endpoints, file, idOf(file)))}
+        guardClose={guardClose}
       />
     ),
+    beforeClose: (close) => (guard === null ? close() : guard(close)),
   };
 }
 

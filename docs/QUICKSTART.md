@@ -58,8 +58,16 @@ To see the demo flows as pictures, open **Flows** and choose a flow, such as `in
 steps from top to bottom: where messages arrive, each step, the fork of a `to` by prop into its endpoints, a call of
 another flow beside the step that makes it, and the end. Choose a node to see its settings in the drawer beside the
 picture; with none chosen, the drawer shows the flow's own settings. An endpoint opens in its form with Open endpoint,
-a flow called with Open flow. The picture only shows the file for now; the settings of the steps of modules and plugins
-come from the node, so it needs the node running too.
+a flow called with Open flow. The settings of the steps of modules and plugins come from the node, so it needs the node
+running too.
+
+To edit a flow, open `invoice-sync` and choose Edit. The + on an edge adds a step there: choose its type, such as
+`filter`, and fill in its settings in the drawer. Choose a step to move it up or down or delete it with the drawer's
+buttons, or, with the canvas focused, with the arrow keys and Delete; Undo (or Ctrl+Z) takes a change back. The
+problems are found again after every change; Check lists them, and they do not stop Save. Save writes
+`~/rail8-workspace/demo/flows/invoice-sync.yaml`, changing only the lines of what you changed and keeping its comments.
+Deploy it with `deploy/quickstart/deploy.sh ~/rail8-workspace/demo`. A flow written in a form the editor does not keep,
+such as its steps on one line, opens read-only and says why.
 
 The node migrates its database itself and serves `/health` on `localhost:8081`. Postgres is published on the host's
 loopback port 5432; if that is taken, prefix the `up` with `RAIL8_PG_HOST_PORT=55432`. Without a token the node exits

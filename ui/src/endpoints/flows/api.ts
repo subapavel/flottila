@@ -22,6 +22,8 @@ export interface StoredFlow {
 export interface FlowsApi {
   list(): Promise<FlowList>;
   read(path: string): Promise<StoredFlow>;
+  /** Writes `text` over the file, on condition that it is still at `etag`; a 412 refusal means it changed since. */
+  save(path: string, text: string, etag: string): Promise<StoredFlow>;
   /** The step types of the node's modules and plugins, from its admin API, or why they could not be read. */
   steps(): Promise<ServedSteps>;
 }
@@ -53,10 +55,10 @@ async function refusal(res: Response): Promise<FlowsError> {
  * serves the UI, through `send` (the browser's `fetch` by default).
  */
 export function httpFlowsApi(send: typeof fetch = (input, init) => fetch(input, init)): FlowsApi {
-  async function call(url: string): Promise<Response> {
+  async function call(url: string, init: RequestInit = {}): Promise<Response> {
     let res: Response;
     try {
-      res = await send(url, { headers: { accept: 'application/json' } });
+      res = await send(url, { ...init, headers: { accept: 'application/json', ...(init.headers as Record<string, string> | undefined) } });
     } catch (failed) {
       throw new FlowsError(0, `the server does not answer: ${String(failed)}`);
     }
@@ -64,15 +66,23 @@ export function httpFlowsApi(send: typeof fetch = (input, init) => fetch(input, 
     return res;
   }
 
+  const fileUrl = (path: string) => `/files/flows/${path.split('/').map(encodeURIComponent).join('/')}`;
+
+  async function stored(res: Response): Promise<StoredFlow> {
+    const etag = res.headers.get('etag');
+    if (etag === null) throw new FlowsError(res.status, 'the server sent the file without its ETag');
+    return { file: (await res.json()) as FlowFile, etag };
+  }
+
   return {
     async list() {
       return (await (await call('/files/flows')).json()) as FlowList;
     },
     async read(path) {
-      const res = await call(`/files/flows/${path.split('/').map(encodeURIComponent).join('/')}`);
-      const etag = res.headers.get('etag');
-      if (etag === null) throw new FlowsError(res.status, 'the server sent the file without its ETag');
-      return { file: (await res.json()) as FlowFile, etag };
+      return stored(await call(fileUrl(path)));
+    },
+    async save(path, text, etag) {
+      return stored(await call(fileUrl(path), { method: 'PUT', headers: { 'content-type': 'application/json', 'if-match': etag }, body: JSON.stringify({ text }) }));
     },
     async steps() {
       try {

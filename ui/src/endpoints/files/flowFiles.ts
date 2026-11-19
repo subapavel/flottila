@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { foreign } from '../../../server/adminProxy.ts';
 import { readFlow, saysFlow } from '../flows/flowYaml.ts';
 import { EndpointFileError, readEndpoint } from './endpointYaml.ts';
-import { etagOf, locate, Refusal, send, sendFailure, walk } from './workingFolder.ts';
+import { etagOf, jsonBody, locate, MAX_FILE_BYTES, Refusal, replaceFile, send, sendFailure, walk } from './workingFolder.ts';
 
 /** The working folder whose flow files the flow screen draws, and who may reach them. */
 export interface FlowFilesOptions {
@@ -107,10 +107,16 @@ async function survey(root: string) {
  *   `configured` is false, with no items, when no working folder is set.
  * - `GET /files/flows/<path>`: 200 the {@link FlowFile} with its `ETag`, the text as it is, also when it cannot be
  *   drawn; 404 when there is no such flow file, 413 when it is over 1 MiB.
+ * - `PUT /files/flows/<path>` with `If-Match` and `{"text": "..."}`: writes the text over the flow file, through a
+ *   temporary file renamed over it, and answers 200 as GET does. A text equal to the file's is not written, so its
+ *   `ETag` stays. Refused with 403 when not editable, 428 without `If-Match`, 400 when the body is not `{"text": "..."}`,
+ *   413 when the text is over 1 MiB, 404 when there is no such flow file, 412 when the file changed since that tag
+ *   (compared again just before the rename), and 422 when the text is no YAML or no flow, as the browser reads it.
  *
- * Every other path goes to `next`.
+ * Saves are made one at a time. Every other path goes to `next`.
  */
 export function flowFiles(options: FlowFilesOptions) {
+  let saves: Promise<unknown> = Promise.resolve();
   const rootOf = async () => {
     if (options.workspace === undefined) throw new Refusal(404, 'no working folder is set: start the UI with RAIL8_WORKSPACE');
     return realpath(options.workspace);
@@ -153,6 +159,30 @@ export function flowFiles(options: FlowFilesOptions) {
     return { file: { path, text, editable: options.editable, context } satisfies FlowFile, etag: etagOf(bytes) };
   };
 
+  const save = async (req: IncomingMessage, path: string) => {
+    if (!options.editable) throw new Refusal(403, 'this server shows flow files read-only');
+    const ifMatch = req.headers['if-match'];
+    if (ifMatch === undefined) throw new Refusal(428, 'a save names the version it changes in If-Match');
+    const sent = await jsonBody(req);
+    if (!isRecord(sent) || typeof sent.text !== 'string') throw new Refusal(400, 'a save sends {"text": "..."}');
+    const text = sent.text;
+    if (Buffer.byteLength(text, 'utf8') > MAX_FILE_BYTES) throw new Refusal(413, 'the text is over 1 MiB');
+    const file = await locate(await rootOf(), path, isYaml, 'flow file');
+    const bytes = await readFile(file);
+    const current = bytes.toString('utf8');
+    const old = readFlow(current);
+    if (old.kind === 'other' || (old.kind === 'problem' && !saysFlow(current))) throw new Refusal(404, `${path} is not a flow file`);
+    const unchanged = async () => {
+      if (etagOf(await readFile(file)) !== ifMatch) throw new Refusal(412, 'the file changed since it was read; nothing was saved');
+    };
+    if (etagOf(bytes) !== ifMatch) throw new Refusal(412, 'the file changed since it was read; nothing was saved');
+    const flow = readFlow(text);
+    if (flow.kind === 'problem') throw new Refusal(422, flow.message);
+    if (flow.kind === 'other') throw new Refusal(422, 'the text is not a flow');
+    if (!bytes.equals(Buffer.from(text, 'utf8'))) await replaceFile(file, text, unchanged);
+    return read(path);
+  };
+
   return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     const url = new URL(req.url ?? '', 'http://localhost');
     if (url.pathname !== PREFIX && !url.pathname.startsWith(`${PREFIX}/`)) {
@@ -166,12 +196,16 @@ export function flowFiles(options: FlowFilesOptions) {
     }
     const path = url.pathname.slice(PREFIX.length + 1);
     const answer = async () => {
-      if (req.method !== 'GET') send(res, 405, { error: 'the flow files take GET' });
-      else if (path === '') send(res, 200, await list());
-      else {
+      if (path === '' && req.method === 'GET') send(res, 200, await list());
+      else if (path !== '' && req.method === 'GET') {
         const { file, etag } = await read(path);
         send(res, 200, file, etag);
-      }
+      } else if (path !== '' && req.method === 'PUT') {
+        const done = saves.then(() => save(req, path));
+        saves = done.catch(() => undefined);
+        const { file, etag } = await done;
+        send(res, 200, file, etag);
+      } else send(res, 405, { error: 'the flow files take GET, and PUT of one file' });
     };
     answer().catch((error: unknown) => sendFailure(res, error));
   };

@@ -1,9 +1,23 @@
-import { Icon } from '@patternfly/react-core';
-import { ExclamationCircleIcon, ExclamationTriangleIcon, LockIcon } from '@patternfly/react-icons';
-import { Background, Handle, MarkerType, Position, ReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react';
+import { Button, Icon } from '@patternfly/react-core';
+import { ExclamationCircleIcon, ExclamationTriangleIcon, LockIcon, PlusCircleIcon } from '@patternfly/react-icons';
+import {
+  Background,
+  BaseEdge,
+  EdgeLabelRenderer,
+  getSmoothStepPath,
+  Handle,
+  MarkerType,
+  Position,
+  ReactFlow,
+  type Edge,
+  type EdgeProps,
+  type Node,
+  type NodeProps,
+} from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { memo, useMemo, type CSSProperties } from 'react';
-import type { FlowEdge, FlowNode, FlowProblem, FlowView } from './types';
+import { placeOf } from './edit';
+import type { FlowEdge, FlowNode, FlowProblem, FlowView, Path } from './types';
 import { pointer } from './view';
 
 /** React Flow's look in PatternFly's tokens. */
@@ -115,6 +129,28 @@ const FrameNode = memo(function FrameNode({ data }: NodeProps<CanvasNode>) {
 
 const types = { step: StepNode, frame: FrameNode };
 
+/** What an edge where a step can be added carries: the place, and who is told when its button is pressed. */
+type InsertData = { at: Path; onInsert: (at: Path) => void };
+type InsertEdge = Edge<InsertData, 'insert'>;
+
+/** An edge drawn as the others are, with a button in its middle that adds a step at its place. */
+const InsertStepEdge = memo(function InsertStepEdge(props: EdgeProps<InsertEdge>) {
+  const [path, x, y] = getSmoothStepPath(props);
+  const { at, onInsert } = props.data!;
+  return (
+    <>
+      <BaseEdge id={props.id} path={path} {...(props.markerEnd === undefined ? {} : { markerEnd: props.markerEnd })} {...(props.style === undefined ? {} : { style: props.style })} />
+      <EdgeLabelRenderer>
+        <div className="nodrag nopan" style={{ position: 'absolute', transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`, pointerEvents: 'all' }}>
+          <Button variant="plain" size="sm" aria-label={`Add a step at ${placeOf(at)}`} icon={<PlusCircleIcon />} onClick={() => onInsert(at)} />
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+});
+
+const edgeTypes = { insert: InsertStepEdge };
+
 /** The node a click on `node` selects: its path's own, so that a node drawn beside a step selects the step. */
 export const selectionOf = (node: FlowNode) => (node.kind === 'lane' ? node.id : pointer(node.path));
 
@@ -133,10 +169,15 @@ export interface FlowCanvasProps {
   selected: string | null;
   /** Told the node chosen. */
   onSelect: (node: FlowNode) => void;
+  /**
+   * Told where a step is to be added when the button on an edge where one can be is pressed; without it the edges have
+   * no buttons. Edges that add at the same place share one button.
+   */
+  onInsert?: (at: Path) => void;
 }
 
-/** The picture of a flow: its view's nodes where the layout put them, and its edges, labelled. It changes nothing. */
-export function FlowCanvas({ view, selected, onSelect }: FlowCanvasProps) {
+/** The picture of a flow: its view's nodes where the layout put them, and its edges, labelled. It changes nothing itself. */
+export function FlowCanvas({ view, selected, onSelect, onInsert }: FlowCanvasProps) {
   const byId = useMemo(() => new Map(view.nodes.map((n) => [n.id, n])), [view]);
   const nodes = useMemo<CanvasNode[]>(
     () =>
@@ -158,26 +199,29 @@ export function FlowCanvas({ view, selected, onSelect }: FlowCanvasProps) {
       }),
     [view, byId, selected],
   );
-  const edges = useMemo<Edge[]>(
-    () =>
-      view.edges.map((e) => {
-        const side = e.kind === 'calls' || e.kind === 'ends' || e.kind === 'process';
-        const dash = DASHED[e.kind];
-        return {
-          id: e.id,
-          source: e.source,
-          target: e.target,
-          type: 'smoothstep',
-          ...(side ? { sourceHandle: 'side', targetHandle: 'side' } : {}),
-          // the flow node beside a call says what it calls; a label would cover the short edge to it
-          ...(e.label === undefined || e.kind === 'calls' ? {} : { label: e.label }),
-          markerEnd: { type: MarkerType.ArrowClosed },
-          ...(dash === undefined ? {} : { style: { strokeDasharray: dash } }),
-          selectable: false,
-        };
-      }),
-    [view],
-  );
+  const edges = useMemo<Edge[]>(() => {
+    const places = new Set<string>();
+    return view.edges.map((e) => {
+      const side = e.kind === 'calls' || e.kind === 'ends' || e.kind === 'process';
+      const dash = DASHED[e.kind];
+      const place = e.insertAt === undefined ? undefined : pointer(e.insertAt);
+      const insert = onInsert !== undefined && place !== undefined && !places.has(place);
+      if (place !== undefined) places.add(place);
+      return {
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        type: insert ? 'insert' : 'smoothstep',
+        ...(insert ? { data: { at: e.insertAt, onInsert } } : {}),
+        ...(side ? { sourceHandle: 'side', targetHandle: 'side' } : {}),
+        // the flow node beside a call says what it calls; a label would cover the short edge to it
+        ...(e.label === undefined || e.kind === 'calls' ? {} : { label: e.label }),
+        markerEnd: { type: MarkerType.ArrowClosed },
+        ...(dash === undefined ? {} : { style: { strokeDasharray: dash } }),
+        selectable: false,
+      };
+    });
+  }, [view, onInsert]);
 
   return (
     <ReactFlow
@@ -185,6 +229,8 @@ export function FlowCanvas({ view, selected, onSelect }: FlowCanvasProps) {
       nodes={nodes}
       edges={edges}
       nodeTypes={types}
+      edgeTypes={edgeTypes}
+      deleteKeyCode={null}
       nodesDraggable={false}
       nodesConnectable={false}
       elementsSelectable
