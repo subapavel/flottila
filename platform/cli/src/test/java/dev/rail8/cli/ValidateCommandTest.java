@@ -503,6 +503,27 @@ class ValidateCommandTest {
     }
 
     /**
+     * One commit pinned twice in the closure, with the right content by order's lock and another by ubl's: the second pin is
+     * checked too, a drift named as for the first; exit 1.
+     */
+    @Test
+    void theSameCommitPinnedTwiceIsCheckedForEachPin() throws Exception {
+        Path deps = tmp.resolve("deps");
+        Path order = DepsFixture.orderOverUblOverCommon(deps);
+        DepsFixture.Pin common = DepsFixture.pinOf(deps.resolve("common"));
+        String wrong = "sha256:" + "0".repeat(64);
+        DepsFixture.lock(deps.resolve("ubl"), List.of(new DepsFixture.Pin(common.name(), common.version(), wrong, common.repository(), common.commit())));
+        DepsFixture.manifest(order, "order", "1.0.0", "common@1.2.0", "ubl@1.0.0");
+        DepsFixture.lock(order, deps.resolve("common"), deps.resolve("ubl"));   // by name: common is read first
+
+        Ran ran = run("validate", order.toString());
+
+        assertEquals(List.of("problem: package.lock pins common@1.2.0 " + wrong + "; common at " + common.commit() + " has " + common.content()),
+                ran.problems(), ran.toString());
+        assertEquals(1, ran.exit(), ran.toString());
+    }
+
+    /**
      * common 1.2.0 in two folders with different content, invoice locked to {@code left}: validate reads the repository the lock
      * names and looks for no candidate by name, so the other is no ambiguity; exit 0.
      */
