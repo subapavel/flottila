@@ -459,7 +459,6 @@ public final class AdminServer {
     private final class Listener extends VerticleBase {
 
         volatile HttpServer server;
-        private ModuleCalls calls;
 
         @Override
         public Future<?> start() {
@@ -469,8 +468,7 @@ public final class AdminServer {
             router.get("/ready").handler(offload(AdminServer.this::ready));
             router.route("/admin/*").handler(AdminServer::browserGuard);   // before the token check
             config.token().ifPresent(token -> router.route("/admin/*").handler(bearer(token)));
-            calls = new ModuleCalls(modules, context);
-            calls.mount(router);
+            new ModuleCalls(modules, context).mount(router);
             router.get("/admin/messages").handler(offload(AdminServer.this::search));
             router.get("/admin/message-counts").handler(offload(AdminServer.this::counts));
             router.get("/admin/messages/:id").handler(offload(AdminServer.this::timeline));
@@ -504,10 +502,8 @@ public final class AdminServer {
                     .map(listening -> server = listening);
         }
 
-        /** Interrupts the calls of the modules' services that run, then closes the socket. */
         @Override
         public Future<?> stop() {
-            calls.stop();
             return server.close();
         }
 

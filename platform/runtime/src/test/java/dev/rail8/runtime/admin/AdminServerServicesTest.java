@@ -206,6 +206,12 @@ class AdminServerServicesTest {
         assertEquals(200, fits.status(), "a reply of " + max + " bytes");
         assertEquals(max, fits.body().length(), "the whole reply");
         assertProblem(500, "invalid-reply", post("reply", new JsonObject().put("status", 200).put("bytes", max + 1).encode()), "a reply of " + (max + 1) + " bytes");
+
+        Raw wide = post("reply", new JsonObject().put("status", 200).put("bytes", max).put("wide", true).encode());
+        assertEquals(200, wide.status(), "a reply of " + max + " bytes, mostly two-byte characters");
+        assertEquals(max, utf8(wide.body()).length, "the whole reply");
+        assertProblem(500, "invalid-reply", post("reply", new JsonObject().put("status", 200).put("bytes", max + 1).put("wide", true).encode()),
+                "a reply of " + (max + 1) + " bytes in far fewer characters: the limit counts bytes");
     }
 
     // --- refused before the call
@@ -292,6 +298,30 @@ class AdminServerServicesTest {
         holds.letGo(first.thread());
         assertReply(200, "application/json", "{\"held\":true}", read(first.socket().getInputStream()), "the call let go");
         assertReply(200, "application/json", "{}", post("echo", "{}"), "its place is free once its answer is out");
+    }
+
+    @Test
+    void aCallThatEndsWhileItsBodyIsReadFreesItsPlaceOnce() throws Exception {
+        for (int i = 0; i < 2; i++) {
+            Socket over = socket();
+            OutputStream out = over.getOutputStream();
+            write(out, head("POST", SAMPLE + "/echo", "Content-Type: application/json\r\nTransfer-Encoding: chunked\r\n"));
+            chunk(out, utf8(jsonOfSize(MAX + 1)));
+            assertProblem(413, "too-large", read(over.getInputStream()), "a body that grows over the limit as it is read");
+
+            Socket gone = socket();
+            out = gone.getOutputStream();
+            write(out, head("POST", SAMPLE + "/echo", "Content-Type: application/json\r\nContent-Length: 100\r\n"));
+            out.write(utf8("{\"half\":"));
+            out.flush();
+            gone.close();   // the client goes away halfway through its body
+        }
+        Raw echo = post("echo", "{}");
+        for (int tries = 1; echo.status() == 503 && tries < 100; tries++) echo = post("echo", "{}");   // the server sees the closes in its own time
+        assertEquals(200, echo.status(), "a place is free again: " + echo.body());
+
+        for (int i = 0; i < 4; i++) hold(SAMPLE);   // no place lost
+        assertProblem(503, "busy", post("echo", "{}"), "and no place freed twice: no fifth");
     }
 
     @Test
