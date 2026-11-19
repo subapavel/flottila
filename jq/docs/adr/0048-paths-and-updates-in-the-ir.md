@@ -1,6 +1,6 @@
 # Paths and updates in the IR: `PathOf`, `Update` and its Kind, operation `Facts` with one path rule, and `Tracking` on binds
 
-Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 3 rounds 1–2); amends ADR-0005 (kinds 21 and 22, `Update.Kind`, `Facts` on `Operation`), ADR-0009 (`getpath` is KEY_LIST), ADR-0010 (who passes the path on), ADR-0038, ADR-0041 and ADR-0043 (`Tracking` on pattern, loop and `Binds` values) and ADR-0042 (`_modify/2`, `_assign/2`); records F-59 and F-60
+Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 3 rounds 1–2); amends ADR-0005 (kinds 21 and 22, `Update.Kind`, `Facts` on `Operation`), ADR-0009 (`getpath` is KEY_LIST), ADR-0010 (who passes the path on), ADR-0038, ADR-0041 and ADR-0043 (`Tracking` on pattern, loop and `Binds` values) and ADR-0042 (`_modify/2`, `_assign/2`); records F-59 and F-60; amended by the path-mode contract (2026-11-19, owner-proxy, #153)
 
 ADR-0005 names `PathOf` and `Update` (`|=`) and lets each `Operation` fact join with its first
 user (ADR-0034); 2b keeps `Operation` as `(name, form)` (ADR-0045). Spec 3 builds path mode
@@ -85,3 +85,90 @@ observed on 1.8.2 by the architect (probes P1–P6) or the adviser
   (grilling-adviser for the owner under the delegation of 2026-11-14, spec 3's ticket approval).
 - **Splitting `TextFormat` by `keepsArgs`**: two operations for one body, and true is the safe
   value (ADR-0007: a missed fact costs speed).
+
+## Amendment (2026-11-19, the path-mode contract)
+
+Chosen by the owner-proxy after a design in three drafts (minimal interface, maximal flexibility,
+the common caller's case) and the objections of a second model; Codex could not be run. It fixes
+the open parts of this ADR and of ADR-0010: the interface jq-core implements, how an op exposes its
+path variant, how a navigation step extends a path, and how a TRACKED Update interleaves. Nothing
+in `run` names a type of `ir`.
+
+- **Paths** (`run`): `record Path(Path parent, Object key, int length)` with `static final Path ROOT`
+  (non-null and empty) and `Path child(Object key)`; `interface PathSink { boolean emit(Object v,
+  Path p); }`, answering as `Sink` does, a null `p` untracked. Paths are immutable and may be shared;
+  they are not charged.
+- **The format** (`run`, the `paths` field of `PathOf` and `Update`, one instance per program,
+  which the IrVerifier checks):
+  ```java
+  public interface PathFormat {
+    Object value(RunState s, Path p);                    // PathOf: p as a value; PathOf ticked p.length() first
+    FilterException invalid(RunState s, Object result);  // an untracked result used as a path
+    Edit modify(RunState s, Object root);                // one TRACKED MODIFY Update activation
+    Edit assign(RunState s, Object root);                // one ASSIGN Update activation
+  }
+  public interface Edit {                                // single use; its root starts as the Update's input
+    Object get(RunState s, Path p);                      // MODIFY: getpath on the current root, before the rhs
+    void set(RunState s, Path p, Object v);              // setpath on the current root
+    void delete(RunState s, Path p);                     // MODIFY: p joins the delete list
+    Object end(RunState s);                              // the deletes, then the root; once, after the lhs ran out
+  }
+  ```
+  The Edit holds the root, the delete list and its charges, both depth limits (MODIFY's after an
+  rhs result included) and every message. MODIFY calls, per lhs result in lhs order, `get`, then
+  the rhs until its first result, then `set` with it or `delete` when there is none; ASSIGN calls
+  `set` only, with the rhs read once on the Update's input. A break or an error abandons the Edit:
+  `end` is never called and nothing is restored. The Edit lives in a local of the push form and in
+  a field of the Update's heap form, never in a frame slot. `value` and `invalid` arrive with
+  PathOf, `modify` and `assign` with the TRACKED Update.
+- **Steps** (`run`): the call form of every operation whose rule is KEY, INDEX, DYNAMIC, SLICE,
+  KEY_LIST or ALL also implements
+  ```java
+  public interface PathStep {
+    FilterException untracked(RunState s, Object in, Object key, Object end);   // never asked for KEY_LIST
+    default Path extend(RunState s, Path at, Object in, Object key, Object end) { return at.child(key); }
+  }
+  ```
+  An Fn0 passes `(null, null)`, an Fn1 `(k, null)`, an Fn2 `(k, end)`, and a `Many` the key of its
+  cursor, which `Many` gains as `default Object key(RunState s, Object in, Object[] args, long
+  cursor)` (it throws unless overridden). A step's key lives with its form: Field keeps its name,
+  SLICE builds its slice key, KEY_LIST (getpath) appends each key of its list, DYNAMIC appends the
+  run-time key, whose kind only the format reads. A fused chain (`StepRun`) implements PathStep
+  over its steps, each one a PathStep: `untracked` is its first step's, `extend` calls each step's
+  own in order, so in path mode each step still extends the path by its own rule. Its Operation
+  declares its first step's rule, which ops read only as "a step". The IrVerifier refuses a step
+  rule whose form is not a PathStep of Fn0, Fn1 or Fn2, and ALL whose form is not a PathStep Many.
+- **Ops** (`internal.interpret`): `Op` gains `boolean runPath(RunState s, Object[] slots, Object
+  in, Path at, PathSink out)` and its heap form `void startPath(Trampoline t, HeapForm under,
+  Object[] slots, Object in, Path at, HeapPathSink out)`, with `interface HeapPathSink { void
+  accept(Trampoline t, HeapForm under, Object v, Path p); }`. Both default to the untracked
+  variant: the op's value or push form, each result emitted with a null path. A path variant has
+  the results, order, ticks, charges and slot writes of `run` on the same node; only the paths
+  differ. A parent calls `eval` on a value-form child and `run` on a push one, in path mode too.
+  The Trampoline gains the actions START_PATH and EMIT_PATH and the starter `static boolean
+  runPath(RunState, Op body, Object[] frame, Object in, Path at, PathSink out)`. A test over
+  `Op`'s permitted subclasses classifies every kind as passing paths on or untracked, and fails on
+  an unclassified kind or on one of the two methods overridden without the other.
+- **Navigation steps**: NONE emits untracked and SAME passes `at`; KEY, INDEX, DYNAMIC and SLICE
+  raise `untracked` on a null `at` before the call (so `.a?` raises too), then emit the call's
+  result with `extend`; ALL raises before `first`, then extends by each cursor's key; KEY_LIST
+  emits untracked on a null `at` without raising.
+- **Update**, push form: the lhs's path variant runs from `ROOT` on the Update's input, and the
+  rhs runs inside its emit, so `[1,2]|(.[]|debug("L")) |= (debug("R")|.+1)` prints L, R, L, R.
+  An rhs in value form is evaluated, one in push form runs into a reused first-result holder. An
+  untracked lhs result raises `invalid` there, lazily, so `(1|empty) |= 1` gives its input. The
+  Update emits once, `end`'s result, after the lhs ran out; a break passes on with no result. The
+  heap form starts the rhs above the lhs producer, as Pipe's right side, so an rhs error passes
+  back through the lhs's Try (wrapped) and AltBind (the next alternative) as in jq.
+- **Hidden cells** (counted in the frame's one size, ADR-0045): each ITEM bind has one for its
+  Path; a lifted function has one for its input Path, written at entry and before each tail jump,
+  in programs that hold a PathOf or an Update, and none otherwise, so a program without paths
+  keeps its frames.
+
+Rejected: a parallel tree of path ops (a second build of functions and closures, twin heap
+forms); a six-parameter format `step` that dispatches on the call form (a step's key would live in
+two places); stateless format methods with the root and delete list in query-core (a copy of the
+root per leaf, and the delete list's charges in query-core); Field as an Fn1 taking its key (a
+lost precomputed name); `run` naming `ir.Update.Kind` (a package cycle); an Object array of
+arguments per extension (an allocation per step); abstract path methods on every op (more code for
+a guarantee the classification test gives).
