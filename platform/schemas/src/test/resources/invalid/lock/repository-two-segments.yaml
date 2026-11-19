@@ -1,0 +1,9 @@
+# expect: /dependencies/0/repository
+schemaVersion: 1
+kind: lock
+dependencies:
+  - name: common
+    version: 1.2.0
+    content: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    repository: integration/common
+    commit: "0123456789abcdef0123456789abcdef01234567"

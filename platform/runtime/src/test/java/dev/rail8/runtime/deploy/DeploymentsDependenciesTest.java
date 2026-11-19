@@ -781,6 +781,32 @@ class DeploymentsDependenciesTest {
     }
 
     /**
+     * A lock written before its entries pinned a repository and a commit: the deploy is a 422 that names {@code rail8 lock}, and
+     * nothing is listed. The node goes on resolving a dependency by its content: the same lock with both runs.
+     */
+    @Test
+    void aLockWithoutRepositoryAndCommitIs422NamingRail8Lock() throws Exception {
+        Node node = new Node("node-1");
+        PackageDraft common = common("1.2.0", "UBL 1.2.0");
+        node.deploy(common);
+        PackageDraft invoice = invoice("1.0.0", common);
+        JsonObject lock = new JsonObject(new String(invoice.files().get("package.lock"), java.nio.charset.StandardCharsets.UTF_8));
+        JsonObject entry = lock.getJsonArray("dependencies").getJsonObject(0);
+        entry.remove("repository");
+        entry.remove("commit");
+        invoice.file("package.lock", lock.encodePrettily());
+
+        DeployRefusedException refused = node.refused(invoice);   // asserts Kind.INVALID and no absolute path
+
+        assertTrue(refused.problems().contains("package.lock does not pin each dependency's repository and commit: write it again with rail8 lock"),
+                refused.getMessage() + " " + refused.problems());
+        assertEquals(Optional.empty(), node.listed("invoice"));
+
+        node.deploy(invoice("1.0.0", common));
+        assertEquals(DeployedPackage.State.RUNNING, node.pkg("invoice").state(), "witness: with both, the lock is taken");
+    }
+
+    /**
      * The archive store holds other bytes under the pin's SHA-256 — the same files zipped again, so the same content: at restore on
      * an empty data directory invoice is FAILED naming the pin, and nothing of those bytes is unpacked; common runs.
      */
@@ -816,7 +842,8 @@ class DeploymentsDependenciesTest {
         assertEquals(new JsonArray().add(new JsonObject().put("name", "common").put("version", "1.2.0")), inv.manifest().getJsonArray("dependencies"));
         JsonObject lock = new JsonObject(new String(inv.files().get("package.lock"), java.nio.charset.StandardCharsets.UTF_8));
         assertEquals(Set.of("schemaVersion", "kind", "dependencies"), lock.fieldNames());
-        assertEquals(new JsonObject().put("name", "common").put("version", "1.2.0").put("content", c.content()), lock.getJsonArray("dependencies").getJsonObject(0));
+        assertEquals(new JsonObject().put("name", "common").put("version", "1.2.0").put("content", c.content()).put("repository", "common")
+                .put("commit", PackageDraft.COMMIT), lock.getJsonArray("dependencies").getJsonObject(0));
         assertTrue(c.content().matches("sha256:[0-9a-f]{64}"), c.content());
     }
 }

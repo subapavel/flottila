@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * P2-02b (D-087, D-060 e): a package names its dependencies in {@code package.yaml} ({@code dependencies: [{name, version}]}, an
  * exact version, each name once, never the package itself) and pins each in {@code package.lock} at the package root ({@code kind:
- * lock}, {@code dependencies: [{name, version, content}]}, the direct dependencies only). A flow step reads a dependency's file as
+ * lock}, {@code dependencies: [{name, version, content, repository, commit}]}, the direct dependencies only). A flow step reads a dependency's file as
  * {@code <dep>:<path from its root>} — the prefix {@code ^[a-z][a-z0-9-]{0,63}:} before the first {@code /} — and only a declared
  * dependency may be named; such a reference stays inside its dependency. {@code Package.problems()} says what is wrong with any of
  * it, by the package-relative file, never an absolute path. {@code Package.content(dir)} is the content digest a lock pins: the
@@ -44,6 +44,10 @@ class PackageDependenciesTest {
 
     static final String CONTENT_A = "sha256:" + "a".repeat(64);
     static final String CONTENT_B = "sha256:" + "0123456789abcdef".repeat(4);
+    /** The commit {@link #lock} pins every entry at. */
+    static final String COMMIT_A = "0123456789abcdef0123456789abcdef01234567";
+    /** The line that says a lock without each entry's repository and commit must be written again. */
+    static final String WRITE_AGAIN = "package.lock does not pin each dependency's repository and commit: write it again with rail8 lock";
 
     // --- fixture
 
@@ -60,7 +64,8 @@ class PackageDependenciesTest {
 
     /**
      * {@code package.lock} as a person writes it, block style, the content digest unquoted; each of {@code entries} is
-     * {@code "<name> <version> <content>"} (the version quoted, so {@code 1.2} stays a string).
+     * {@code "<name> <version> <content>"} (the version quoted, so {@code 1.2} stays a string), pinned at the repository of its
+     * name and {@link #COMMIT_A}.
      */
     static String lock(String... entries) {
         StringBuilder s = new StringBuilder("schemaVersion: 1\nkind: lock\ndependencies:\n");
@@ -72,9 +77,15 @@ class PackageDependenciesTest {
         return s.toString();
     }
 
-    /** One lock entry, its version as given (single-quoted: any text, spaces included). */
+    /** One lock entry, its version as given (single-quoted: any text, spaces included), at the repository of its name and {@link #COMMIT_A}. */
     static String entry(String name, String version, String content) {
-        return "  - name: " + name + "\n    version: '" + version + "'\n    content: " + content + "\n";
+        return entry(name, version, content, name, COMMIT_A);
+    }
+
+    /** One lock entry, its version, repository and commit as given (single-quoted: any text, spaces included). */
+    static String entry(String name, String version, String content, String repository, String commit) {
+        return "  - name: " + name + "\n    version: '" + version + "'\n    content: " + content + "\n    repository: '" + repository
+                + "'\n    commit: '" + commit + "'\n";
     }
 
     /**
@@ -188,6 +199,60 @@ class PackageDependenciesTest {
         assertEquals(List.of(), problems(dir), "witness: no dependencies key, no lock, no problem");
         write(dir, "package.yaml", manifest("invoice") + "dependencies: []\n");
         assertEquals(List.of(), problems(dir), "an empty dependencies list needs no lock either");
+    }
+
+    /** Each entry pins the dependency's repository and commit beside its name, version and content, and Package reads all five. */
+    @Test
+    void aLockPinsEachDependencysRepositoryAndCommit(@TempDir Path dir) throws IOException {
+        invoice(dir);
+        write(dir, "package.lock", "schemaVersion: 1\nkind: lock\ndependencies:\n" + entry("common", "1.2.0", CONTENT_A, "shared-xsl", COMMIT_A));
+
+        assertEquals(List.of(), problems(dir));
+        assertEquals(List.of(new Package.Locked("common", "1.2.0", CONTENT_A, "shared-xsl", COMMIT_A)), Package.load(dir).lock());
+    }
+
+    /**
+     * A lock whose entry lacks its repository, its commit or both is refused: its schema's line, and one line naming
+     * {@code rail8 lock}; no entry of it is read.
+     */
+    @Test
+    void aLockWithoutRepositoryOrCommitIsRefusedNamingRail8Lock(@TempDir Path dir) throws IOException {
+        invoice(dir);
+        String head = "schemaVersion: 1\nkind: lock\ndependencies:\n  - name: common\n    version: '1.2.0'\n    content: " + CONTENT_A + "\n";
+        for (String rest : List.of("", "    repository: common\n", "    commit: '" + COMMIT_A + "'\n")) {
+            write(dir, "package.lock", head + rest);
+
+            List<String> problems = problems(dir);
+
+            assertTrue(problems.contains(WRITE_AGAIN), "with '" + rest + "': " + problems);
+            assertTrue(problems.stream().anyMatch(l -> l.startsWith("package.lock at '/dependencies/0")), "the schema's line too: " + problems);
+            assertEquals(List.of(), Package.load(dir).lock(), "no entry of a lock its schema refuses");
+        }
+        write(dir, "package.lock", lock("common 1.2.0 sha256:" + "a".repeat(63)));
+        assertFalse(problems(dir).contains(WRITE_AGAIN), "witness: a lock refused for another reason does not ask for rail8 lock: " + problems(dir));
+    }
+
+    /**
+     * The repository is one segment of at most 100 letters, digits, {@code .}, {@code _} and {@code -}, not {@code .} or {@code ..};
+     * the commit is 40 lower-case hex digits, never a ref. Anything else is refused at the entry's field.
+     */
+    @Test
+    void aRepositoryOrCommitOutsideItsRuleIsRefused(@TempDir Path dir) throws IOException {
+        invoice(dir);
+        for (String repository : List.of("", ".", "..", "a/b", "a b", "r\u00e9po", "a".repeat(101))) {
+            write(dir, "package.lock", "schemaVersion: 1\nkind: lock\ndependencies:\n" + entry("common", "1.2.0", CONTENT_A, repository, COMMIT_A));
+            List<String> problems = problems(dir);
+            assertTrue(problems.stream().anyMatch(l -> l.startsWith("package.lock at '/dependencies/0/repository'")), "'" + repository + "': " + problems);
+        }
+        for (String commit : List.of("a".repeat(39), "a".repeat(41), "A".repeat(40), "g".repeat(40), "HEAD", "main")) {
+            write(dir, "package.lock", "schemaVersion: 1\nkind: lock\ndependencies:\n" + entry("common", "1.2.0", CONTENT_A, "common", commit));
+            List<String> problems = problems(dir);
+            assertTrue(problems.stream().anyMatch(l -> l.startsWith("package.lock at '/dependencies/0/commit'")), "'" + commit + "': " + problems);
+        }
+        for (String repository : List.of("a".repeat(100), "My.Repo_1-x", "...")) {
+            write(dir, "package.lock", "schemaVersion: 1\nkind: lock\ndependencies:\n" + entry("common", "1.2.0", CONTENT_A, repository, COMMIT_A));
+            assertEquals(List.of(), problems(dir), "witness: '" + repository + "' is a repository's name");
+        }
     }
 
     /** The lock pins another version than package.yaml declares: one line naming the entry, both versions. */
@@ -403,5 +468,31 @@ class PackageDependenciesTest {
 
         write(backward, "a/b.txt", "changed");
         assertFalse(expected.equals(Package.content(backward)), "witness: other bytes in one file, another digest");
+    }
+
+    /**
+     * {@code .git} at the package's root — a clone's folder, or a worktree's file — is not part of the package: the digest and the
+     * load are those of the same package without it, whatever it holds. A {@code .git} folder below the root is a folder of the
+     * package like any other.
+     */
+    @Test
+    void gitAtThePackageRootIsNotPartOfThePackage(@TempDir Path tmp) throws Exception {
+        Path plain = invoice(tmp.resolve("plain"));
+        Path clone = invoice(tmp.resolve("clone"));
+        write(clone, ".git/HEAD", "ref: refs/heads/main\n");
+        write(clone, ".git/objects/pack/a/b/c/deep.yaml", "kind: flow\n");   // too deep, a flow its schema refuses, under a name that is no slug
+        write(clone, ".git/config.yml", "no: kind\n");
+        Path worktree = invoice(tmp.resolve("worktree"));
+        write(worktree, ".git", "gitdir: ../elsewhere\n");
+
+        assertEquals(Package.content(plain), Package.content(clone), "a clone's .git counts for nothing");
+        assertEquals(Package.content(plain), Package.content(worktree), "a worktree's .git file counts for nothing");
+        assertEquals(List.of(), problems(clone));
+        assertEquals(List.of(), problems(worktree));
+        assertEquals(Package.load(plain).folders(), Package.load(clone).folders(), "no folder of .git is the package's");
+
+        write(clone, "flows/.git/HEAD", "ref: refs/heads/main\n");
+        assertTrue(problems(clone).contains("flows/.git: folder name '.git' is not a slug"), "below the root it is a folder: " + problems(clone));
+        assertFalse(Package.content(plain).equals(Package.content(clone)), "and its files count");
     }
 }

@@ -783,7 +783,7 @@ class TestCommandTest {
         assertEquals(List.of(), differing, "every run prints " + FLOWTEST_REPORT);
     }
 
-    // --- P2-02b2 (D-087, D-089): dependencies resolved off-node from a candidates dir (DepsFixture), deployed into each case's node
+    // --- dependencies read off-node from the repositories and commits the lock pins (DepsFixture), deployed into each case's node
 
     /** invoice's report when its one case passes: the partner saw what the expected stylesheet wrote. */
     static final List<String> INVOICE_PASSES = List.of("PASS to-partner: maps with common (flow time 20ms)", "1 cases: 1 passed, 0 failed");
@@ -841,28 +841,47 @@ class TestCommandTest {
         assertEquals(1, ran.exit(), ran.toString());
     }
 
-    /** common changed after invoice was locked: the drift is a problem line, no case runs, exit 1. */
+    /**
+     * Each case runs common as the commit the lock pins holds it: common committed again with another label after invoice was
+     * locked, then edited without a commit, and the case still sees {@code common 1.2.0}.
+     */
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aCaseRunsTheDependencyAsItsPinnedCommitHoldsIt() throws Exception {
+        Path deps = tmp.resolve("deps");
+        Path invoice = DepsFixture.invoiceWithCandidates(deps);
+        DepsFixture.relabel(deps.resolve("common"), "committed after the lock");
+        Files.writeString(deps.resolve("common/xslt/lib.xsl"), "not even XSLT");
+
+        Ran ran = run("test", invoice.toString());
+
+        assertEquals(INVOICE_PASSES, ran.outLines(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+    }
+
+    /** A lock whose content is not that of the commit it pins: the drift is a problem line, no case runs, exit 1. */
     @Test
     @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void aLockDriftFailsBeforeAnyCase() throws Exception {
         Path deps = tmp.resolve("deps");
         Path invoice = DepsFixture.invoiceWithCandidates(deps);
-        String pinned = DepsFixture.content(deps.resolve("common"));
-        DepsFixture.relabel(deps.resolve("common"), "changed after the lock");
-        String now = DepsFixture.content(deps.resolve("common"));
+        DepsFixture.Pin pin = DepsFixture.pinOf(deps.resolve("common"));
+        String wrong = "sha256:" + "0".repeat(64);
+        DepsFixture.lock(invoice, List.of(new DepsFixture.Pin(pin.name(), pin.version(), wrong, pin.repository(), pin.commit())));
 
         Ran ran = run("test", invoice.toString());
 
         assertEquals(1, ran.exit(), ran.toString());
-        assertTrue(ran.problems().contains("problem: package.lock pins common@1.2.0 " + pinned + "; candidate common has " + now), ran.toString());
+        assertTrue(ran.problems().contains("problem: package.lock pins common@1.2.0 " + wrong + "; common at " + pin.commit() + " has " + pin.content()),
+                ran.toString());
         assertTrue(ran.outLines().stream().noneMatch(TestCommandTest::caseLine), "no case ran: " + ran);
         DepsFixture.assertNoAbsolutePath(ran, tmp);
     }
 
-    /** The candidates hold common 1.3.0 only: a problem line naming what they hold, no case runs, exit 1. */
+    /** The folder holds no repository common (common-1.3.0 only): a problem line naming the repository and commit, no case runs, exit 1. */
     @Test
     @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void aMissingCandidateFailsBeforeAnyCase() throws Exception {
+    void aMissingRepositoryFailsBeforeAnyCase() throws Exception {
         Path pinnedElsewhere = DepsFixture.copy("common", tmp.resolve("elsewhere/common"));
         Path invoice = DepsFixture.copy("invoice", tmp.resolve("deps/invoice"));
         DepsFixture.copy("common-1.3.0", tmp.resolve("deps/common-1.3.0"));
@@ -871,8 +890,7 @@ class TestCommandTest {
         Ran ran = run("test", invoice.toString());
 
         assertEquals(1, ran.exit(), ran.toString());
-        assertTrue(ran.problems().stream().anyMatch(l -> l.startsWith("problem: dependency common@1.2.0: no candidate under ")
-                && l.endsWith(" (it has common 1.3.0)")), ran.toString());
+        assertEquals(List.of("problem: dependency common@1.2.0: common at " + DepsFixture.head(pinnedElsewhere) + ": not found"), ran.problems(), ran.toString());
         assertTrue(ran.outLines().stream().noneMatch(TestCommandTest::caseLine), "no case ran: " + ran);
     }
 
@@ -904,6 +922,37 @@ class TestCommandTest {
 
             assertEquals(INVOICE_PASSES, ran.outLines(), "the port is taken, the test binds nothing: " + ran);
             assertEquals(0, ran.exit(), ran.toString());
+        }
+    }
+
+    /**
+     * The run's copy of a folder leaves out {@code .git} at its root, a clone's repository folder or a worktree's file, and keeps
+     * every other file, a {@code .git} below the root included.
+     */
+    @Test
+    void theCopyOfAFolderLeavesOutGitAtItsRoot() throws Exception {
+        Path clone = tmp.resolve("clone");
+        Files.createDirectories(clone.resolve(".git/objects"));
+        Files.writeString(clone.resolve(".git/config"), "[core]\n");
+        Files.createDirectories(clone.resolve("flows/.git"));
+        Files.writeString(clone.resolve("flows/.git/kept"), "below the root");
+        Files.writeString(clone.resolve("package.yaml"), "name: x\n");
+        Path worktree = tmp.resolve("worktree");
+        Files.createDirectories(worktree);
+        Files.writeString(worktree.resolve(".git"), "gitdir: /elsewhere\n");
+        Files.writeString(worktree.resolve("package.yaml"), "name: y\n");
+
+        Path cloneCopy = FlowTests.copy(clone, tmp.resolve("copies/clone"));
+        Path worktreeCopy = FlowTests.copy(worktree, tmp.resolve("copies/worktree"));
+
+        assertEquals(List.of("flows", "flows/.git", "flows/.git/kept", "package.yaml"), below(cloneCopy));
+        assertEquals(List.of("package.yaml"), below(worktreeCopy));
+    }
+
+    /** Every path below {@code dir}, from it, in order. */
+    private static List<String> below(Path dir) throws IOException {
+        try (Stream<Path> walk = Files.walk(dir)) {
+            return walk.filter(p -> !p.equals(dir)).map(p -> dir.relativize(p).toString()).sorted().toList();
         }
     }
 

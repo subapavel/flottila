@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:rail8:schema:lock:1",
   "title": "Rail8 package.lock, schemaVersion 1 (draft — review at hand-over, D-087)",
-  "description": "The exact version and content digest of every direct dependency package.yaml declares, sorted by name. content is sha256: and the lower-case hex SHA-256 over the UTF-8 lines 'rail8-package-content 1' and 'file <path> <sha256>' for every regular file of the dependency, sorted by its /-separated path, each ended by a newline: the files decide, not the archive they came in.",
+  "description": "The exact version, content digest, repository and commit of every direct dependency package.yaml declares, sorted by name. content is sha256: and the lower-case hex SHA-256 over the UTF-8 lines 'rail8-package-content 1' and 'file <path> <sha256>' for every regular file of the dependency but .git at its root, sorted by its /-separated path, each ended by a newline: the files decide, not the archive they came in. repository is the name of the dependency's git repository, one segment under the base the repositories live under; commit is the commit of that repository its files come from, 40 lower-case hex digits.",
   "type": "object",
   "required": ["schemaVersion", "kind", "dependencies"],
   "additionalProperties": false,
@@ -13,12 +13,14 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "version", "content"],
+        "required": ["name", "version", "content", "repository", "commit"],
         "additionalProperties": false,
         "properties": {
           "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 },
           "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$" },
-          "content": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          "content": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "repository": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,100}$", "not": { "enum": [".", ".."] } },
+          "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
         }
       }
     }

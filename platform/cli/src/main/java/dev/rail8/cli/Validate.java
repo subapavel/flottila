@@ -34,9 +34,9 @@ import java.util.stream.Collectors;
 
 /**
  * {@code rail8 validate <dir> [--env <env>] [--deps <dir>] [--plugins <dir>]}: {@link Package#problems()}, then its dependencies'
- * closure resolved from the candidates ({@link Dependencies#resolve}), then — when that found no problem — the node's dry
- * build ({@link Deployments#validate}) over a node's modules and the plugins of {@code --plugins} ({@link Plugins}) in the
- * environment {@code --env} (dev
+ * closure read from the repositories and commits its lock pins ({@link Dependencies#resolve}), then — when that found no problem —
+ * the node's dry build ({@link Deployments#validate}) over a node's modules and the plugins of {@code --plugins} ({@link Plugins})
+ * in the environment {@code --env} (dev
  * unless given, whatever {@code RAIL8_ENV} says), with in-memory stores on one Vert.x, the closure held for that call so that
  * the node's own resolution runs over it; nothing of the package or its closure is deployed, started or stored. Prints the package's tree,
  * then one {@code problem: } line per problem, each once; exit 0 without a problem, 1 with one.
@@ -49,7 +49,10 @@ final class Validate {
     private Validate() {}
 
     static int run(Cli.Options options, Plugins plugins, PrintStream out) throws IOException {
-        Checked checked = check(options.dir(), options.value("--env").orElse("dev"), Dependencies.of(options), plugins);
+        Checked checked;
+        try (Dependencies deps = Dependencies.of(options)) {
+            checked = check(options.dir(), options.value("--env").orElse("dev"), deps, plugins);
+        }
         checked.pkg().ifPresent(pkg -> tree(pkg, out));
         checked.problems().forEach(p -> out.println("problem: " + p));
         return checked.problems().isEmpty() ? 0 : 1;
@@ -61,7 +64,8 @@ final class Validate {
      * @param pkg the package as loaded; empty when a file of it does not parse
      * @param problems each on one line, each once, in order: the load's, else {@link Package#problems()} and the dry build's
      * @param schemes the schemes of the components the dry build ran over, the plugins' included; empty when it did not run
-     * @param dependencies the closure the dry build held, leaves first; empty when it did not run
+     * @param dependencies the closure the dry build held, leaves first, its folders {@code deps}'s until it is closed; empty when it
+     *                     did not run
      */
     record Checked(Optional<Package> pkg, List<String> problems, Set<String> schemes, List<Dependencies.Found> dependencies) {}
 

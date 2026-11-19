@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -21,20 +22,21 @@ import static dev.rail8.cli.DepsFixture.pinOf;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * P2-02b2 (D-087, D-089): {@code rail8 lock <dir> [--deps <dir>]} writes {@code package.lock} off-node from a candidates
- * directory — the immediate subdirectories of {@code --deps} (default: the package directory's parent) holding a
- * {@code package.yaml} that loads, the package's own directory excluded. Every dependency package.yaml declares is matched by
- * name and version (from the candidate's package.yaml, not its directory name) and pinned with the candidate's content digest;
- * the entries sorted by name; one stdout line {@code name@version sha256:<hex>} per entry; exit 0. A missing candidate or two
- * matching candidates with different content: exit 1, nothing written, an existing lock untouched. Usage errors are
- * CliEdgeCasesTest's.
+ * {@code rail8 lock <dir> [--deps <dir>]} writes {@code package.lock} off-node from a candidates directory — the immediate
+ * subdirectories of {@code --deps} (default: the package directory's parent) holding a {@code package.yaml} that loads, the
+ * package's own directory excluded. Every dependency package.yaml declares is matched by name and version (from the candidate's
+ * package.yaml, not its directory name) and pinned to the candidate's folder name as its repository, the {@code HEAD} of that
+ * working tree as its commit, and that commit's content digest; the entries sorted by name; one stdout line
+ * {@code name@version <repository> <commit> sha256:<hex>} per entry; exit 0. A missing candidate, two matching candidates with
+ * different content, a candidate that is not the root of a git working tree or whose files differ from its {@code HEAD}: exit 1,
+ * nothing written, an existing lock untouched. Usage errors are CliEdgeCasesTest's.
  *
- * <p>Format assumed where the packet quotes no prefix (P2-02b2 test-author): a lock refusal is a stdout line, either the message
- * itself or {@code problem: } and the message; {@code <deps>} in {@code no candidate under <deps>} is free text that is no
- * absolute path. Digests are {@link DepsFixture#content}'s.
+ * <p>A lock refusal is a stdout line, either the message itself or {@code problem: } and the message; {@code <deps>} in
+ * {@code no candidate under <deps>} is free text that is no absolute path. Digests and commits are {@link DepsFixture}'s.
  */
 class LockCommandTest {
 
@@ -60,14 +62,14 @@ class LockCommandTest {
     void writesTheLockFromTheParentDir() throws Exception {
         Path deps = tmp.resolve("deps");
         Path invoice = DepsFixture.invoiceWithCandidates(deps);
-        DepsFixture.lock(invoice, List.of(new Pin("common", "1.2.0", "sha256:" + "0".repeat(64))));   // stale: overwritten
+        DepsFixture.lock(invoice, List.of(new Pin("common", "1.2.0", "sha256:" + "0".repeat(64), "common", "0".repeat(40))));   // stale: overwritten
         Pin common = pinOf(deps.resolve("common"));
 
         Ran ran = run("lock", invoice.toString());
 
         assertEquals(0, ran.exit(), ran.toString());
         assertEquals(List.of(common.line()), ran.outLines(), ran.toString());
-        assertEquals(List.of(new Package.Locked("common", "1.2.0", common.content())), Package.load(invoice).lock(), "the lock as Package reads it");
+        assertEquals(List.of(common.locked()), Package.load(invoice).lock(), "the lock as Package reads it");
         assertLockSchema(invoice, 1);
     }
 
@@ -85,7 +87,8 @@ class LockCommandTest {
 
         assertEquals(0, ran.exit(), ran.toString());
         assertEquals(List.of(pinned.line()), ran.outLines(), ran.toString());
-        assertEquals(List.of(new Package.Locked("common", "1.2.0", pinned.content())), Package.load(invoice).lock());
+        assertEquals("shared-xsl", pinned.repository(), "fixture: the folder's name is the repository");
+        assertEquals(List.of(pinned.locked()), Package.load(invoice).lock());
     }
 
     /** What lock writes, validate accepts: invoice validates off-node from the same candidates (no problem line, exit 0). */
@@ -100,7 +103,7 @@ class LockCommandTest {
 
         assertEquals(0, locked.exit(), locked.toString());
         assertEquals(List.of(), Package.load(invoice).problems(), "Package accepts the written lock");
-        assertEquals(List.of(new Package.Locked("common", "1.2.0", pinOf(deps.resolve("common")).content())), Package.load(invoice).lock());
+        assertEquals(List.of(pinOf(deps.resolve("common")).locked()), Package.load(invoice).lock());
         assertEquals(List.of(), validated.problems(), validated.toString());
         assertEquals(0, validated.exit(), validated.toString());
     }
@@ -124,8 +127,7 @@ class LockCommandTest {
 
         assertEquals(0, ran.exit(), ran.toString());
         assertEquals(List.of(a.line(), c.line(), z.line()), ran.outLines(), ran.toString());
-        assertEquals(List.of(new Package.Locked("alpha", "2.0.0", a.content()), new Package.Locked("common", "1.2.0", c.content()),
-                new Package.Locked("zeta", "1.0.0", z.content())), Package.load(invoice).lock(), "sorted by name in the file");
+        assertEquals(List.of(a.locked(), c.locked(), z.locked()), Package.load(invoice).lock(), "sorted by name in the file");
         assertLockSchema(invoice, 3);
     }
 
@@ -138,6 +140,7 @@ class LockCommandTest {
         Path deps = tmp.resolve("deps");
         Path nul = copy("common", deps.resolve("null-pkg"));
         Files.writeString(nul.resolve("package.yaml"), "schemaVersion: 1\nkind: package\nname: \"null\"\nversion: 1.0.0\ndependencies: []\n");
+        DepsFixture.commit(nul);
         Path tru = copy("common", deps.resolve("true-pkg"));
         Files.writeString(tru.resolve("package.yaml"), "schemaVersion: 1\nkind: package\nname: \"true\"\nversion: 1.0.0\ndependencies: []\n");
         DepsFixture.relabel(tru, "true 1.0.0");
@@ -156,8 +159,7 @@ class LockCommandTest {
         assertEquals(List.of(n.line(), t.line()), ran.outLines(), ran.toString());
         assertLockSchema(app, 2);
         assertEquals(List.of(), Package.load(app).problems(), "Package accepts the written lock: " + Files.readString(app.resolve("package.lock")));
-        assertEquals(List.of(new Package.Locked("null", "1.0.0", n.content()), new Package.Locked("true", "1.0.0", t.content())),
-                Package.load(app).lock(), "the names read back as the strings");
+        assertEquals(List.of(n.locked(), t.locked()), Package.load(app).lock(), "the names read back as the strings");
     }
 
     /** No dependencies: a lock with an empty list, no line printed, exit 0. */
@@ -193,6 +195,36 @@ class LockCommandTest {
         assertEquals(List.of(common.line()), ran.outLines(), ran.toString());
     }
 
+    /**
+     * A sibling whose files cannot be read is no candidate, like one that does not load: {@code common-copy} declares common 1.2.0
+     * too but holds a folder chain past PATH_MAX (its content cannot be walked: the fixture witness below), and {@code odd} has a
+     * directory named package.yaml; invoice still pins {@code common}: exit 0, nothing on stderr, no path.
+     */
+    @Test
+    void anUnreadableSiblingIsNoCandidate() throws Exception {
+        Path deps = tmp.resolve("deps");
+        Path invoice = DepsFixture.invoiceWithCandidates(deps);
+        Pin common = pinOf(deps.resolve("common"));
+        Path copy = copy("common", deps.resolve("common-copy"));
+        Files.createDirectories(deps.resolve("odd/package.yaml"));
+        Path top = copy.resolve("deep");
+        List<String> below = LongPaths.pastPathMax(top);
+        Path stage = tmp.resolve("stage");
+        LongPaths.chain(top, below, stage);
+        try {
+            assertThrows(UncheckedIOException.class, () -> DepsFixture.content(copy), "fixture witness: common-copy's files cannot be walked");
+
+            Ran ran = run("lock", invoice.toString());
+
+            assertEquals(List.of(common.line()), ran.outLines(), ran.toString());
+            assertEquals(0, ran.exit(), ran.toString());
+            assertEquals("", ran.err(), ran.toString());
+            assertNoAbsolutePath(ran, tmp);
+        } finally {
+            LongPaths.unchain(top, below, stage);
+        }
+    }
+
     /** Two candidates that match with the same content are one: the lock pins it (only different content is ambiguous). */
     @Test
     void twoCandidatesWithTheSameContentAreOne() throws Exception {
@@ -206,7 +238,121 @@ class LockCommandTest {
         assertEquals(List.of(left.line()), ran.outLines(), ran.toString());
     }
 
+    /**
+     * The pin is the working tree's {@code HEAD}: common committed twice, the lock pins the second commit and its content; the
+     * file reads it back with its repository and commit, and validate reads common from that commit.
+     */
+    @Test
+    void pinsTheRepositoryAndTheHeadCommitOfTheWorkingTree() throws Exception {
+        Path deps = tmp.resolve("deps");
+        Path invoice = DepsFixture.invoiceWithCandidates(deps);
+        Path common = deps.resolve("common");
+        Pin first = pinOf(common);
+        DepsFixture.relabel(common, "common 1.2.0, second commit");
+        Pin second = pinOf(common);
+        assertFalse(first.commit().equals(second.commit()) || first.content().equals(second.content()), "fixture: a second commit with other content");
+
+        Ran ran = run("lock", invoice.toString());
+        Ran validated = run("validate", invoice.toString());
+
+        assertEquals(0, ran.exit(), ran.toString());
+        assertEquals(List.of("common@1.2.0 common " + second.commit() + " " + second.content()), ran.outLines(), ran.toString());
+        assertEquals(List.of(second.locked()), Package.load(invoice).lock());
+        assertTrue(Files.readString(invoice.resolve("package.lock")).contains("repository: \"common\"\n    commit: \"" + second.commit() + "\"\n"),
+                "the lock names the repository and the commit");
+        assertEquals(List.of(), validated.problems(), validated.toString());
+        assertEquals(0, validated.exit(), validated.toString());
+    }
+
+    /** {@code .git} at the candidate's root is not part of its content: the pinned digest is that of its files alone. */
+    @Test
+    void theRepositoryOfTheWorkingTreeIsNotPartOfTheContent() throws Exception {
+        Path deps = tmp.resolve("deps");
+        Path invoice = DepsFixture.invoiceWithCandidates(deps);
+        Path bare = DepsFixture.plain("common", tmp.resolve("bare/common"));
+
+        Ran ran = run("lock", invoice.toString());
+
+        assertEquals(0, ran.exit(), ran.toString());
+        assertEquals(DepsFixture.content(bare), Package.load(invoice).lock().getFirst().content(), "the same digest as the files without .git");
+    }
+
     // --- refused: exit 1, nothing written
+
+    /**
+     * A candidate whose files differ from its {@code HEAD} — a file changed, a file added, a file deleted, none committed — is refused
+     * naming its folder and its {@code HEAD}: exit 1, the existing lock untouched, no absolute path.
+     */
+    @Test
+    void aCandidateWithUncommittedChangesIsRefused() throws Exception {
+        Path deps = tmp.resolve("deps");
+        Path invoice = DepsFixture.invoiceWithCandidates(deps);
+        Path common = deps.resolve("common");
+        String head = DepsFixture.head(common);
+        byte[] before = Files.readAllBytes(invoice.resolve("package.lock"));
+        Path lib = common.resolve("xslt/lib.xsl");
+        byte[] committed = Files.readAllBytes(lib);
+        String refused = "dependency common@1.2.0: common differs from its HEAD " + head + ": commit it first";
+
+        Files.writeString(lib, Files.readString(lib).replace("common 1.2.0", "not committed"));
+        Ran changed = run("lock", invoice.toString());
+        Files.write(lib, committed);
+        Files.writeString(common.resolve("xslt/new.xsl"), "<added/>");
+        Ran added = run("lock", invoice.toString());
+        Files.delete(common.resolve("xslt/new.xsl"));
+        Files.delete(lib);
+        Ran deleted = run("lock", invoice.toString());
+        Files.write(lib, committed);
+        byte[] after = Files.readAllBytes(invoice.resolve("package.lock"));
+        Ran clean = run("lock", invoice.toString());
+
+        for (Ran ran : List.of(changed, added, deleted)) {
+            assertEquals(1, ran.exit(), ran.toString());
+            assertEquals(List.of("problem: " + refused), ran.outLines(), ran.toString());
+            assertNoAbsolutePath(ran, tmp);
+        }
+        assertArrayEquals(before, after, "the previous lock untouched by the three refusals");
+        assertEquals(0, clean.exit(), "witness: the same candidate, its files those of its HEAD again, is pinned: " + clean);
+    }
+
+    /**
+     * A candidate that is not the root of a git working tree is refused naming its folder: a plain folder, and a folder inside a
+     * larger working tree (the candidates directory's own); exit 1, nothing written, no absolute path.
+     */
+    @Test
+    void aCandidateNotAtTheRootOfAWorkingTreeIsRefused() throws Exception {
+        Path plain = copy("invoice", tmp.resolve("plain/invoice"));
+        DepsFixture.plain("common", tmp.resolve("plain/common"));
+        Path inside = tmp.resolve("inside");
+        Path invoiceInside = DepsFixture.plain("invoice", inside.resolve("invoice"));
+        DepsFixture.plain("common", inside.resolve("common"));
+        DepsFixture.commit(inside);   // one working tree whose root is the candidates directory
+
+        Ran ranPlain = run("lock", plain.toString());
+        Ran ranInside = run("lock", invoiceInside.toString());
+
+        for (Ran ran : List.of(ranPlain, ranInside)) {
+            assertEquals(1, ran.exit(), ran.toString());
+            assertEquals(List.of("problem: dependency common@1.2.0: common is not at the root of a git working tree"), ran.outLines(), ran.toString());
+            assertNoAbsolutePath(ran, tmp);
+        }
+        assertNoLock(plain, ranPlain);
+        assertNoLock(invoiceInside, ranInside);
+    }
+
+    /** A candidate whose folder's name is not a repository's name (a space in it) is refused naming the folder; nothing written. */
+    @Test
+    void aCandidateWhoseFolderNameNamesNoRepositoryIsRefused() throws Exception {
+        Path invoice = copy("invoice", tmp.resolve("deps/invoice"));
+        copy("common", tmp.resolve("deps/common lib"));
+
+        Ran ran = run("lock", invoice.toString());
+
+        assertEquals(1, ran.exit(), ran.toString());
+        reported(ran, l -> l.startsWith("dependency common@1.2.0: the folder name common lib names no repository: "));
+        assertNoLock(invoice, ran);
+        assertNoAbsolutePath(ran, tmp);
+    }
 
     /** common 1.3.0 only, or no common at all: exit 1 naming what the candidates hold, no lock written, no absolute path. */
     @Test

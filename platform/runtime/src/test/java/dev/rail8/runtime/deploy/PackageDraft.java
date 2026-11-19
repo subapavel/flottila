@@ -198,6 +198,9 @@ public final class PackageDraft {
     /** One entry of a {@code package.lock}: a dependency's name, its exact version and its content digest. */
     public record LockEntry(String name, String version, String content) {}
 
+    /** The commit every lock entry {@link #locking} writes pins, at the repository of the entry's name: the node resolves by content. */
+    public static final String COMMIT = "0123456789abcdef0123456789abcdef01234567";
+
     /**
      * The content digest of this package as unpacked (D-087): {@code sha256:} and the SHA-256 over the UTF-8 lines
      * {@code rail8-package-content 1} and {@code file <path> <sha256>} for every file, sorted by path, each ended by {@code \n} —
@@ -221,14 +224,15 @@ public final class PackageDraft {
 
     /**
      * {@code package.yaml} declares each entry's name and version, {@code package.lock} (JSON, which YAML reads) pins each with its
-     * content: both sorted by name, replacing what they held.
+     * content, the repository of its name and {@link #COMMIT}: both sorted by name, replacing what they held.
      */
     public PackageDraft locking(List<LockEntry> entries) {
         JsonArray declared = new JsonArray();
         JsonArray pinned = new JsonArray();
         for (LockEntry e : entries.stream().sorted(Comparator.comparing(LockEntry::name)).toList()) {
             declared.add(new JsonObject().put("name", e.name()).put("version", e.version()));
-            pinned.add(new JsonObject().put("name", e.name()).put("version", e.version()).put("content", e.content()));
+            pinned.add(new JsonObject().put("name", e.name()).put("version", e.version()).put("content", e.content()).put("repository", e.name())
+                    .put("commit", COMMIT));
         }
         manifest().put("dependencies", declared);
         return file("package.lock", new JsonObject().put("schemaVersion", 1).put("kind", "lock").put("dependencies", pinned).encodePrettily());

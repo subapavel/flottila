@@ -15,12 +15,13 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * {@code rail8 lock <dir> [--deps <dir>]}: pins every dependency {@code package.yaml} declares (the first
- * declaration of a name) with its candidate's content digest ({@link Dependencies#find}) and writes {@code package.lock} —
- * {@code kind: lock}, the entries sorted by name, an empty list without dependencies — over the previous one, then prints one
- * line per entry, {@code <name>@<version> sha256:<hex>}; exit 0. A file of the package that does not parse, a {@code package.yaml}
- * that does not pass its schema, or a dependency without its one candidate: a {@code problem: } line each, nothing written (an
- * existing lock untouched), exit 1.
+ * {@code rail8 lock <dir> [--deps <dir>]}: pins every dependency {@code package.yaml} declares (the first declaration of a name) to
+ * its candidate's repository and {@code HEAD} commit, with the content of that commit ({@link Dependencies#pin}), and writes
+ * {@code package.lock} — {@code kind: lock}, the entries sorted by name, an empty list without dependencies — over the previous one,
+ * then prints one line per entry, {@code <name>@<version> <repository> <commit> sha256:<hex>}; exit 0. A file of the package that
+ * does not parse, a {@code package.yaml} that does not pass its schema, or a dependency without its one candidate, not at the root of
+ * a git working tree or with files other than its {@code HEAD}'s: a {@code problem: } line each, nothing written (an existing lock
+ * untouched), exit 1.
  */
 final class Lock {
 
@@ -43,13 +44,14 @@ final class Lock {
         for (Object d : manifest.getJsonArray("dependencies", new JsonArray())) {
             declared.putIfAbsent(((JsonObject) d).getString("name"), ((JsonObject) d).getString("version"));   // a second one is Package's problem
         }
-        Dependencies deps = Dependencies.of(options);
         List<String> problems = new ArrayList<>();
         List<Package.Locked> pins = new ArrayList<>();
-        for (Map.Entry<String, String> d : declared.entrySet()) deps.find(d.getKey(), d.getValue(), problems).ifPresent(f -> pins.add(f.pin()));
+        try (Dependencies deps = Dependencies.of(options)) {
+            for (Map.Entry<String, String> d : declared.entrySet()) deps.pin(d.getKey(), d.getValue(), problems).ifPresent(pins::add);
+        }
         if (!problems.isEmpty()) return refused(problems, out);
         Files.writeString(dir.resolve("package.lock"), text(pins));
-        pins.forEach(p -> out.println(p.name() + "@" + p.version() + " " + p.content()));
+        pins.forEach(p -> out.println(p.name() + "@" + p.version() + " " + p.repository() + " " + p.commit() + " " + p.content()));
         return 0;
     }
 
@@ -64,11 +66,12 @@ final class Lock {
      * reads back as the string it is.
      */
     static String text(List<Package.Locked> pins) {
-        StringBuilder text = new StringBuilder("# written by rail8 lock (D-087): the direct dependencies, sorted by name, each with its content digest\n")
+        StringBuilder text = new StringBuilder("# written by rail8 lock: the direct dependencies, sorted by name, each with its content digest, repository and commit\n")
                 .append("schemaVersion: 1\nkind: lock\ndependencies:").append(pins.isEmpty() ? " []\n" : "\n");
         for (Package.Locked p : pins) {
             text.append("  - name: ").append(quoted(p.name())).append("\n    version: ").append(quoted(p.version()))
-                    .append("\n    content: ").append(quoted(p.content())).append('\n');
+                    .append("\n    content: ").append(quoted(p.content())).append("\n    repository: ").append(quoted(p.repository()))
+                    .append("\n    commit: ").append(quoted(p.commit())).append('\n');
         }
         return text.toString();
     }
