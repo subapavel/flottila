@@ -1,8 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 import { adminProxy } from './server/adminProxy.ts';
-import { endpointFiles } from './server/endpointFiles.ts';
-import { mappingServiceTarget } from './server/mappingService.ts';
+import { moduleServers } from './server/modules.ts';
 
 // The development server listens on localhost only, on a fixed port, so the origins its own pages send are known.
 const port = 5173;
@@ -28,34 +27,14 @@ function adminApi(): Plugin {
   };
 }
 
-/**
- * Serves the endpoint files of the working folder that RAIL8_WORKSPACE names to the settings form, under
- * `/files/endpoints`. They may be edited unless RAIL8_READ_ONLY is `true`. Both are read here, on the server.
- */
-function workingFolder(): Plugin {
-  return {
-    name: 'rail8-working-folder',
-    configureServer(server) {
-      server.middlewares.use(
-        endpointFiles({
-          workspace: process.env.RAIL8_WORKSPACE?.trim() || undefined,
-          editable: process.env.RAIL8_READ_ONLY?.trim() !== 'true',
-          origins,
-        }),
-      );
-    },
-  };
-}
-
 export default defineConfig({
-  plugins: [react(), adminApi(), workingFolder()],
+  // the modules of the UI bring their own halves of the development server
+  plugins: [react(), adminApi(), moduleServers({ origins, env: process.env })],
   server: {
     host: 'localhost',
     port,
     strictPort: true,
-    // the mapping studio's /api requests go to the mapping service
-    proxy: { '/api': mappingServiceTarget(process.env) },
-    // the mapping studio's fake service reads its fixtures from the mapping corpus and contract
-    fs: { allow: ['.', '../mapping/corpus', '../mapping/contract'] },
+    // the halves add the folders they read from
+    fs: { allow: ['.'] },
   },
 });

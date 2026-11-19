@@ -829,7 +829,15 @@ The Rail8 web application in `ui/` is React with PatternFly 6, built from Patter
 and design tokens only. Its shell has a masthead, a navigation listing every screen and the tabs of
 the open screens: choosing a screen opens it in a tab, or shows the tab it already has, and each tab
 closes on its own, and a screen may open tabs of its own. The tabs live in the page's memory; a
-reload starts again with the Home screen. Screens are registered in one list (`ui/src/screens.tsx`).
+reload starts again with the Home screen.
+
+Each folder of `ui/src/` is a module of the UI. Its `module.tsx` names its screens and its place in the
+navigation, after Home, and `main.tsx` finds every module as the build runs; the application refuses to start,
+naming the files, when a `module.tsx` has the wrong shape, two modules take the same place or a screen id is
+taken twice. A module may bring its own half of the development server, a Vite plugin in its `server.ts`, and
+the development server restarts when that file or one it imports changes. The shell (the files directly in
+`ui/src/`) and the development server import no module, and a module imports no other, which the lint checks;
+what two modules share is a file directly in `ui/src/` or in `ui/server/`.
 
 The Messages screen opens on the list of recent messages, newest first, a page at a time: each row has
 the message's start, flow, status (completed, failed, running or cancelled), duration and business keys,
@@ -883,8 +891,6 @@ public web page.
 **Planned**
 - A server for the UI outside development, holding the token and talking to the node the same way.
 - Helper actions on a field of an endpoint's settings form. No screens of a plugin's own.
-- Screens as modules of the UI, each a folder of its own that the build finds, as the node finds
-  its modules; the shell's list and the development server's routes built from them.
 - Editing endpoint files on a shared server, written to git with an author, with deploy from git and sign-in.
 - Writing a view of a payload (how a body is shown), later and simply.
 

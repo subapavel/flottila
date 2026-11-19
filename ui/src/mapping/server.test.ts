@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { mappingServiceTarget } from './mappingService';
+import { mappingServiceTarget } from './server';
 
 describe('mappingServiceTarget', () => {
   test('is port 8080 when QUARKUS_HTTP_PORT is unset', () => {

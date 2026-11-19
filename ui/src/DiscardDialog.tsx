@@ -3,7 +3,7 @@ import { useId } from 'react';
 
 export interface DiscardDialogProps {
   isOpen: boolean;
-  /** The mapping's name. */
+  /** The name of what is being edited, such as a mapping's. */
   name: string;
   /** What Discard changes does next, ending the question: "return to view mode" or "close its tab". */
   then: string;

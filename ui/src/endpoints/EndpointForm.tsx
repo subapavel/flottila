@@ -28,7 +28,7 @@ import {
 } from '@patternfly/react-core';
 import { CheckCircleIcon, EditIcon, SaveIcon } from '@patternfly/react-icons';
 import { useEffect, useId, useState } from 'react';
-import { DiscardDialog } from '../mapping/studio/DiscardDialog';
+import { DiscardDialog } from '../DiscardDialog';
 import type { EndpointsApi, StoredEndpoint } from './api';
 import { FieldControl } from './FieldControl';
 import { RawOptions } from './RawOptions';
