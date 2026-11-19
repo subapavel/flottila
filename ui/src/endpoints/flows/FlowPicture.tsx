@@ -53,7 +53,7 @@ import { readFlow } from './flowYaml';
 import { FlowPanel, type PanelEdit } from './FlowPanel';
 import { addProcess, addStep, callable, callOf, callsOf, deleteProcess, deleteStep, moveStep, moveToList, renameProcess, stepListsOf } from './ops';
 import { BUILT_IN } from './steps';
-import type { FlowNode, FlowProblem, Path, ServedSteps } from './types';
+import type { FlowIngress, FlowNode, FlowProblem, Path, ServedSteps } from './types';
 import { pointer, view } from './view';
 
 /** The most texts undo goes back through. */
@@ -73,7 +73,7 @@ export interface FlowPictureProps {
   guardClose?: (guard: CloseGuard | null) => void;
 }
 
-type Result = { kind: 'reading' } | { kind: 'failed'; message: string } | { kind: 'read'; stored: StoredFlow; steps: ServedSteps };
+type Result = { kind: 'reading' } | { kind: 'failed'; message: string } | { kind: 'read'; stored: StoredFlow; steps: ServedSteps; ingress: FlowIngress | undefined };
 
 /**
  * The working copy while the flow is edited: its text, the texts before its changes (the last at the end), and the key
@@ -133,8 +133,8 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, c
 
   useEffect(() => {
     let current = true;
-    Promise.all([api.read(path), api.steps()]).then(
-      ([stored, steps]) => current && setResult({ kind: 'read', stored, steps }),
+    Promise.all([api.read(path), api.steps(), api.ingress()]).then(
+      ([stored, steps, ingress]) => current && setResult({ kind: 'read', stored, steps, ingress }),
       (error: unknown) => current && setResult({ kind: 'failed', message: error instanceof Error ? error.message : String(error) }),
     );
     return () => {
@@ -147,7 +147,8 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, c
   const drawn = useMemo(() => {
     if (result.kind !== 'read') return null;
     const read = readFlow(text);
-    return { view: view(text, { ...result.stored.file.context, steps: result.steps }), value: read.kind === 'flow' ? read.value : {} };
+    const context = { ...result.stored.file.context, steps: result.steps, ...(result.ingress === undefined ? {} : { ingress: result.ingress }) };
+    return { view: view(text, context), value: read.kind === 'flow' ? read.value : {} };
   }, [result, text]);
 
   const unsaved = work !== null && stored !== null && work.text !== stored.file.text;
@@ -376,7 +377,7 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, c
     try {
       const next = await api.save(path, work.text, result.stored.etag);
       // editing goes on from the text saved, and undo still goes back through it
-      setResult({ kind: 'read', stored: next, steps: result.steps });
+      setResult({ kind: 'read', stored: next, steps: result.steps, ingress: result.ingress });
       setSaved((n) => n + 1);
     } catch (error) {
       if (error instanceof FlowsError && error.status === 412) setConflict(true);

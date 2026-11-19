@@ -10,8 +10,8 @@ export interface EndpointDocument {
   description: string | null;
   /** The component's options, the file's `config`, as YAML reads them. */
   config: Record<string, unknown>;
-  /** Each environment that overrides options, in the file's order, with the names of the options it overrides. */
-  environments: { name: string; options: string[] }[];
+  /** Each environment that overrides options, in the file's order, with the names of the options it overrides and its overlay as YAML reads it. */
+  environments: { name: string; options: string[]; config: Record<string, unknown> }[];
 }
 
 /** An endpoint file the form cannot read, or a save it refuses; the message says why, never quoting a value. */
@@ -49,7 +49,7 @@ export function readEndpoint(text: string): EndpointDocument | null {
   const overrides: EndpointDocument['environments'] = [];
   if (isRecord(environments)) {
     for (const [name, env] of Object.entries(environments)) {
-      if (isRecord(env) && isRecord(env.config)) overrides.push({ name, options: Object.keys(env.config) });
+      if (isRecord(env) && isRecord(env.config)) overrides.push({ name, options: Object.keys(env.config), config: env.config });
     }
   }
   return { id, scheme, direction, description: typeof description === 'string' ? description : null, config, environments: overrides };

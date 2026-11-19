@@ -1,5 +1,5 @@
 import { FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem, TextInput } from '@patternfly/react-core';
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { KNOWN_TYPES, type SettingsField } from './settings';
 
 export interface FieldControlProps {
@@ -14,6 +14,8 @@ export interface FieldControlProps {
   onInvalid: (invalid: boolean) => void;
   /** What the check finds wrong with the option, or undefined. */
   problem?: string;
+  /** More to say under the field, after its help text. */
+  note?: ReactNode;
 }
 
 const shown = (value: unknown) => (value === undefined || value === null ? '' : typeof value === 'string' ? value : JSON.stringify(value));
@@ -39,7 +41,7 @@ function integer(text: string): unknown {
  * set), a whole number a text input that keeps what was typed, true or false and a choice a select with "Not set",
  * and a field of a type the form does not know a raw editor of its value as JSON.
  */
-export function FieldControl({ field, value, readOnly, onChange, onInvalid, problem }: FieldControlProps) {
+export function FieldControl({ field, value, readOnly, onChange, onInvalid, problem, note }: FieldControlProps) {
   const id = `${useId()}-${field.name}`;
   const known = KNOWN_TYPES.has(field.type);
   const [raw, setRaw] = useState<string | null>(null);
@@ -124,6 +126,7 @@ export function FieldControl({ field, value, readOnly, onChange, onInvalid, prob
       <FormHelperText>
         <HelperText>
           <HelperTextItem>{field.help}</HelperTextItem>
+          {note !== undefined && <HelperTextItem>{note}</HelperTextItem>}
           {!known && <HelperTextItem>Written as JSON.</HelperTextItem>}
           {rawInvalid && <HelperTextItem variant="error">is not JSON</HelperTextItem>}
           {problem !== undefined && <HelperTextItem variant="error">{problem}</HelperTextItem>}

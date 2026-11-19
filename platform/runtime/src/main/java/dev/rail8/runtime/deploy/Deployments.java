@@ -528,6 +528,21 @@ public final class Deployments {
         return config.dataDir().resolve(".incoming");
     }
 
+    /** The node's environment, {@code RAIL8_ENV}: every endpoint is deployed with its {@code environments.<env>.config} overlay. */
+    public String environment() {
+        return config.env();
+    }
+
+    /** The origin senders call the node's HTTP port at, {@code RAIL8_HTTP_ORIGIN}, when the node is given one. */
+    public Optional<String> httpOrigin() {
+        return config.http().origin();
+    }
+
+    /** The HTTP prefix of the component of {@code scheme} ({@code Component.httpPrefix}), when it declares one. */
+    public Optional<String> httpPrefix(String scheme) {
+        return Optional.ofNullable(prefixes.get(scheme));
+    }
+
     /** The settings description of every component the node serves, by scheme in name order. */
     public SortedMap<String, Settings> settings() {
         SortedMap<String, Settings> all = new TreeMap<>();

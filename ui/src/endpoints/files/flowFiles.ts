@@ -20,13 +20,14 @@ export type FlowItem = { path: string; id: string } | { path: string; problem: s
 
 /**
  * What a flow refers to in the working folder. `endpoints` are those of the flow's package, the nearest folder above the
- * file that holds `package.yaml`; `address` is a `direct` endpoint's, and `overlaid` says an environment changes it.
+ * file that holds `package.yaml`; `address` is the endpoint's own, `overlaid` says an environment changes it, and `addressIn`
+ * holds what each environment that changes it sets it to.
  * `flows` are every flow of the working folder, `address` the one their inbound `direct` endpoint serves. `partial` is
  * true when the walk stopped at its limit or a file of the package could not be read, so that what is not found may still
  * exist.
  */
 export interface FlowContext {
-  endpoints: { id: string; path: string; scheme: string; direction: 'in' | 'out'; address?: string; overlaid?: true }[];
+  endpoints: { id: string; path: string; scheme: string; direction: 'in' | 'out'; address?: string; overlaid?: true; addressIn?: Record<string, unknown> }[];
   flows: { path: string; id: string; mode?: 'sync' | 'at-least-once' | 'at-most-once'; address?: string }[];
   partial: boolean;
 }
@@ -85,11 +86,9 @@ async function survey(root: string) {
       const doc = readEndpoint(text);
       if (doc === null) continue;
       const address = typeof doc.config.address === 'string' ? doc.config.address : undefined;
-      const overlaid = doc.environments.some((env) => env.options.includes('address'));
-      endpoints.push({
-        pkg,
-        entry: { id: doc.id, path, scheme: doc.scheme, direction: doc.direction, ...(address === undefined ? {} : { address }), ...(overlaid ? { overlaid } : {}) },
-      });
+      const changing = doc.environments.filter((env) => env.options.includes('address'));
+      const overlay = changing.length === 0 ? {} : { overlaid: true as const, addressIn: Object.fromEntries(changing.map((env) => [env.name, env.config.address])) };
+      endpoints.push({ pkg, entry: { id: doc.id, path, scheme: doc.scheme, direction: doc.direction, ...(address === undefined ? {} : { address }), ...overlay } });
     } catch (error) {
       if (!(error instanceof EndpointFileError)) throw error;
       unreadable.add(pkg);

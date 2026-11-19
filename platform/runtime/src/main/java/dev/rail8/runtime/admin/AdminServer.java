@@ -136,8 +136,10 @@ import java.util.stream.Collectors;
  * delete or a queue question that fails otherwise is 500. {@code GET /admin/targets} lists the node's limits per target system, sorted by target: 200
  * {@code {items:[{target, maxCalls, maxWaitMs, inFlight, waiting, refused}]}}, every target a built flow named so far; a limit of a
  * component that names no target is not listed. {@code GET /admin/components} lists every component the node serves, sorted by
- * scheme: 200 {@code {items:[{scheme, settings}]}}, {@code settings} the component's settings description as the UI draws its
- * form from it. {@code GET /admin/steps} lists every step type a module or plugin of the node builds, sorted by type: 200
+ * scheme: 200 {@code {environment, httpOrigin, items:[{scheme, httpPrefix, settings}]}}, {@code environment} the node's
+ * {@code RAIL8_ENV}, {@code httpOrigin} the origin senders call its HTTP port at ({@code RAIL8_HTTP_ORIGIN}, null when not set),
+ * {@code httpPrefix} the path the component's in endpoints are served under on that port (null when it takes no requests there),
+ * and {@code settings} the component's settings description as the UI draws its form from it. {@code GET /admin/steps} lists every step type a module or plugin of the node builds, sorted by type: 200
  * {@code {items:[{type, configSchema}]}}, {@code configSchema} the JSON Schema of the step's options, or null when the factory's
  * is no JSON object; the built-in steps are not listed. Without one these routes do not exist (404).
  *
@@ -1070,12 +1072,16 @@ public final class AdminServer {
                 .put("items", items).put("totals", totals));
     }
 
-    /** {@code GET /admin/components}: every component the node serves, sorted by scheme, with its settings description. */
+    /**
+     * {@code GET /admin/components}: the node's environment and advertised origin, then every component the node serves, sorted by
+     * scheme, with its HTTP prefix and its settings description.
+     */
     private static Reply components(Deployments deployments) {
         JsonArray items = new JsonArray();
-        deployments.settings().forEach((scheme, settings) ->
-                items.add(new JsonObject().put("scheme", scheme).put("settings", new JsonObject(settings.toJson()))));
-        return Json.of(200, new JsonObject().put("items", items));
+        deployments.settings().forEach((scheme, settings) -> items.add(new JsonObject().put("scheme", scheme)
+                .put("httpPrefix", deployments.httpPrefix(scheme).orElse(null)).put("settings", new JsonObject(settings.toJson()))));
+        return Json.of(200, new JsonObject().put("environment", deployments.environment()).put("httpOrigin", deployments.httpOrigin().orElse(null))
+                .put("items", items));
     }
 
     /**

@@ -1,4 +1,5 @@
 import type { FlowContext as ServedContext } from '../files/flowFiles';
+import type { NodeIngress } from '../inbound';
 import type { SettingsDescription, SettingsField } from '../settings';
 
 /** Where a value stands in the file: `['steps', 2, 'xpath']`. */
@@ -8,12 +9,18 @@ export type Path = readonly (string | number)[];
 export type ServedSteps = { type: string; configSchema: unknown }[] | { missing: string };
 
 /**
- * What a flow refers to, from the development server (`endpoints`, `flows`, `partial`) and the node (`steps`). The
- * endpoints are those of the flow's package; `address` is a `direct` endpoint's own, and `overlaid` says an environment
- * changes it. The flows are those of the working folder, `address` the one their inbound `direct` endpoint serves.
- * `partial` says the working folder was not read whole, so that what is not found may still exist.
+ * What a flow refers to, from the development server (`endpoints`, `flows`, `partial`) and the node (`steps`, `ingress`).
+ * The endpoints are those of the flow's package; `address` is an endpoint's own, `overlaid` says an environment changes
+ * it, and `addressIn` what each such environment sets it to. The flows are those of the working folder, `address` the one
+ * their inbound `direct` endpoint serves. `partial` says the working folder was not read whole, so that what is not found
+ * may still exist. `ingress`, when the node could be asked, is where the node takes requests.
  */
-export type FlowContext = Omit<ServedContext, 'partial'> & { partial?: boolean; steps: ServedSteps };
+export type FlowContext = Omit<ServedContext, 'partial'> & { partial?: boolean; steps: ServedSteps; ingress?: FlowIngress };
+
+/** Where the node takes requests: its environment, its advertised origin, and the HTTP prefix of each scheme that has one. */
+export interface FlowIngress extends NodeIngress {
+  prefixes: Record<string, string>;
+}
 
 /**
  * A field of a step's form: an endpoint's kinds of field, and lists and maps, shown as tables. `emptyAllowed` takes empty

@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { Shell } from '../Shell';
-import { EndpointsError, type ComponentSettings, type EndpointFile, type EndpointsApi } from './api';
+import { EndpointsError, type EndpointFile, type EndpointsApi, type NodeComponents } from './api';
 import { endpointsScreen } from './screen';
 import type { SettingsDescription } from './settings';
 
@@ -36,13 +36,38 @@ const inbox: EndpointFile = {
   direction: 'in',
   description: 'The drop of the demo.',
   config: { host: 'sftp', password: 'secret://sftp-password', colour: 'red' },
-  environments: [{ name: 'prod', options: ['host'] }],
+  environments: [{ name: 'prod', options: ['host'], config: { host: 'sftp-prod' } }],
 };
 
-const components: ComponentSettings[] = [
-  { scheme: 'drop', settings: drop },
-  { scheme: 'raw', settings: { format: 1, described: false, tabs: drop.tabs.filter((t) => t.common), fields: [], rules: [] } },
-];
+/** A component that takes requests on the node's HTTP port under `/http`, at the address its in endpoints set. */
+const web: SettingsDescription = {
+  format: 1,
+  described: true,
+  tabs: [{ id: 'general', label: 'General', common: true }],
+  fields: [{ name: 'address', type: 'text', help: 'The path requests arrive at.', tab: 'general', required: false, directions: ['in'] }],
+  rules: [],
+};
+
+const httpIn: EndpointFile = {
+  path: 'demo/endpoints/http-in.yaml',
+  editable: true,
+  id: 'http-in',
+  scheme: 'web',
+  direction: 'in',
+  description: null,
+  config: { address: '/in' },
+  environments: [{ name: 'prod', options: ['address'], config: { address: '/orders' } }],
+};
+
+const components: NodeComponents = {
+  environment: 'dev',
+  httpOrigin: 'http://localhost:8080',
+  items: [
+    { scheme: 'drop', httpPrefix: null, settings: drop },
+    { scheme: 'raw', httpPrefix: null, settings: { format: 1, described: false, tabs: drop.tabs.filter((t) => t.common), fields: [], rules: [] } },
+    { scheme: 'web', httpPrefix: '/http', settings: web },
+  ],
+};
 
 /** An API over one working folder holding `files`; every call can be replaced in a test. */
 function fakeApi(files: EndpointFile[] = [inbox], overrides: Partial<EndpointsApi> = {}): EndpointsApi {
@@ -209,5 +234,39 @@ describe('Endpoints', () => {
     await field('Settings').fill('{"a": 2, "b": true}');
     await button('Save').click();
     expect(api.save).toHaveBeenCalledWith('demo/endpoints/raw.yaml', { a: 2, b: true }, '"v1"');
+  });
+
+  test("shows under an in endpoint's address a preview of the URL senders call, which follows the draft", async () => {
+    await open(fakeApi([httpIn]), 'http-in');
+    const address = page.getByRole('textbox', { name: 'address' });
+    await expect.element(text('Senders call http://localhost:8080/http/in.')).toBeVisible();
+    await expect.element(text('Preview')).toBeVisible();
+    await expect.element(text('in environment dev, not from what is deployed')).toBeVisible();
+    await button('Edit').click();
+    await address.fill('/invoices');
+    await expect.element(text('Senders call http://localhost:8080/http/invoices.')).toBeVisible();
+    await address.fill('');
+    await expect.element(text('Senders call')).not.toBeInTheDocument();
+  });
+
+  test("shows the path alone when the node names no origin, and the address the node's environment sets", async () => {
+    await open(fakeApi([httpIn], { components: vi.fn(async () => ({ ...components, httpOrigin: null })) }), 'http-in');
+    await expect.element(text("The path /http/in on the node's HTTP port")).toBeVisible();
+    await expect.element(text('RAIL8_HTTP_ORIGIN')).toBeVisible();
+    root?.unmount();
+    host?.remove();
+    await open(fakeApi([httpIn], { components: vi.fn(async () => ({ ...components, environment: 'prod' })) }), 'http-in');
+    await expect.element(text('Senders call http://localhost:8080/http/orders.')).toBeVisible();
+    await expect.element(text('with the address environment prod sets')).toBeVisible();
+  });
+
+  test('shows no URL for an out endpoint, nor for a component with no HTTP prefix', async () => {
+    await open(fakeApi([{ ...httpIn, direction: 'out' }]), 'http-in');
+    await expect.element(text('Senders call')).not.toBeInTheDocument();
+    root?.unmount();
+    host?.remove();
+    await open(fakeApi([httpIn], { components: vi.fn(async () => ({ ...components, items: [{ scheme: 'web', httpPrefix: null, settings: web }] })) }), 'http-in');
+    await expect.element(field('address')).toHaveValue('/in');
+    await expect.element(text('Senders call')).not.toBeInTheDocument();
   });
 });

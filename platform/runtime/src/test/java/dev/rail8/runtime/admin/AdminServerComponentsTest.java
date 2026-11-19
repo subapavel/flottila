@@ -8,6 +8,7 @@ import dev.rail8.api.Envelope;
 import dev.rail8.api.Health;
 import dev.rail8.api.Producer;
 import dev.rail8.api.Runtime;
+import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.api.settings.Field;
 import dev.rail8.api.settings.Settings;
 import dev.rail8.api.settings.Tab;
@@ -55,8 +56,9 @@ import static dev.rail8.runtime.admin.AdminServerDeployTest.assertJson;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * {@code GET /admin/components} lists every component the node serves, sorted by scheme, each with its settings description:
- * 200 {@code {items:[{scheme, settings}]}}. It needs the token like every {@code /admin/*} route.
+ * {@code GET /admin/components} lists every component the node serves, sorted by scheme, each with its HTTP prefix and its
+ * settings description, after the node's environment and the origin senders call its HTTP port at: 200
+ * {@code {environment, httpOrigin, items:[{scheme, httpPrefix, settings}]}}. It needs the token like every {@code /admin/*} route.
  */
 class AdminServerComponentsTest {
 
@@ -92,6 +94,16 @@ class AdminServerComponentsTest {
         @Override public Future<Health> health() { return Future.succeededFuture(Health.up()); }
     }
 
+    /** A component of the scheme {@code web} that takes requests on the node's HTTP port under {@code /web}; it is never started. */
+    static final class Web implements Component {
+        @Override public String scheme() { return "web"; }
+        @Override public Optional<String> httpPrefix() { return Optional.of("/web"); }
+        @Override public Settings settings() { return Settings.of(HttpIngress.ADDRESS); }
+        @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) { throw new UnsupportedOperationException(); }
+        @Override public Producer producer(EndpointConfig cfg) { throw new UnsupportedOperationException(); }
+        @Override public Future<Health> health() { return Future.succeededFuture(Health.up()); }
+    }
+
     @BeforeAll
     static void up() {
         vertx = Vertx.vertx();
@@ -106,12 +118,21 @@ class AdminServerComponentsTest {
 
     @BeforeEach
     void wire() throws Exception {
-        Map<String, String> e = new HashMap<>();
+        wire(Map.of());
+    }
+
+    /** The node of environment {@code dev}, its env with {@code extra} too; a node wired before, never started, is closed. */
+    void wire(Map<String, String> extra) throws Exception {
+        if (deployments != null) {
+            Deployments before = deployments;
+            OnVirtualThread.call(() -> { before.close(); return null; });
+        }
+        Map<String, String> e = new HashMap<>(extra);
         e.put("RAIL8_ENV", "dev");
         e.put("RAIL8_NODE_ID", "node-1");
         e.put("RAIL8_DATA_DIR", tmp.resolve("data").toString());
         Doors doors = new Doors();
-        Map<String, Component> components = Map.of(Doors.SCHEME, doors, "drop", new Drop());
+        Map<String, Component> components = Map.of(Doors.SCHEME, doors, "drop", new Drop(), "web", new Web());
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), components);
         InMemoryWorkQueue queue = new InMemoryWorkQueue(rt.clock());
         deployments = new Deployments(NodeConfig.from(e), runtime, components, rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
@@ -144,7 +165,7 @@ class AdminServerComponentsTest {
     }
 
     /**
-     * {@code drop} before {@code rec}: sorted by scheme. The described one lists its own tab between general and retry, every
+     * {@code drop} before {@code rec} before {@code web}: sorted by scheme, only {@code web} with an HTTP prefix. The described one lists its own tab between general and retry, every
      * field with its tab, its directions and only what it sets, and its rule; the undescribed one the common tabs and nothing else.
      */
     @Test
@@ -152,9 +173,9 @@ class AdminServerComponentsTest {
         int port = server.start(vertx).await(10, TimeUnit.SECONDS);
         Answer listed = get(port, "Bearer " + TOKEN);
         assertJson(200, listed, "GET /admin/components");
-        assertEquals(new JsonObject("""
-                {"items": [
-                  {"scheme": "drop", "settings": {"format": 1, "described": true,
+        JsonObject expected = new JsonObject("""
+                {"environment": "dev", "httpOrigin": null, "items": [
+                  {"scheme": "drop", "httpPrefix": null, "settings": {"format": 1, "described": true,
                     "tabs": [{"id": "general", "label": "General", "common": true}, {"id": "polling", "label": "Polling", "common": false},
                              {"id": "retry", "label": "Retry", "common": true}, {"id": "recording", "label": "Recording", "common": true},
                              {"id": "security", "label": "Security", "common": true}],
@@ -169,11 +190,25 @@ class AdminServerComponentsTest {
                       {"name": "moveTo", "type": "text", "help": "Where to.", "tab": "polling", "required": true, "directions": ["in"],
                        "visibleWhen": {"field": "afterSuccess", "values": ["move"]}}],
                     "rules": [{"kind": "exactlyOne", "fields": ["password", "privateKey"]}]}},
-                  {"scheme": "rec", "settings": {"format": 1, "described": false,
+                  {"scheme": "rec", "httpPrefix": null, "settings": {"format": 1, "described": false,
                     "tabs": [{"id": "general", "label": "General", "common": true}, {"id": "retry", "label": "Retry", "common": true},
                              {"id": "recording", "label": "Recording", "common": true}, {"id": "security", "label": "Security", "common": true}],
                     "fields": [], "rules": []}}]}
-                """), listed.json(), "sorted by scheme, each with its description");
+                """);
+        expected.getJsonArray("items").add(new JsonObject().put("scheme", "web").put("httpPrefix", "/web")
+                .put("settings", new JsonObject(Settings.of(HttpIngress.ADDRESS).toJson())));
+        assertEquals(expected, listed.json(), "sorted by scheme, each with its prefix and its description");
+    }
+
+    /** An advertised origin, {@code RAIL8_HTTP_ORIGIN}, is told as set; a component's prefix does not depend on it. */
+    @Test
+    void theAdvertisedOriginIsTold() throws Exception {
+        wire(Map.of("RAIL8_HTTP_ORIGIN", "https://rail8.example.com"));
+        int port = server.start(vertx).await(10, TimeUnit.SECONDS);
+        JsonObject listed = get(port, "Bearer " + TOKEN).json();
+        assertEquals("dev", listed.getString("environment"));
+        assertEquals("https://rail8.example.com", listed.getString("httpOrigin"));
+        assertEquals("/web", listed.getJsonArray("items").getJsonObject(2).getString("httpPrefix"));
     }
 
     @Test
