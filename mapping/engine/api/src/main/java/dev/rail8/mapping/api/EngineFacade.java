@@ -27,6 +27,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.Serial;
 import java.io.UncheckedIOException;
 import java.time.Clock;
 import java.time.Duration;
@@ -51,6 +52,15 @@ public final class EngineFacade {
 
   /** The runtime error of a test run that exceeds its timeout. */
   private static final String TIMEOUT = "rail8:TIMEOUT";
+
+  /** The runtime error of a bounded test run whose output passes its bound. */
+  private static final String OUTPUT_TOO_LARGE = "rail8:OUTPUT-TOO-LARGE";
+
+  /** The runtime error of a bounded test run whose tracer passes its bound. */
+  private static final String TRACE_TOO_LARGE = "rail8:TRACE-TOO-LARGE";
+
+  /** How many reports a bounded test run's tracer keeps for each unit of the trace limit. */
+  private static final long REPORTS_PER_TRACE_LIMIT = 100;
 
   /** How a test run waits by the wall clock. */
   private static final Deadline WALL_CLOCK =
@@ -84,7 +94,8 @@ public final class EngineFacade {
     this(deadline, Clock.systemUTC());
   }
 
-  private EngineFacade(Deadline deadline, Clock clock) {
+  /** A facade whose test runs wait by {@code deadline} and whose runs read {@code clock}. */
+  EngineFacade(Deadline deadline, Clock clock) {
     this.deadline = deadline;
     this.clock = clock;
   }
@@ -418,7 +429,7 @@ public final class EngineFacade {
    * @throws java.util.concurrent.CancellationException when the thread is interrupted
    */
   public byte[] run(CompiledMapping mapping, byte[] input) throws MalformedInputException {
-    return run(mapping, input, new Tracer());
+    return run(mapping, input, new Tracer(), Long.MAX_VALUE);
   }
 
   /**
@@ -439,10 +450,13 @@ public final class EngineFacade {
     mapping.executable().run(new ByteArrayInputStream(input), out, new Tracer(), now);
   }
 
-  /** {@link #run}, reporting to {@code tracer}, at the time the clock gives as it starts. */
-  private byte[] run(CompiledMapping mapping, byte[] input, Tracer tracer)
+  /**
+   * {@link #run}, reporting to {@code tracer}, at the time the clock gives as it starts, its output
+   * at most {@code maxOutputBytes}.
+   */
+  private byte[] run(CompiledMapping mapping, byte[] input, Tracer tracer, long maxOutputBytes)
       throws MalformedInputException {
-    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    BoundedOutput out = new BoundedOutput(maxOutputBytes);
     try {
       mapping
           .executable()
@@ -482,14 +496,60 @@ public final class EngineFacade {
   public TestRunResult testRun(
       CompiledMapping mapping, byte[] input, Duration timeout, int traceLimit)
       throws MalformedInputException {
+    return testRun(mapping, input, timeout, traceLimit, Long.MAX_VALUE, Long.MAX_VALUE, false);
+  }
+
+  /**
+   * A bounded test run: {@link #testRun(CompiledMapping, byte[], Duration, int)}, whose output and
+   * trace are bounded, and which returns, or throws, only once the run's thread has ended.
+   *
+   * <p>An output that would pass {@code maxOutputBytes} stops the run with the runtime error {@code
+   * rail8:OUTPUT-TOO-LARGE}. The tracer keeps at most 100 reports for each unit of {@code
+   * traceLimit}, enough for that many entries of a full trace; one more report stops the run with
+   * the runtime error {@code rail8:TRACE-TOO-LARGE}. Neither has an authoring id, and each carries
+   * the trace up to the stop.
+   *
+   * <p>After a timeout, or an interrupt of the waiting thread, the run is interrupted and awaited
+   * until it ends at its next interrupt check; an interrupt while it is awaited is kept and does
+   * not end the wait.
+   *
+   * @param maxOutputBytes the most bytes the target message may have
+   * @see #testRun(CompiledMapping, byte[], Duration, int)
+   */
+  public TestRunResult testRun(
+      CompiledMapping mapping, byte[] input, Duration timeout, int traceLimit, long maxOutputBytes)
+      throws MalformedInputException {
+    return testRun(
+        mapping,
+        input,
+        timeout,
+        traceLimit,
+        maxOutputBytes,
+        REPORTS_PER_TRACE_LIMIT * traceLimit,
+        true);
+  }
+
+  /**
+   * A test run whose output is at most {@code maxOutputBytes} and whose tracer keeps at most {@code
+   * maxReports}; when {@code join}, it returns only once the run's thread has ended.
+   */
+  private TestRunResult testRun(
+      CompiledMapping mapping,
+      byte[] input,
+      Duration timeout,
+      int traceLimit,
+      long maxOutputBytes,
+      long maxReports,
+      boolean join)
+      throws MalformedInputException {
     if (traceLimit < 1) {
       throw new IllegalArgumentException("a trace limit is at least 1, not " + traceLimit);
     }
-    Tracer tracer = new Tracer();
-    FutureTask<byte[]> task = new FutureTask<>(() -> run(mapping, input, tracer));
+    Tracer tracer = new Tracer(maxReports);
+    FutureTask<byte[]> task = new FutureTask<>(() -> run(mapping, input, tracer, maxOutputBytes));
     // a daemon, as a virtual thread is, so that a run which ignores its interrupt never holds
     // the JVM open
-    Thread.ofPlatform().name("rail8 test run").daemon(true).start(task);
+    Thread runner = Thread.ofPlatform().name("rail8 test run").daemon(true).start(task);
     try {
       byte[] output = deadline.await(task, timeout, tracer);
       return new TestRunResult.Output(
@@ -500,11 +560,12 @@ public final class EngineFacade {
       // built from the copy
       List<Tracer.Report> soFar = tracer.reports();
       task.cancel(true);
-      return new TestRunResult.RuntimeError(
+      return stopped(
           TIMEOUT,
           "the test run took longer than its timeout of " + timeout.toMillis() + " ms",
-          Optional.empty(),
-          TraceBuilder.build(soFar, mapping.occurrences(), traceLimit));
+          soFar,
+          mapping,
+          traceLimit);
     } catch (InterruptedException interrupted) {
       Thread.currentThread().interrupt();
       throw new CancellationException("the test run was interrupted while it was awaited");
@@ -519,11 +580,95 @@ public final class EngineFacade {
               Optional.of(error.authoringId()),
               TraceBuilder.build(tracer.reports(), mapping.occurrences(), traceLimit));
         }
+        case OutputTooLarge tooLarge -> {
+          return stopped(
+              OUTPUT_TOO_LARGE, tooLarge.getMessage(), tracer.reports(), mapping, traceLimit);
+        }
+        case Tracer.TooManyReports tooMany -> {
+          return stopped(
+              TRACE_TOO_LARGE,
+              "the test run's trace has more than " + maxReports + " reports",
+              tracer.reports(),
+              mapping,
+              traceLimit);
+        }
         default -> throw new IllegalStateException("the test run failed", failed.getCause());
       }
     } finally {
       // a no-op once the run is done or cancelled; otherwise it interrupts the run's thread
       task.cancel(true);
+      if (join) {
+        joinUninterruptibly(runner);
+      }
+    }
+  }
+
+  /** The runtime error {@code code}, with no authoring id, and the trace of {@code reports}. */
+  private static TestRunResult.RuntimeError stopped(
+      String code,
+      String message,
+      List<Tracer.Report> reports,
+      CompiledMapping mapping,
+      int traceLimit) {
+    return new TestRunResult.RuntimeError(
+        code,
+        message,
+        Optional.empty(),
+        TraceBuilder.build(reports, mapping.occurrences(), traceLimit));
+  }
+
+  /** Waits until {@code thread} has ended; an interrupt meanwhile is kept, not acted on. */
+  private static void joinUninterruptibly(Thread thread) {
+    boolean interrupted = false;
+    while (true) {
+      try {
+        thread.join();
+        break;
+      } catch (InterruptedException e) {
+        // join cleared the status, so the next join waits
+        interrupted = true;
+      }
+    }
+    if (interrupted) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  /** A test run's output, which refuses a write that would pass its bound. */
+  private static final class BoundedOutput extends ByteArrayOutputStream {
+
+    private final long bound;
+
+    BoundedOutput(long bound) {
+      this.bound = bound;
+    }
+
+    @Override
+    public void write(int b) {
+      room(1);
+      super.write(b);
+    }
+
+    @Override
+    public void write(byte[] b, int off, int len) {
+      room(len);
+      super.write(b, off, len);
+    }
+
+    private void room(int len) {
+      if (len > bound - count) {
+        throw new OutputTooLarge(bound);
+      }
+    }
+  }
+
+  /** An output that passed its bound; unchecked, it leaves the run through its writer. */
+  private static final class OutputTooLarge extends RuntimeException {
+
+    @Serial private static final long serialVersionUID = 1L;
+
+    OutputTooLarge(long bound) {
+      super("the test run's output is larger than " + bound + " bytes");
     }
   }
 }
