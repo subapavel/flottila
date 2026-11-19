@@ -106,8 +106,14 @@ describe('the HTTP ApiClient', () => {
     ];
     const port = fakeFetch(() => json(list));
 
-    expect(await httpApiClient('', port.fetch).listMappings()).toEqual(list);
+    expect(await httpApiClient('', port.fetch).listMappings()).toEqual({ mappings: list, truncated: false });
     expect(port.calls).toEqual([{ url: '/api/mappings', method: 'GET', contentType: null, body: undefined }]);
+  });
+
+  test('reads Rail8-Truncated: true as a list cut at its limit', async () => {
+    const cut = () => new Response('[]', { headers: { 'content-type': 'application/json', 'rail8-truncated': 'true' } });
+
+    expect(await httpApiClient('', fakeFetch(cut).fetch).listMappings()).toEqual({ mappings: [], truncated: true });
   });
 
   test('creates a mapping by POST of its id and description alone, and returns the model without structures', async () => {

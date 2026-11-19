@@ -69,9 +69,10 @@ export function describeError(error: unknown): { title: string; detail: string; 
 export interface ApiClient {
   /**
    * The workspace's mappings, sorted by id, each with its package, description and root names; a stored
-   * file the service refuses has its id, name and package alone.
+   * file without them has its id, name and package alone. `truncated` is true when the list stopped at its limit,
+   * so that more mappings may exist.
    */
-  listMappings(): Promise<MappingSummary[]>;
+  listMappings(): Promise<{ mappings: MappingSummary[]; truncated: boolean }>;
   /**
    * Creates a mapping with its description, the fingerprint of each structure the request names and no target field
    * mapping, and resolves to it as stored; a side it does not name is absent until the Signature tab

@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   EmptyState,
   EmptyStateActions,
@@ -42,7 +43,8 @@ export interface MappingListProps {
 
 /**
  * The Mappings screen: a table of the workspace's mappings with a toolbar of a search and New mapping, which opens the
- * New mapping modal; a mapping it creates joins the table. Each row's Open in studio opens the mapping.
+ * New mapping modal; a mapping it creates joins the table. Each row's Open in studio opens the mapping. A warning above
+ * the toolbar says when the list was cut at its limit.
  */
 export function MappingList({ api, onOpen, onCreated }: MappingListProps) {
   const mappings = useQuery({ queryKey: ['mappings'], queryFn: () => api.listMappings() });
@@ -51,7 +53,7 @@ export function MappingList({ api, onOpen, onCreated }: MappingListProps) {
   const [creating, setCreating] = useState(false);
   const term = search.trim();
   // an empty term is in every name
-  const shown = (mappings.data ?? []).filter((m) => matches(m, term));
+  const shown = (mappings.data?.mappings ?? []).filter((m) => matches(m, term));
 
   /** One row across the table holding an empty state: loading, a refusal, an empty workspace or no match. */
   const stateRow = (state: ReactNode) => (
@@ -70,7 +72,7 @@ export function MappingList({ api, onOpen, onCreated }: MappingListProps) {
         </EmptyState>,
       );
     }
-    if (mappings.data.length === 0) {
+    if (mappings.data.mappings.length === 0) {
       return stateRow(
         <EmptyState titleText="No mappings yet" headingLevel="h2" icon={CubesIcon} variant="sm">
           <EmptyStateBody>Choose New mapping to create one; its messages are chosen in the studio.</EmptyStateBody>
@@ -112,6 +114,9 @@ export function MappingList({ api, onOpen, onCreated }: MappingListProps) {
   return (
     <PageSection>
       <Title headingLevel="h1">Mappings</Title>
+      {mappings.data?.truncated && (
+        <Alert variant="warning" isInline component="div" title="Only the first 1,000 mapping files of the working folder are listed" />
+      )}
       <Toolbar>
         <ToolbarContent>
           <ToolbarItem>

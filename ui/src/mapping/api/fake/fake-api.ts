@@ -110,7 +110,10 @@ export function fakeApiClient(seed: Record<string, MappingModel> = corpusMapping
   };
 
   return {
-    listMappings: async () => [...mappings].sort(([a], [b]) => (a < b ? -1 : 1)).map(([id, { model }]) => summaryOf(id, model)),
+    listMappings: async () => ({
+      mappings: [...mappings].sort(([a], [b]) => (a < b ? -1 : 1)).map(([id, { model }]) => summaryOf(id, model)),
+      truncated: false,
+    }),
 
     createMapping: async (request) => {
       const { id, description } = request;
