@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -308,27 +309,41 @@ class TestRunTest {
 
   // --- the output's bound
 
-  /** An Order whose OrderId is {@code length} times {@code x}. */
-  private static String orderIdOf(long length) {
+  /**
+   * An Order whose OrderId the output writes in {@code bytes} bytes: its text is a CDATA section of
+   * {@code <}, which the output writes as {@code &lt;}, four bytes for each, and {@code x} for the
+   * rest.
+   */
+  private static String orderIdWrittenIn(long bytes) {
+    int lt = Math.toIntExact(bytes / 4);
     return "<src:Order xmlns:src=\""
         + NS
-        + "\"><OrderId>"
-        + "x".repeat(Math.toIntExact(length))
-        + "</OrderId></src:Order>";
+        + "\"><OrderId><![CDATA["
+        + "<".repeat(lt)
+        + "x".repeat(Math.toIntExact(bytes - 4L * lt))
+        + "]]></OrderId></src:Order>";
   }
 
   /**
    * A test run whose output would pass {@link Studio#MAX_OUTPUT_BYTES}, 16 MiB, is 200 with the
    * runtime error {@code rail8:OUTPUT-TOO-LARGE}: no authoring id, as an error of the test run
-   * itself, and no output. The copy mapping writes the OrderId it reads, whose text alone is one
-   * byte above the bound. Witness: an OrderId whose output is exactly the bound gives that output.
+   * itself, and no output. The copy mapping writes the OrderId it reads, one byte above the bound
+   * with the rest of the output, from an input a quarter of that size, so the call fits in a
+   * request to the node. Witness: an OrderId whose output is exactly the bound gives that output.
    */
   @Test
   void aTestRunWhoseOutputPassesItsBoundIs200WithRail8OutputTooLarge() {
-    // the answers hold 16 MiB strings, so a description shows the answer only where it is a
+    long overhead = bytes(OUTPUT).length - "4711".length();
+    String request =
+        testRequest(
+            workingCopy("\"a1\""), orderIdWrittenIn(Studio.MAX_OUTPUT_BYTES + 1 - overhead));
+    assertThat(Base64.getEncoder().encodeToString(bytes(request)).length())
+        .as("the request, in base64, is below the node's largest request")
+        .isLessThan(16 << 20);
+
+    // the answers hold strings of megabytes, so a description shows the answer only where it is a
     // problem: when the status is not 200
-    Calls.Answer reply =
-        test(testRequest(workingCopy("\"a1\""), orderIdOf(Studio.MAX_OUTPUT_BYTES + 1)));
+    Calls.Answer reply = test(request);
 
     assertThat(reply.status()).as("%s", reply).isEqualTo(200);
     JsonNode result = reply.body();
@@ -340,9 +355,10 @@ class TestRunTest {
     assertThat(error.has("authoringId")).as("an error of the test run itself").isFalse();
     assertThat(result.has("output")).as("the buffered output is dropped").isFalse();
 
-    long overhead = bytes(OUTPUT).length - "4711".length();
     Calls.Answer atTheBound =
-        test(testRequest(workingCopy("\"a1\""), orderIdOf(Studio.MAX_OUTPUT_BYTES - overhead)));
+        test(
+            testRequest(
+                workingCopy("\"a1\""), orderIdWrittenIn(Studio.MAX_OUTPUT_BYTES - overhead)));
 
     assertThat(atTheBound.status()).as("%s", atTheBound).isEqualTo(200);
     JsonNode output = atTheBound.body();
