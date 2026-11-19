@@ -141,6 +141,27 @@ listed by the start of its arrival, so a flow whose recording level is `errors` 
 
 A foreign invoice takes the other route: `sed -e 's/4711/4712/' -e 's/CZK/EUR/' examples/demo/fixtures/sample-invoice.xml | curl -X POST --data-binary @- -H 'Content-Type: application/xml' localhost:8080/in`.
 
+The flow `demo/invoice-async` takes the same invoice at least once: it answers `202` after saving it, and a worker sends it on.
+
+```sh
+curl -i -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8082/invoice/async
+```
+
+In **Messages** choose the flow `demo/invoice-async`: the invoice is its top row, Completed once the worker has sent it to the
+partner. Its timeline lists `ingress`, `validate`, `extractKey`, `route`, `toPartner` and `partner`.
+
+The flow `demo/sftp-invoice` takes a file dropped in the inbox of the stack's SFTP server (user `demo`, password `demo`). Drop one:
+
+```sh
+docker compose cp examples/demo/fixtures/inbox/invoice-4711.xml sftp:/home/demo/inbox/
+```
+
+The node polls the inbox every 10 seconds, so within about ten seconds the file is gone from the inbox
+(`docker compose exec sftp ls /home/demo/inbox` lists nothing) and **Messages**, with the flow `demo/sftp-invoice` chosen, shows
+the invoice as its top row, Completed, with its steps `ingress`, `validate`, `extractKey`, `toPartner` and `partner`. The
+host key of the SFTP server is generated when the stack first starts and the node pins its fingerprint; the password is the
+demo's, or `RAIL8_SFTP_PASSWORD` when it is exported before the first `up`.
+
 The `demo/order-jq` flow turns a JSON order with a jq filter: it keeps the order's id and customer as `orderId` and
 `customer`, adds up the items into `total`, and calls the flow `demo/order-partner` with the result, which sends it to the
 partner.
@@ -170,6 +191,6 @@ Ctrl+C stops the mapping service and the UI.
 answer, or exits non-zero on a refusal; `RAIL8_ADMIN` (default `http://localhost:8081`) points it at another node.
 
 The `echo` service is the demo's partner: `deploy/quickstart/PartnerEcho.java` on `localhost:8090`, answering every path
-with the body it was sent. The demo's other two flows, `demo/invoice-async` and `demo/sftp-invoice`, need more than this
-stack (no SFTP server here, its secrets are placeholders); they run in the fuller stack,
-[`deploy/compose/`](../deploy/compose/README.md), which also has Valkey, SeaweedFS S3 and, with `--profile kafka`, Kafka.
+with the body it was sent. The `sftp` service is the SFTP server of `demo/sftp-invoice`; its `sftp-keys` one-shot makes the
+host key at the first start. The fuller stack, [`deploy/compose/`](../deploy/compose/README.md), also has Valkey,
+SeaweedFS S3 and, with `--profile kafka`, Kafka.
