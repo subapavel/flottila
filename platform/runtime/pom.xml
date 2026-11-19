@@ -250,6 +250,11 @@
       <artifactId>url-connection-client</artifactId>
     </dependency>
     <dependency>
+      <!-- the package repositories a node deploys from, read into its git cache: pure Java, no git binary -->
+      <groupId>org.eclipse.jgit</groupId>
+      <artifactId>org.eclipse.jgit</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>testcontainers-postgresql</artifactId>
       <scope>test</scope>

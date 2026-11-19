@@ -157,6 +157,14 @@ final class Rules {
             .should().dependOnClassesThat().resideInAnyPackage(STORE_CLIENT_PACKAGES)
             .because("only runtime touches the Postgres, Kafka, S3, Valkey and ClickHouse clients (CLAUDE.md)");
 
+    /** JGit, the node's git client. */
+    static final String JGIT = "org.eclipse.jgit..";
+
+    static final ArchRule ONLY_RUNTIME_TOUCHES_JGIT = noClasses().that().resideInAPackage("dev.rail8..")
+            .and().resideOutsideOfPackage(RUNTIME)
+            .should().dependOnClassesThat().resideInAPackage(JGIT)
+            .because("only runtime reads the package repositories; the CLI reads them through runtime's PackageRepositories");
+
     static final ArchRule NO_CYCLES = slices().matching("dev.rail8.(*)..").should().beFreeOfCycles()
             .because("a cycle between modules would break the dependency direction");
 
