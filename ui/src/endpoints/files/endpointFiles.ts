@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { basename, dirname, join, relative, sep } from 'node:path';
-import { foreign } from './adminProxy.ts';
+import { foreign } from '../../../server/adminProxy.ts';
 import { EndpointFileError, readEndpoint, writeConfig, type EndpointDocument } from './endpointYaml.ts';
 
 /** The working folder whose endpoint files the settings form reads and writes, and who may reach them. */

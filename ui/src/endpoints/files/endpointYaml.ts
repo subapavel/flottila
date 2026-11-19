@@ -1,5 +1,5 @@
 import { load } from 'js-yaml';
-import { sameValue } from '../src/endpoints/same-value.ts';
+import { sameValue } from '../same-value.ts';
 
 /** An endpoint file as the settings form reads it: its envelope, its component's options, and what each environment overrides. */
 export interface EndpointDocument {

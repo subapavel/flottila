@@ -2,9 +2,12 @@ import '@patternfly/react-core/dist/styles/base.css';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, test } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
-import type { Screen } from './screens';
-import { screens } from './screens';
+import { home } from './Home';
+import { screenList, type Screen } from './screens';
 import { Shell } from './Shell';
+
+// the screens the application lists, found as main.tsx finds them
+const screens = screenList(home, import.meta.glob('./*/module.tsx', { eager: true }));
 
 const two: readonly Screen[] = [
   { id: 'first', title: 'First', render: () => <p>First screen</p> },
@@ -37,6 +40,12 @@ describe('Shell', () => {
     await expect.element(page.getByRole('banner').getByText('Rail8')).toBeVisible();
     await expect.element(tab('Home')).toHaveAttribute('aria-selected', 'true');
     await expect.element(page.getByRole('heading', { level: 1, name: 'Rail8' })).toBeVisible();
+  });
+
+  test('lists Home, then the screens of the modules in their order', async () => {
+    render(screens, screens[0]?.id);
+    await expect.element(nav().getByRole('button', { name: 'Home' })).toBeVisible();
+    expect(nav().getByRole('button').elements().map((button) => button.textContent)).toEqual(['Home', 'Messages', 'Endpoints', 'Mappings']);
   });
 
   test('opens a screen chosen in the navigation in a new tab, and shows the tab it already has', async () => {

@@ -30,7 +30,7 @@ import { describeRefusal, type Refusal } from '../model/command';
 import { AboutStudio } from './AboutStudio';
 import type { BrowserStateStore } from './browser-state/browser-state';
 import { DefinitionTab } from './definition/DefinitionTab';
-import { DiscardDialog } from './DiscardDialog';
+import { DiscardDialog } from '../../DiscardDialog';
 import { FunctionsTab } from './functions/FunctionsTab';
 import { MappingOverview } from './overview/MappingOverview';
 import { SaveConflict } from './SaveConflict';
