@@ -1,9 +1,9 @@
 package dev.rail8.cli;
 
 import dev.rail8.cli.CliRuns.Ran;
-import dev.rail8.runtime.Main;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
+import dev.rail8.runtime.plugin.Plugins;
 import dev.rail8.testkit.Ports;
 import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
@@ -51,7 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * {@code rail8 deploy} against a real node — started in this JVM over what {@code Main.shipped(int)} wires, on a
+ * {@code rail8 deploy} against a real node — started in this JVM over the modules on its class path ({@link Plugins}), on a
  * Postgres of its own (Testcontainers, a database per case, as runtime's QuickstartIT), its admin API on port 0 behind a bearer
  * token. The demo deploys (200, exit 0) and the node holds exactly its files at their package-relative paths; a package whose
  * stylesheet does not compile is refused (422, exit 1) and nothing is deployed; without the token the node refuses (401, exit 1).
@@ -108,8 +108,8 @@ class DeployCommandIT {
         env.put("RAIL8_SECRET_SFTP_PASSWORD", "demo");
         env.put("RAIL8_SECRET_SFTP_HOST_KEY", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
         NodeConfig config = NodeConfig.from(env);
-        Main.Shipped shipped = Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT);
-        node = onVirtualThread(() -> Node.start(config, vertx, shipped.components(), shipped.steps(), shipped.languages()));
+        Plugins shipped = Plugins.fromEnv(env);
+        node = onVirtualThread(() -> Node.start(config, vertx, shipped::components, shipped.steps(), shipped.languages()));
     }
 
     @AfterEach

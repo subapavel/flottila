@@ -409,8 +409,9 @@ CPI). A call needs no network, and the body is not copied on its way in. The moc
 
 `rail8 validate` checks a package against the schemas and builds every flow. `rail8 test` runs the
 `*.test.yaml` cases of each flow in process, with mock endpoints and a virtual clock, so a case with
-retries five minutes apart finishes in milliseconds. Both load plugins as a node does, from
-`--plugins <dir>` or `RAIL8_PLUGINS`. `rail8 lock` writes `package.lock`.
+retries five minutes apart finishes in milliseconds. Both find the node's modules and load plugins
+as a node does (part 5), from `--plugins <dir>` or `RAIL8_PLUGINS`, and read no setting of theirs.
+`rail8 lock` writes `package.lock`.
 `rail8 deploy` zips the package and sends it to a node's admin API. `rail8 new-adapter` writes the
 skeleton of a new adapter (part 5).
 
@@ -488,34 +489,47 @@ reads the whole body or streams it. It is built once at deploy time from the ste
 resources it may keep (clock, timer, ids, blob store, files of its own package). An expression
 language (XPath today) is registered the same way.
 
-The node wires its shipped components and step modules in code, at start.
-
 ### Plugins
 
-A plugin adds components, step factories and expression languages to what the node ships. It is a
-jar, or a folder of jars, in the folder that `RAIL8_PLUGINS` names; the node loads every entry, in
-name order, at start, and logs each plugin's name, version, api version and the SHA-256 of its jars.
-A plugin implements `dev.rail8.api.plugin.Plugin`, named in its own
-`META-INF/services/dev.rail8.api.plugin.Plugin`: a name, the api version it was built against, and
-what it adds. Its components are built over the node's `ComponentContext` (Vert.x, blob store, ids,
-timer, clock), inside the node's start; building them opens nothing.
+A plugin adds components, step factories and expression languages to the node's built-in steps.
+The components and step modules that ship with the platform (`direct`, `http`, `sftp`, `jq`,
+`mapping`, `xsd`, `xslt`) are plugins on the node's class path, called modules; the node names none
+of them in code. Other plugins are jars, or folders of jars, in the folder that `RAIL8_PLUGINS`
+names. Each implements `dev.rail8.api.plugin.Plugin`, named in the
+`META-INF/services/dev.rail8.api.plugin.Plugin` of its own jar: a name, the api version it was
+built against, and what it adds. The api is 0.2.
 
-- **Isolation.** Each plugin has a class loader of its own. It sees the JDK, its own jars, and from
+At start the node finds its modules on its class path (Java's `ServiceLoader`), in name order,
+then loads every entry of `RAIL8_PLUGINS`, in name order. Modules and plugins share one space of
+names, and `rail8` stands for the platform itself. The node logs each one: module or plugin, its
+name, its version (its jar's `Implementation-Version`, else `-`), its api version, the SHA-256 of
+its jars (`-` for a directory) and where it came from. Their components are built over the node's
+`ComponentContext` (Vert.x, blob store, ids, timer, clock), inside the node's start; building them
+opens nothing.
+
+- **Settings.** A plugin's settings are the variables `RAIL8_<NAME>_<KEY>` of the node's
+  environment, its name in upper case with each dash an underscore: the jq module reads
+  `RAIL8_JQ_MAX_RECURSION_DEPTH`. `PluginSettings` reads each as a whole number within its range;
+  one out of its range or no whole number refuses the start, naming the variable.
+- **Isolation.** A module shares the node's class loader. Each plugin of `RAIL8_PLUGINS` has a
+  class loader of its own. It sees the JDK, its own jars, and from
   the node only `dev.rail8.api`, `io.vertx.core`, Netty and SLF4J, so two plugins may bring two
   versions of one library. The thread's context class loader is the plugin's during each call into
   it.
-- **Add, never replace.** A scheme, step type or language the node already has (shipped, built in,
-  or another plugin's) refuses the start and names both owners; so does the scheme `mock`. A plugin
+- **Add, never replace.** A name, scheme, step type or language the node already has (a module's,
+  a built-in step's, or another plugin's) refuses the start and names both owners, such as
+  `module http` and `plugin acme.jar`; so does the scheme `mock`. A plugin
   brings no mock: `rail8 test` stands the platform's mock in for its schemes.
 - **Acknowledgement and back-pressure** are a consumer's `Future<Ack>`: accepted, reply, or refused
   (retryable or for good). A sealed type such as `Ack` never gains a variant a plugin did not opt
   into.
 - **Compatibility.** In 0.x a node loads plugins of its own api major.minor only; from 1.0 on, of its
   major and a minor up to its own.
-- **Limits.** At most 64 plugins, 512 jars per plugin and 256 contributions of each kind per plugin.
+- **Limits.** At most 64 modules, 64 plugins, 512 jars per plugin and 256 contributions of each
+  kind per module or plugin.
 
-A refused plugin, step type or language stops the node with exit 2 before Vert.x starts; a refused
-component, with exit 1. `rail8 validate` and `rail8 test` load the same plugins, from `--plugins` or
+A refused module, plugin, setting, step type or language stops the node with exit 2 before Vert.x
+starts; a refused component, with exit 1. `rail8 validate` and `rail8 test` load the same plugins, from `--plugins` or
 `RAIL8_PLUGINS`.
 
 ### Writing an adapter plugin
@@ -634,7 +648,11 @@ a file to poll; a deployed node refuses it.
 **Planned**
 - Plugins for custom mapping code and custom services, and a plugin that replaces a shipped
   component or step.
-- The admin API lists the loaded plugins.
+- The admin API lists the loaded modules and plugins (`GET /admin/modules`).
+- Commands of the command line and services of the admin API (under `/admin/modules/<name>/`)
+  that a module brings; a plugin of `RAIL8_PLUGINS` brings neither.
+- The node's distribution assembled in a build of its own, so that the runtime's build no longer
+  brings the shipped modules.
 - A deferred acknowledgement in the adapter contract: system and application acknowledgements as
   in SAP XI.
 - Custom code sends through an outbound endpoint of its package.
@@ -795,7 +813,7 @@ The `jq` step runs it in flows. Its `filter` is a jq program written in the flow
 the flow is built and run on each message's body, read whole as one JSON document. It must give
 exactly one result, which becomes the next body as compact JSON (`application/json`). A run has the
 engine's embedded limits, except two: the bytes it writes are bounded by the flow's `maxBodyBytes`,
-and its recursion depth is the step's `maxRecursionDepth`, else the node's
+and its recursion depth is the step's `maxRecursionDepth`, else the jq module's setting
 `RAIL8_JQ_MAX_RECURSION_DEPTH` (10 000, at most 4 194 304). `rail8 validate` and `rail8 test` use
 10 000. A body that is not JSON is the sender's fault; an error the filter raises, no result, a
 second result or a budget run out is the flow's. The platform's build takes the engine's jar from
@@ -859,6 +877,8 @@ public web page.
 - Finding messages by flow and time, which the admin API cannot search by yet.
 - A server for the UI outside development, holding the token and talking to the node the same way.
 - Helper actions on a field of an endpoint's settings form. No screens of a plugin's own.
+- Screens as modules of the UI, each a folder of its own that the build finds, as the node finds
+  its modules; the shell's list and the development server's routes built from them.
 - Editing endpoint files on a shared server, written to git with an author, with deploy from git and sign-in.
 - Writing a view of a payload (how a body is shown), later and simply.
 

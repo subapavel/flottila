@@ -149,17 +149,24 @@ final class Rules {
     static final ArchRule NO_CYCLES = slices().matching("dev.rail8.(*)..").should().beFreeOfCycles()
             .because("a cycle between modules would break the dependency direction");
 
-    /** The one runtime class that names the shipped components and steps (F-4). */
-    static final String MAIN = "dev.rail8.runtime.Main";
-
-    /** {@link #MAIN} by its full name, and the classes nested in it (an anonymous class's body is still the wiring point). */
-    static final DescribedPredicate<JavaClass> THE_WIRING_POINT = describe(MAIN + " and the classes nested in it",
-            c -> c.getName().equals(MAIN) || c.getName().startsWith(MAIN + "$"));
-
-    static final ArchRule ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS = noClasses().that().resideInAPackage(RUNTIME)
-            .and(DescribedPredicate.not(THE_WIRING_POINT))
+    static final ArchRule RUNTIME_NAMES_NO_COMPONENT_OR_STEP = noClasses().that().resideInAPackage(RUNTIME)
             .should().dependOnClassesThat().resideInAnyPackage(COMPONENTS, STEPS)
-            .because("runtime reaches components and steps through the SPI; only Main names the shipped ones (F-4)");
+            .because("the node finds its components and steps, the shipped ones among them, as modules on its class path and "
+                    + "reaches them through the SPI; no runtime class names one");
+
+    /** The platform's mock, which {@code rail8 test} puts in place of every partner. */
+    static final String MOCK = "dev.rail8.components.mock..";
+
+    /** The http component, whose answer to a delivery {@code rail8 test} compares with a case's expected status. */
+    static final String HTTP_COMPONENT = "dev.rail8.components.http.HttpComponent";
+
+    private static final DescribedPredicate<JavaClass> A_MODULE_THE_CLI_MAY_NAME = describe("the mock or " + HTTP_COMPONENT,
+            c -> resideInAPackage(MOCK).test(c) || c.getName().equals(HTTP_COMPONENT));
+
+    static final ArchRule CLI_NAMES_NO_COMPONENT_OR_STEP = noClasses().that().resideInAPackage(CLI)
+            .should().dependOnClassesThat(resideInAnyPackage(COMPONENTS, STEPS).and(DescribedPredicate.not(A_MODULE_THE_CLI_MAY_NAME)))
+            .because("the CLI finds a node's components and steps as the node does, as modules on its class path; it names only "
+                    + "the mock it tests with and the http component's answer to a delivery");
 
     static final ArchRule RUNTIME_NEVER_NAMES_THE_MOCK = noClasses().that().resideInAPackage(RUNTIME)
             .should().dependOnClassesThat().resideInAPackage("dev.rail8.components.mock..")

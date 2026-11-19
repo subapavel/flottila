@@ -336,6 +336,12 @@
           <configuration>
             <!-- archtest and (until P0-12) schemas have nothing to package -->
             <skipIfEmpty>true</skipIfEmpty>
+            <!-- Implementation-Version and the rest in each jar's manifest: the version a node logs for each module it finds -->
+            <archive>
+              <manifest>
+                <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+              </manifest>
+            </archive>
           </configuration>
         </plugin>
         <plugin>

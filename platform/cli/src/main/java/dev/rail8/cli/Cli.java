@@ -1,7 +1,5 @@
 package dev.rail8.cli;
 
-import dev.rail8.runtime.Main;
-import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.plugin.Plugins;
 
 import java.io.IOException;
@@ -81,7 +79,7 @@ public final class Cli {
             return switch (command) {
                 case "validate" -> {
                     Options options = options("validate", args, Set.of("--env", "--deps", "--plugins"));
-                    yield withPlugins(options, env, err, shipped -> Validate.run(options, shipped, out));
+                    yield withPlugins(options, env, err, plugins -> Validate.run(options, plugins, out));
                 }
                 case "deploy" -> Deploy.run(options("deploy", args, Set.of("--name", "--revision", "--admin")), env, out, err);
                 case "help" -> {
@@ -90,7 +88,7 @@ public final class Cli {
                 }
                 case "test" -> {
                     Options options = options("test", args, Set.of("--deps", "--plugins"));
-                    yield withPlugins(options, env, err, shipped -> FlowTests.run(options, shipped, out));
+                    yield withPlugins(options, env, err, plugins -> FlowTests.run(options, plugins, out));
                 }
                 case "lock" -> Lock.run(options("lock", args, Set.of("--deps")), out);
                 case "new-adapter" -> {
@@ -110,35 +108,40 @@ public final class Cli {
         }
     }
 
-    /** A command that runs over what a node ships with its plugins. */
+    /** A command that runs over a node's modules and plugins. */
     @FunctionalInterface
-    private interface OverShipped {
-        int run(Main.Shipped shipped) throws IOException;
+    private interface OverPlugins {
+        int run(Plugins plugins) throws IOException;
     }
 
     /**
-     * Runs {@code command} over what a node ships with the plugins of {@code --plugins}, else of {@code RAIL8_PLUGINS} in
-     * {@code env}, else none ({@link Plugins#load}, {@link Main#shipped(int, Plugins)}), and closes the plugins after it. Plugins,
-     * or a step type or language of theirs, that a node would refuse are one line on {@code err} and 2, nothing run.
+     * Runs {@code command} over the modules of the CLI's class path, which are a node's, and the plugins of {@code --plugins},
+     * else of {@code RAIL8_PLUGINS} in {@code env}, else none ({@link Plugins#load}), and closes the plugins after it. It reads
+     * no setting, so every module and plugin has its settings' fallbacks. Modules or plugins, or a step type or language of
+     * theirs, that a node would refuse are one line on {@code err} and 2, nothing run.
      */
-    private static int withPlugins(Options options, Map<String, String> env, PrintStream err, OverShipped command) throws IOException {
+    private static int withPlugins(Options options, Map<String, String> env, PrintStream err, OverPlugins command) throws IOException {
+        Optional<Path> dir = options.value("--plugins").or(() -> Optional.ofNullable(env.get(Plugins.ENV)).filter(d -> !d.isBlank())).map(Path::of);
         Plugins plugins;
         try {
-            plugins = options.value("--plugins").map(dir -> Plugins.load(Path.of(dir))).orElseGet(() -> Plugins.fromEnv(env));
+            plugins = plugins(dir);
         } catch (IllegalArgumentException refused) {
             err.println("rail8: plugins refused: " + oneLine(refused.getMessage()));
             return 2;
         }
         try (plugins) {
-            Main.Shipped shipped;
-            try {
-                shipped = Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT, plugins);
-            } catch (IllegalArgumentException refused) {
-                err.println("rail8: plugins refused: " + oneLine(refused.getMessage()));
-                return 2;
-            }
-            return command.run(shipped);
+            return command.run(plugins);
         }
+    }
+
+    /**
+     * The modules of the CLI's class path, which are a node's, and the plugins of {@code dir}, none when it is empty; each with the
+     * fallbacks of its settings, as the CLI reads none.
+     *
+     * @throws IllegalArgumentException modules or plugins a node would refuse
+     */
+    static Plugins plugins(Optional<Path> dir) {
+        return Plugins.load(Cli.class.getClassLoader(), dir, Map.of());
     }
 
     /** A usage error: printed with the usage, exit 2, nothing done. */

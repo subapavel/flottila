@@ -2,8 +2,7 @@ package dev.rail8.cli;
 
 import dev.rail8.api.Component;
 import dev.rail8.api.plugin.ComponentContext;
-import dev.rail8.runtime.Main;
-import dev.rail8.runtime.node.NodeConfig;
+import dev.rail8.runtime.plugin.Plugins;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Vertx;
 
@@ -20,6 +19,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -92,15 +92,14 @@ final class NewAdapter {
     }
 
     /**
-     * The schemes a node has without a plugin: its shipped components, built over a Vert.x of the run's own and fakes (building
+     * The schemes a node has without a plugin: its modules' components, built over a Vert.x of the run's own and fakes (building
      * opens nothing), and the platform's mock.
      */
     static Set<String> shippedSchemes() {
         FakeRuntime rt = FakeRuntime.create();
         Vertx vertx = Vertx.vertx();
-        try {
-            List<Component> shipped = Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT).components()
-                    .apply(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock()));
+        try (Plugins modules = Cli.plugins(Optional.empty())) {
+            List<Component> shipped = modules.components(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock()));
             Set<String> schemes = shipped.stream().map(Component::scheme).collect(Collectors.toCollection(TreeSet::new));
             schemes.add("mock");
             return schemes;

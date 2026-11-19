@@ -1,6 +1,5 @@
 package dev.rail8.runtime;
 
-import dev.rail8.examples.webhook.WebhookPlugin;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.node.TestJournalKey;
 import dev.rail8.testkit.Ports;
@@ -91,10 +90,13 @@ class WebhookPluginIT {
         return env;
     }
 
-    /** A plugin directory holding the sample's jar, as its own build packaged it. */
+    /**
+     * A plugin directory holding the sample's jar, as its own build packaged it; the build copies it to target/test-plugins, off
+     * the tests' class path, where the node would find it as a module.
+     */
     Path plugins() throws Exception {
-        Path jar = Path.of(WebhookPlugin.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-        assertTrue(jar.getFileName().toString().endsWith(".jar"), "the sample is resolved as its packaged jar: " + jar);
+        Path jar = Path.of("target/test-plugins/rail8-plugin-webhook.jar");
+        assertTrue(Files.isRegularFile(jar), "the build copied the sample's jar: " + jar.toAbsolutePath());
         Path plugins = Files.createDirectories(dir.resolve("plugins"));
         Files.copy(jar, plugins.resolve("webhook.jar"));
         return plugins;

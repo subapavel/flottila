@@ -14,6 +14,7 @@ import dev.rail8.api.StepFactory;
 import dev.rail8.api.StepResources;
 import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.api.plugin.Plugin;
+import dev.rail8.api.plugin.PluginSettings;
 import dev.rail8.api.settings.Field;
 import dev.rail8.api.settings.Settings;
 import io.vertx.core.Future;
@@ -224,15 +225,35 @@ public final class PluginFixtures {
         @Override public String api() { return API; }
     }
 
-    /** A plugin whose one component's scheme and one language's name are null. */
+    /** A plugin whose one component's scheme is null. */
     public static final class NullKeys implements Plugin {
         @Override public String name() { return "null-keys"; }
         @Override public String api() { return API; }
         @Override public List<Component> components(ComponentContext context) { return List.of(new Named(null, context)); }
+    }
+
+    /** A plugin whose one language's name is null. */
+    public static final class NullLanguage implements Plugin {
+        @Override public String name() { return "null-language"; }
+        @Override public String api() { return API; }
         @Override public List<Expressions> languages() { return List.of(new Language(null)); }
     }
 
-    /** A plugin named as the node's own set is. */
+    /** A plugin that brings the step {@code sign}, as {@link Acme} does. */
+    public static final class SignsToo implements Plugin {
+        @Override public String name() { return "signs-too"; }
+        @Override public String api() { return API; }
+        @Override public List<StepFactory> steps() { return List.of(new Step("sign")); }
+    }
+
+    /** A plugin that brings the language {@code upper}, as {@link Acme} does. */
+    public static final class UpperToo implements Plugin {
+        @Override public String name() { return "upper-too"; }
+        @Override public String api() { return API; }
+        @Override public List<Expressions> languages() { return List.of(new Language("upper")); }
+    }
+
+    /** A plugin named as the platform itself is. */
     public static final class NamedRail8 implements Plugin {
         @Override public String name() { return "rail8"; }
         @Override public String api() { return API; }
@@ -247,7 +268,14 @@ public final class PluginFixtures {
     /** A plugin built against the next api minor. */
     public static final class NextMinor implements Plugin {
         @Override public String name() { return "next-minor"; }
-        @Override public String api() { return "0.2"; }
+        @Override public String api() { return "0.3"; }
+    }
+
+    /** A plugin named {@code settled} whose one step's type is {@code depth-<n>}, {@code n} its setting {@code DEPTH}: 1 to 9, 5 unset. */
+    public static final class Settled implements Plugin {
+        @Override public String name() { return "settled"; }
+        @Override public String api() { return API; }
+        @Override public List<StepFactory> steps(PluginSettings settings) { return List.of(new Step("depth-" + settings.whole("DEPTH", 5, 1, 9))); }
     }
 
     /** A plugin whose api is no version. */

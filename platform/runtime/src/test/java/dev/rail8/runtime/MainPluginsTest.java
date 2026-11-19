@@ -13,6 +13,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -21,27 +22,33 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code Main.start} with the plugins of {@code RAIL8_PLUGINS}, where it ends before Postgres: a plugin directory, plugin, step
- * type or language that is refused refuses the configuration (2) before Vert.x starts; a plugin's component that is refused
- * stops the node's start (1) before it connects anywhere. Either way nothing is handed back and the plugins' class loaders are
- * closed again: the process holds none of their jars open.
+ * {@code Main.start} with its modules and the plugins of {@code RAIL8_PLUGINS}, where it ends before Postgres: a plugin
+ * directory, plugin, setting, step type or language that is refused refuses the configuration (2) before Vert.x starts; a
+ * plugin's component that is refused stops the node's start (1) before it connects anywhere. Either way nothing is handed back
+ * and the plugins' class loaders are closed again: the process holds none of their jars open.
  */
 class MainPluginsTest {
 
     @TempDir Path dir;
 
-    Map<String, String> env(Path plugins) {
-        return Map.of("RAIL8_ENV", "dev", "RAIL8_NODE_ID", "plugins-test", "RAIL8_DATA_DIR", dir.resolve("data").toString(),
-                "RAIL8_PLUGINS", plugins.toString());
+    Map<String, String> env(Path plugins, Map<String, String> more) {
+        Map<String, String> env = new HashMap<>(Map.of("RAIL8_ENV", "dev", "RAIL8_NODE_ID", "plugins-test", "RAIL8_DATA_DIR",
+                dir.resolve("data").toString(), "RAIL8_PLUGINS", plugins.toString()));
+        env.putAll(more);
+        return env;
     }
 
     record Run(Main.Started started, String err) {}
 
     Run start(Path plugins) {
+        return start(plugins, Map.of());
+    }
+
+    Run start(Path plugins, Map<String, String> more) {
         ByteArrayOutputStream err = new ByteArrayOutputStream();
         Main.Started started;
         try (PrintStream stream = new PrintStream(err, true, StandardCharsets.UTF_8)) {
-            started = OnVirtualThread.call(() -> Main.start(env(plugins), stream));
+            started = OnVirtualThread.call(() -> Main.start(env(plugins, more), stream));
         } catch (Exception e) {
             throw new AssertionError(e);
         }
@@ -89,14 +96,22 @@ class MainPluginsTest {
     void aPluginsStepTypeTheNodeShipsRefusesTheConfiguration() throws IOException {
         Run run = start(plugin("xslt.jar", PluginFixtures.ShippedStepType.class));
         assertEquals(2, run.started().code());
-        assertTrue(run.err().startsWith("rail8: configuration refused: plugin shipped-step: the step type xslt is rail8's already"), run.err());
+        assertTrue(run.err().startsWith("rail8: configuration refused: plugin shipped-step: the step type xslt is module xslt's already"), run.err());
+    }
+
+    @Test
+    void aModulesSettingOutOfItsRangeRefusesTheConfigurationNamingIt() throws IOException {
+        Run run = start(Files.createDirectories(dir.resolve("plugins")), Map.of("RAIL8_JQ_MAX_RECURSION_DEPTH", "4194305"));
+        assertEquals(2, run.started().code());
+        assertEquals("rail8: configuration refused: module jq: steps() failed: java.lang.IllegalArgumentException: "
+                + "RAIL8_JQ_MAX_RECURSION_DEPTH must be between 1 and 4194304, was 4194305" + System.lineSeparator(), run.err());
     }
 
     @Test
     void aPluginsComponentOfAShippedSchemeStopsTheStart() throws IOException {
         Run run = start(plugin("http.jar", PluginFixtures.ShippedScheme.class));
         assertEquals(1, run.started().code());
-        assertTrue(run.err().startsWith("rail8: the node did not start: ") && run.err().contains("plugin shipped-scheme: the scheme http is rail8's already"),
+        assertTrue(run.err().startsWith("rail8: the node did not start: ") && run.err().contains("plugin shipped-scheme: the scheme http is module http's already"),
                 run.err());
     }
 }

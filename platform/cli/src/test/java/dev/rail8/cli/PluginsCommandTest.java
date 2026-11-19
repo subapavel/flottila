@@ -96,7 +96,7 @@ class PluginsCommandTest {
         for (String command : List.of("validate", "test")) {
             Ran ran = run(command, PACKAGE.toString(), "--plugins", plugins.toString());
             assertEquals(2, ran.exit(), ran.toString());
-            assertEquals(List.of("rail8: plugins refused: plugin shipped-step: the step type xslt is rail8's already; a plugin adds and never replaces"),
+            assertEquals(List.of("rail8: plugins refused: plugin shipped-step: the step type xslt is module xslt's already; a plugin adds and never replaces"),
                     ran.errLines());
             assertEquals("", ran.out());
         }
@@ -114,6 +114,6 @@ class PluginsCommandTest {
         plugin("http.jar", CliPlugins.ShippedScheme.class);
         Ran ran = run("validate", PACKAGE.toString(), "--plugins", plugins.toString());
         assertEquals(1, ran.exit(), ran.toString());
-        assertEquals(List.of("problem: plugin shipped-scheme: the scheme http is rail8's already; a plugin adds and never replaces"), ran.problems());
+        assertEquals(List.of("problem: plugin shipped-scheme: the scheme http is module http's already; a plugin adds and never replaces"), ran.problems());
     }
 }

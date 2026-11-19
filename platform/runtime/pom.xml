@@ -59,6 +59,18 @@
               <includeScope>runtime</includeScope>
             </configuration>
           </execution>
+          <execution>
+            <!-- the sample plugin's jar, for WebhookPluginIT's RAIL8_PLUGINS; it stays off the tests' class path (below), where
+                 the node would find it as a module of its own build -->
+            <id>copy-test-plugins</id>
+            <phase>pre-integration-test</phase>
+            <goals><goal>copy-dependencies</goal></goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/test-plugins</outputDirectory>
+              <includeArtifactIds>rail8-plugin-webhook</includeArtifactIds>
+              <stripVersion>true</stripVersion>
+            </configuration>
+          </execution>
         </executions>
       </plugin>
       <plugin>
@@ -68,6 +80,7 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <excludes><exclude>**/*HeapTest.java</exclude></excludes>
+          <classpathDependencyExcludes><classpathDependencyExclude>dev.rail8.examples:rail8-plugin-webhook</classpathDependencyExclude></classpathDependencyExcludes>
         </configuration>
         <executions>
           <execution>
@@ -80,6 +93,13 @@
             </configuration>
           </execution>
         </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <classpathDependencyExcludes><classpathDependencyExclude>dev.rail8.examples:rail8-plugin-webhook</classpathDependencyExclude></classpathDependencyExcludes>
+        </configuration>
       </plugin>
       <plugin>
         <!-- MainProcessIT runs Main in a JVM of its own with the JaCoCo agent writing jacoco-main-process.exec (P1-09d3): merged
@@ -163,7 +183,7 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <!-- the sample adapter plugin: WebhookPluginIT starts a node with its jar in RAIL8_PLUGINS -->
+      <!-- the sample adapter plugin: WebhookPluginIT starts a node with its jar, copied to target/test-plugins, in RAIL8_PLUGINS -->
       <groupId>dev.rail8.examples</groupId>
       <artifactId>rail8-plugin-webhook</artifactId>
       <version>${project.version}</version>
@@ -177,40 +197,47 @@
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
-    <!-- the node (F-4): runtime.node validates packages with the schemas; runtime.Main, and no other runtime class
-         (archtest), wires the shipped http component, the xslt steps with the xpath language and the xsd step.
-         Components and steps depend on api only, so this is no reactor cycle. -->
+    <!-- runtime.node validates packages with the schemas -->
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-schemas</artifactId>
     </dependency>
+    <!-- the shipped modules, at runtime scope: on the node's class path and in target/lib, where the node finds them as
+         modules, never on the compile class path, so no runtime class can name one. They depend on api only. -->
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-step-xslt</artifactId>
+      <scope>runtime</scope>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-step-validate</artifactId>
+      <scope>runtime</scope>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-step-jq</artifactId>
+      <scope>runtime</scope>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-step-mapping</artifactId>
+      <scope>runtime</scope>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-http</artifactId>
+      <scope>runtime</scope>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-sftp</artifactId>
+      <scope>runtime</scope>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-direct</artifactId>
+      <scope>runtime</scope>
     </dependency>
     <!-- schema migrations at start (D-034): Flyway community + its Postgres module; Flyway needs JDBC, so the
          driver is a runtime dependency for this one purpose — everything else goes through the Vert.x client -->

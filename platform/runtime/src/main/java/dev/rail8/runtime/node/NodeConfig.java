@@ -86,15 +86,13 @@ import java.util.regex.Pattern;
  * @param journalCopies {@code RAIL8_JOURNAL_COPIES}: 1 or 2; unset 1 in dev and ci, 2 in every
  *                      deployed environment. A generated master key ({@code RAIL8_JOURNAL_KEY_GENERATE=true}) is one node's
  *                      alone, which no peer could read with: with more than one copy it is refused
- * @param jqMaxRecursionDepth {@code RAIL8_JQ_MAX_RECURSION_DEPTH} (10 000, 1..4 194 304): the live activations a run of a
- *                            {@code jq} step may hold when its flow sets no {@code maxRecursionDepth} of its own
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
                          long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
                          Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal,
                          MasterKeySource journalKey, SweepConfig journalSweep, IntakeGroup intakeGroup, Duration nodeLease,
-                         Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies, int jqMaxRecursionDepth) {
+                         Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies) {
 
     /**
      * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
@@ -168,24 +166,6 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException("RAIL8_PG_POOL_QUEUE " + pg.poolQueue() + " must be from 1 to " + POOL_QUEUE_MAX
                     + ": the most callers waiting per pool (D-132)");
         }
-        if (jqMaxRecursionDepth < 1 || jqMaxRecursionDepth > JQ_MAX_RECURSION_DEPTH_MAX) {
-            throw new IllegalArgumentException("RAIL8_JQ_MAX_RECURSION_DEPTH " + jqMaxRecursionDepth + " must be from 1 to " + JQ_MAX_RECURSION_DEPTH_MAX);
-        }
-    }
-
-    /** The recursion depth of a {@code jq} step when neither the installation nor the flow sets one: 10 000 live activations. */
-    public static final int JQ_MAX_RECURSION_DEPTH_DEFAULT = 10_000;
-
-    /** The deepest {@code RAIL8_JQ_MAX_RECURSION_DEPTH}: jq's own limit. */
-    private static final int JQ_MAX_RECURSION_DEPTH_MAX = 4_194_304;
-
-    /** A node whose {@code jq} steps have the default recursion depth (10 000), as {@link #from} reads an env without the key. */
-    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
-                      Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
-                      IntakeGroup intakeGroup, Duration nodeLease, Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
-                journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies, JQ_MAX_RECURSION_DEPTH_DEFAULT);
     }
 
     /**
@@ -288,8 +268,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
         return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention,
-                cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies,
-                jqMaxRecursionDepth);
+                cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies);
     }
 
     /** Every environment but {@code dev} and {@code ci} ({@code test} is deployed); a deployed node refuses a mock binding. */
@@ -718,8 +697,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
                 MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.intakePoolSize()), duration(env, "RAIL8_NODE_LEASE", NODE_LEASE_DEFAULT),
                 duration(env, "RAIL8_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT), retries(env), peer(env, nodeId),
-                (int) number(env, "RAIL8_JOURNAL_COPIES", deployed(name) ? COPIES_MAX : 1, 1, COPIES_MAX),
-                (int) number(env, "RAIL8_JQ_MAX_RECURSION_DEPTH", JQ_MAX_RECURSION_DEPTH_DEFAULT, 1, JQ_MAX_RECURSION_DEPTH_MAX));
+                (int) number(env, "RAIL8_JOURNAL_COPIES", deployed(name) ? COPIES_MAX : 1, 1, COPIES_MAX));
     }
 
     /** The {@code RAIL8_PEER_*} keys: each range-checked naming its key. */

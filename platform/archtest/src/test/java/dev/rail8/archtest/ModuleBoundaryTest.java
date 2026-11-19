@@ -1,7 +1,5 @@
 package dev.rail8.archtest;
 
-import com.tngtech.archunit.core.domain.Dependency;
-import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -9,8 +7,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -63,26 +59,21 @@ class ModuleBoundaryTest {
     }
     @Test void onlyRuntimeTouchesStoreClients() { Rules.ONLY_RUNTIME_TOUCHES_STORE_CLIENTS.check(tree); }
     @Test void rail8PackagesAreFreeOfCycles() { Rules.NO_CYCLES.check(tree); }
-    @Test void onlyMainWiresComponentsAndStepsInRuntime() { Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS.check(tree); }
+    @Test void noRuntimeClassNamesAComponentOrStep() { Rules.RUNTIME_NAMES_NO_COMPONENT_OR_STEP.check(tree); }
+    @Test void theCliNamesNoComponentOrStepButTheMockAndTheHttpComponent() { Rules.CLI_NAMES_NO_COMPONENT_OR_STEP.check(tree); }
     @Test void noRuntimeClassNamesTheMock() { Rules.RUNTIME_NEVER_NAMES_THE_MOCK.check(tree); }
     @Test void onlyThePeerLinkUsesVertxNetTypes() { Rules.ONLY_THE_PEER_LINK_OPENS_RAW_TCP.check(tree); }
 
     /**
-     * The exemption of {@link Rules#ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS} is used, not idle: the production Main exists and
-     * wires the shipped http component, the xslt steps with the xpath language, the xsd step, the jq step and the mapping step.
+     * The two rules on naming a component or step check the node's entry point, the CLI and the seven modules that ship with the
+     * platform, not an empty set: all are on the archtest classpath.
      */
-    @Test void mainIsTheWiringPointOfHttpXsltXsdJqAndMapping() {
-        assertTrue(tree.contain(Rules.MAIN), "runtime has its wiring point " + Rules.MAIN);
-        Set<String> wired = new TreeSet<>();
-        for (JavaClass c : tree) {
-            if (!Rules.THE_WIRING_POINT.test(c)) continue;
-            for (Dependency d : c.getDirectDependenciesFromSelf()) {
-                String target = d.getTargetClass().getPackageName();
-                if (target.startsWith("dev.rail8.components.") || target.startsWith("dev.rail8.steps.")) wired.add(target);
-            }
+    @Test void theEntryPointTheCliAndTheShippedModulesAreOnTheArchtestClasspath() {
+        for (String c : List.of("dev.rail8.runtime.Main", "dev.rail8.runtime.plugin.Plugins", "dev.rail8.cli.Cli",
+                "dev.rail8.components.direct.DirectPlugin", "dev.rail8.components.http.HttpPlugin", "dev.rail8.components.sftp.SftpPlugin",
+                "dev.rail8.steps.jq.JqPlugin", "dev.rail8.steps.mapping.MappingPlugin", "dev.rail8.steps.validate.XsdPlugin",
+                "dev.rail8.steps.xslt.XsltPlugin")) {
+            assertTrue(tree.contain(c), "the production tree holds " + c);
         }
-        assertTrue(wired.containsAll(Set.of("dev.rail8.components.http", "dev.rail8.steps.xslt", "dev.rail8.steps.validate", "dev.rail8.steps.jq",
-                        "dev.rail8.steps.mapping")),
-                "Main wires http, xslt/xpath, xsd, jq and mapping; it names: " + wired);
     }
 }
