@@ -1,6 +1,8 @@
 package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.CallForm;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
@@ -43,6 +45,21 @@ final class Closure {
   /** {@link #run}'s heap form: the body starts on the trampoline under {@code under}, in the same frame. */
   void start(Trampoline t, HeapForm under, Object in, HeapSink out) {
     t.start(body, under, frame(), in, out);
+  }
+
+  /** The path variant of {@link #run}: the body's path variant pushes the results for {@code in} at {@code at}. */
+  boolean runPath(RunState state, Object in, Path at, PathSink out) {
+    return body.runPath(state, frame(), in, at, out);
+  }
+
+  /** {@link #runPath} with this frame as the starter: the body's path variant runs on a new trampoline. */
+  boolean drivePath(RunState state, Object in, Path at, PathSink out) {
+    return Trampoline.runPath(state, body, frame(), in, at, out);
+  }
+
+  /** {@link #runPath}'s heap form: the body's path variant starts on the trampoline under {@code under}. */
+  void startPath(Trampoline t, HeapForm under, Object in, Path at, HeapPathSink out) {
+    t.startPath(body, under, frame(), in, at, out);
   }
 
   /** The frames the body nests from its root to an emit no call's result leads to. */

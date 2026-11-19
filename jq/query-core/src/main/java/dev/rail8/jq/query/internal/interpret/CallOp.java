@@ -2,6 +2,8 @@ package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.CallForm;
 import dev.rail8.jq.query.run.FilterException;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
@@ -16,6 +18,10 @@ import dev.rail8.jq.query.run.Sink;
  * <p>Each body entry is a loop: when the body returns with a {@link JumpOp}'s jump pending from the activation's
  * frame, the loop takes it, clearing it, and runs the callee's body in the callee's frame in the same activation, with
  * the same units, until a body returns with no jump of its own pending.
+ *
+ * <p>The path variant is push form whatever the call's run form: the body runs by its path variant at the input's path,
+ * which the frame keeps in its input-path cell, and its results go straight on. A jump's callee runs at the path the
+ * jump wrote into the frame it left.
  */
 public final class CallOp extends Op {
   private final LiftedFunction fn;
@@ -119,6 +125,40 @@ public final class CallOp extends Op {
   }
 
   /**
+   * The path variant of {@link #run}, in push form whatever the call's run form: the body runs by its path variant at
+   * {@code at}, kept in the frame's input-path cell, a starter's on a new trampoline, and each jump's callee at the path
+   * the jump left in its frame.
+   */
+  @Override
+  public boolean runPath(RunState state, Object[] slots, Object in, Path at, PathSink out) {
+    Object[] frame = fn.frame(values, closures, slots, in);
+    frame[fn.pathCell()] = at;
+    boolean starts = enter(state);
+    long held = starts ? units + starter : units;
+    try {
+      Op body = fn.body();
+      Object input = in;
+      Path path = at;
+      while (true) {
+        // The body runs here, not in a helper: one Java frame per level, the layout the stack bytes per unit assume.
+        boolean more = starts ? Trampoline.runPath(state, body, frame, input, path, out) : body.runPath(state, frame, input, path, out);
+        if (state.jumpFrame() != frame) {
+          return more;
+        }
+        JumpOp jump = (JumpOp) state.jumpTarget();
+        input = state.jumpInput();
+        state.clearJump();
+        frame = jump.framePath(frame, input);
+        path = (Path) frame[jump.fn().pathCell()];
+        body = jump.fn().body();
+      }
+    } finally {
+      state.removeUnits(held);
+      state.leave();
+    }
+  }
+
+  /**
    * The body entry both forms share: one step, one more live activation, then the call's units held. True when the
    * units held reach the run's unit limit: the call is a starter and holds {@code T} more.
    */
@@ -143,8 +183,21 @@ public final class CallOp extends Op {
     Object[] frame = fn.frame(values, closures, slots, in);
     t.state.tick();
     t.state.enter();
-    Active active = new Active(under, frame, out, valueForm);
+    Active active = new Active(under, frame, out, valueForm, null);
     t.start(fn.body(), active, frame, in, active.bodySink());
+  }
+
+  /**
+   * The heap form of {@link #runPath}: as {@link #start} in push form, the body started by its path variant at
+   * {@code at}, which the frame keeps in its input-path cell.
+   */
+  @Override
+  void startPath(Trampoline t, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    Object[] frame = fn.frame(values, closures, slots, in);
+    frame[fn.pathCell()] = at;
+    t.state.tick();
+    t.state.enter();
+    t.startPath(fn.body(), new Active(under, frame, null, false, out), frame, in, at, out);
   }
 
   /**
@@ -157,10 +210,16 @@ public final class CallOp extends Op {
    * the activation and then emits the value into {@code out} as the result of the form the call started under, so the
    * value's answer and every error raised downstream of it go there and never reach the callee. With no result it
    * answers there as the push form does.
+   *
+   * <p>In a path variant the body's results go to the call's path sink, and a jump's callee starts by its path variant
+   * at the path the jump left in its frame.
    */
   static final class Active extends HeapForm implements HeapSink {
-    /** Where the call's results go. */
+    /** Where the call's results go; null in a path variant. */
     private final HeapSink out;
+
+    /** Where the call's results go in a path variant; null outside one. */
+    private final HeapPathSink paths;
 
     /** Whether the call is value form: the body's result comes here and goes on once the activation ended. */
     private final boolean valueForm;
@@ -171,11 +230,12 @@ public final class CallOp extends Op {
     /** The value-form body's result, or {@link CallForm#NONE} while none came. */
     private Object value = CallForm.NONE;
 
-    Active(HeapForm under, Object[] frame, HeapSink out, boolean valueForm) {
+    Active(HeapForm under, Object[] frame, HeapSink out, boolean valueForm, HeapPathSink paths) {
       super(under);
       this.frame = frame;
       this.out = out;
       this.valueForm = valueForm;
+      this.paths = paths;
     }
 
     /** Where the running body sends its results: this form in value form, the call's {@code out} in push form. */
@@ -197,6 +257,11 @@ public final class CallOp extends Op {
         JumpOp jump = (JumpOp) state.jumpTarget();
         Object in = state.jumpInput();
         state.clearJump();
+        if (paths != null) {
+          frame = jump.framePath(frame, in);
+          t.startPath(jump.fn().body(), this, frame, in, (Path) frame[jump.fn().pathCell()], paths);
+          return;
+        }
         frame = jump.frame(frame, in);
         t.start(jump.fn().body(), this, frame, in, bodySink());
         return;

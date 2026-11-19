@@ -6,6 +6,8 @@ import dev.rail8.jq.query.analysis.Facts;
 import dev.rail8.jq.query.internal.interpret.Op;
 import dev.rail8.jq.query.internal.interpret.Trampoline;
 import dev.rail8.jq.query.run.CallForm;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 import dev.rail8.jq.query.run.Termination;
@@ -19,7 +21,7 @@ public final class Executable {
 
   private final Op root;
 
-  /** The number of slots a run needs, the parameter slots included. */
+  /** The number of cells main's frame has: its slots, the parameter slots included, then its hidden cells. */
   private final int slots;
 
   /** The number of parameter slots, slots {@code 0 .. parameters - 1}. */
@@ -120,6 +122,27 @@ public final class Executable {
       }
       Object v = root.eval(state, run, in);
       return v == CallForm.NONE || out.emit(v);
+    } catch (StackOverflowError _) {
+      throw Termination.stack();
+    }
+  }
+
+  /**
+   * The main tree's path variant with no parameter, as {@link #run} runs its run form: the results for {@code in}, from
+   * the root path, go into {@code out} each with its path. The tests compare it with {@link #run}.
+   */
+  boolean runPath(RunState state, Object in, PathSink out) {
+    if (parameters != 0) {
+      throw new IllegalArgumentException("the tree has " + parameters + " parameter slots; the run gave 0 values");
+    }
+    Object[] run = new Object[slots];
+    long unitLimit = StackUnits.unitLimit(state.stackBytes(), nesting.callFreeDepth());
+    state.limitUnits(unitLimit);
+    try {
+      if (unitLimit <= 0) {
+        return Trampoline.runPath(state, root, run, in, Path.ROOT, out);
+      }
+      return root.runPath(state, run, in, Path.ROOT, out);
     } catch (StackOverflowError _) {
       throw Termination.stack();
     }

@@ -1,6 +1,8 @@
 package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.FilterException;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
@@ -8,7 +10,8 @@ import dev.rail8.jq.query.run.Sink;
  * A call activation of a real closure: the closure in cell {@code cell} of the frame {@code level} links out from the
  * running one, a closure cell of the function's frame, runs on the input in the scope it was written in. It ticks one
  * step, then adds one to the activation count until the closure's run ends, as a {@link CallOp}'s activation does: on
- * the trampoline a termination ends the run with the activation still counted.
+ * the trampoline a termination ends the run with the activation still counted. Its path variant runs the closure's
+ * by the same steps, at the input's path.
  */
 public final class ParamCallOp extends Op {
   private final int level;
@@ -52,6 +55,26 @@ public final class ParamCallOp extends Op {
     }
   }
 
+  /** The path variant of {@link #run}: the closure runs by its path variant at {@code at}. */
+  @Override
+  public boolean runPath(RunState state, Object[] slots, Object in, Path at, PathSink out) {
+    Closure closure = (Closure) Frames.out(slots, level)[cell];
+    state.tick();
+    state.enter();
+    long held = units + closure.emitDepth();
+    boolean starts = state.addUnits(held);
+    if (starts) {
+      state.addUnits(starter);
+      held += starter;
+    }
+    try {
+      return starts ? closure.drivePath(state, in, at, out) : closure.runPath(state, in, at, out);
+    } finally {
+      state.removeUnits(held);
+      state.leave();
+    }
+  }
+
   /** Never called: a ParamCall is never eligible for the value form. */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {
@@ -64,6 +87,14 @@ public final class ParamCallOp extends Op {
     t.state.tick();
     t.state.enter();
     closure.start(t, new Active(under), in, out);
+  }
+
+  @Override
+  void startPath(Trampoline t, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    Closure closure = (Closure) Frames.out(slots, level)[cell];
+    t.state.tick();
+    t.state.enter();
+    closure.startPath(t, new Active(under), in, at, out);
   }
 
   /**

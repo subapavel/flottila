@@ -1,13 +1,16 @@
 package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.CallForm;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
  * The step of a loop: takes the state slot's value v, leaving null, and runs the update on v, its own input ignored;
  * each result is stored in the slot, then emitted. A retried alternative around it finds the slot as the
- * failed attempt left it: nothing is rolled back. No step of its own.
+ * failed attempt left it: nothing is rolled back. No step of its own. In a path variant the update runs in path mode
+ * on the state, which is untracked, and each result goes on untracked.
  */
 public final class AdvanceOp extends Op {
   private final int slot;
@@ -62,6 +65,37 @@ public final class AdvanceOp extends Op {
         (d, producer, u) -> {
           slots[slot] = u;
           d.emit(out, producer, u);
+        });
+  }
+
+  @Override
+  public boolean runPath(RunState state, Object[] slots, Object in, Path at, PathSink out) {
+    Object v = slots[slot];
+    slots[slot] = null;
+    return update.runPath(
+        state,
+        slots,
+        v,
+        null,
+        (u, p) -> {
+          slots[slot] = u;
+          return out.emit(u, null);
+        });
+  }
+
+  @Override
+  void startPath(Trampoline t, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    Object v = slots[slot];
+    slots[slot] = null;
+    t.startPath(
+        update,
+        under,
+        slots,
+        v,
+        null,
+        (d, producer, u, p) -> {
+          slots[slot] = u;
+          d.emitPath(out, producer, u, null);
         });
   }
 }

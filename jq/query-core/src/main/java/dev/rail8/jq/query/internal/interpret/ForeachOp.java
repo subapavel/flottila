@@ -1,12 +1,16 @@
 package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.CallForm;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
  * {@code foreach}: for each result of the init, the state slot takes it and {@code each} runs on the input, emitting
- * each of its results; a stop or a break passes at once. No step of its own.
+ * each of its results; a stop or a break passes at once. No step of its own. In a path variant the init and
+ * {@code each} run at the Foreach's own path, the init's paths dropped, since the state stays untracked, and each result
+ * of {@code each} goes on with its own path.
  */
 public final class ForeachOp extends Op {
   private final Op init;
@@ -83,6 +87,33 @@ public final class ForeachOp extends Op {
         (d, producer, r) -> {
           slots[slot] = r;
           d.start(each, producer, slots, in, out);
+        });
+  }
+
+  @Override
+  public boolean runPath(RunState state, Object[] slots, Object in, Path at, PathSink out) {
+    return init.runPath(
+        state,
+        slots,
+        in,
+        at,
+        (r, p) -> {
+          slots[slot] = r;
+          return each.runPath(state, slots, in, at, out);
+        });
+  }
+
+  @Override
+  void startPath(Trampoline t, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    t.startPath(
+        init,
+        under,
+        slots,
+        in,
+        at,
+        (d, producer, r, p) -> {
+          slots[slot] = r;
+          d.startPath(each, producer, slots, in, at, out);
         });
   }
 }

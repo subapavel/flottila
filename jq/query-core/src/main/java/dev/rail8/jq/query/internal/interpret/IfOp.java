@@ -1,6 +1,8 @@
 package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.CallForm;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 import dev.rail8.jq.query.run.Truth;
@@ -10,7 +12,8 @@ import dev.rail8.jq.query.run.Truth;
  * truth holds for it and {@code e} when it does not, and a stop in a branch ends the condition too. A value-form
  * condition returns its value, which runs the branch after the condition returned; in the conservative compile a tail
  * condition runs into a {@link Holder} first to the same end; any other condition runs the branch inside its emit. Each
- * branch runs in its run form. No step of its own.
+ * branch runs in its run form. No step of its own. In a path variant the condition runs as here, in value mode, and the
+ * branch runs at the If's own path.
  */
 public final class IfOp extends Op {
   private final Op cond;
@@ -106,6 +109,31 @@ public final class IfOp extends Op {
   @Override
   void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
     t.start(cond, under, slots, in, (d, producer, v) -> d.start(branch(v), producer, slots, in, out));
+  }
+
+  @Override
+  public boolean runPath(RunState state, Object[] slots, Object in, Path at, PathSink out) {
+    Object v;
+    if (cond.valueForm) {
+      v = cond.eval(state, slots, in);
+      if (v == CallForm.NONE) {
+        return true;
+      }
+    } else if (tail) {
+      Holder holder = new Holder();
+      if (cond.run(state, slots, in, holder)) {
+        return true;
+      }
+      v = holder.take();
+    } else {
+      return cond.run(state, slots, in, c -> branch(c).runPath(state, slots, in, at, out));
+    }
+    return branch(v).runPath(state, slots, in, at, out);
+  }
+
+  @Override
+  void startPath(Trampoline t, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    t.start(cond, under, slots, in, (d, producer, v) -> d.startPath(branch(v), producer, slots, in, at, out));
   }
 
   private Op branch(Object v) {

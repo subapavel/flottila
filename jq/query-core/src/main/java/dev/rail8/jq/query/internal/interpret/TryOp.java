@@ -2,6 +2,8 @@ package dev.rail8.jq.query.internal.interpret;
 
 import dev.rail8.jq.query.run.CallForm;
 import dev.rail8.jq.query.run.FilterException;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathSink;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
@@ -10,7 +12,8 @@ import dev.rail8.jq.query.run.Sink;
  * them, so when an error leaves the body, one of depth above 0 is unwrapped and raised again, and one of depth 0, the
  * body's own, ends the body and runs the handler on its value. The handler runs outside the catch,
  * so its errors propagate. A break or a stop is a false, which passes at once; a Termination is no FilterException.
- * Entering the handler charges no step.
+ * Entering the handler charges no step. In a path variant the body runs at the Try's own path and the handler on the
+ * error's value, which was not found in the input, untracked.
  */
 public final class TryOp extends Op {
   private final Op body;
@@ -74,28 +77,67 @@ public final class TryOp extends Op {
 
   @Override
   void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
-    Body form = new Body(under, slots, out);
+    Body form = new Body(under, slots, out, null);
     t.start(body, form, slots, in, form);
+  }
+
+  @Override
+  public boolean runPath(RunState state, Object[] slots, Object in, Path at, PathSink out) {
+    FilterException caught;
+    try {
+      return body.runPath(state, slots, in, at, (v, p) -> downstream(out, v, p));
+    } catch (FilterException e) {
+      if (e.depth() > 0) {
+        e.unwrap();
+        throw e;
+      }
+      caught = e;
+    }
+    return handler.runPath(state, slots, caught.value(), null, out);
+  }
+
+  /** {@link #downstream(Sink, Object)} in a path variant: the result goes on with its path {@code p}. */
+  private static boolean downstream(PathSink out, Object v, Path p) {
+    try {
+      return out.emit(v, p);
+    } catch (FilterException e) {
+      e.wrap();
+      throw e;
+    }
+  }
+
+  @Override
+  void startPath(Trampoline t, HeapForm under, Object[] slots, Object in, Path at, HeapPathSink out) {
+    Body form = new Body(under, slots, null, out);
+    t.startPath(body, form, slots, in, at, form);
   }
 
   /**
    * The heap form while the body runs, and the body's sink: each result goes on above a {@link Downstream} of its own.
    * An error that reaches it of depth above 0 is unwrapped and passes on; one of depth 0, the body's own, ends the body
-   * and starts the handler on its value in the Try's place.
+   * and starts the handler on its value in the Try's place. In a path variant the results go on into {@code paths}
+   * with their paths, and the handler runs untracked.
    */
-  private final class Body extends HeapForm implements HeapSink {
+  private final class Body extends HeapForm implements HeapSink, HeapPathSink {
     private final Object[] slots;
     private final HeapSink out;
+    private final HeapPathSink paths;
 
-    Body(HeapForm under, Object[] slots, HeapSink out) {
+    Body(HeapForm under, Object[] slots, HeapSink out, HeapPathSink paths) {
       super(under);
       this.slots = slots;
       this.out = out;
+      this.paths = paths;
     }
 
     @Override
     public void accept(Trampoline t, HeapForm producer, Object v) {
       t.emit(out, new Downstream(producer), v);
+    }
+
+    @Override
+    public void accept(Trampoline t, HeapForm producer, Object v, Path p) {
+      t.emitPath(paths, new Downstream(producer), v, p);
     }
 
     @Override
@@ -110,7 +152,11 @@ public final class TryOp extends Op {
         t.raise(under, e);
         return;
       }
-      t.start(handler, under, slots, e.value(), out);
+      if (paths != null) {
+        t.startPath(handler, under, slots, e.value(), null, paths);
+      } else {
+        t.start(handler, under, slots, e.value(), out);
+      }
     }
   }
 
