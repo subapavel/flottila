@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { foreign } from '../../../server/adminProxy.ts';
 import { readFlow, saysFlow } from '../flows/flowYaml.ts';
 import { EndpointFileError, readEndpoint } from './endpointYaml.ts';
-import { createFile, etagOf, jsonBody, locate, MAX_FILE_BYTES, Refusal, replaceFile, send, sendFailure, walk } from './workingFolder.ts';
+import { createFile, etagOf, jsonBody, locate, MAX_FILE_BYTES, Refusal, replaceFile, send, sendFailure, walk } from '../../../server/workingFolder.ts';
 
 /** The working folder whose flow files the flow screen draws, and who may reach them. */
 export interface FlowFilesOptions {

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { flowFiles, type FlowFilesOptions } from './flowFiles';
-import { etagOf, MAX_FILE_BYTES } from './workingFolder';
+import { etagOf, MAX_FILE_BYTES } from '../../../server/workingFolder';
 
 const origins = ['http://localhost:5173'];
 const page = { 'sec-fetch-site': 'same-origin', origin: 'http://localhost:5173' };
