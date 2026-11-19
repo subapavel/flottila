@@ -62,8 +62,9 @@ declare function follow(path: Path, ops: readonly Op[]): Path | null;
 ```
 
 The screen keeps the text of its working copy. Unsaved changes are a text that differs from the one
-read. Undo keeps the last 100 texts. The selection is a path, carried through every edit by `follow`, so
-it stays on its step when other steps move; after an undo it is kept while its path is still in the view.
+read. Undo keeps the last 100 texts. The selection is the `path` of the node selected, carried through
+every edit by `follow`, so it stays on its step when other steps move; after an undo it is kept while its
+path is still in the view.
 
 ### The working folder's flow files
 
@@ -76,7 +77,7 @@ pages only), the same walk of the folder, the same limits (1,000 files, 16 folde
 | Route | Answer |
 | --- | --- |
 | `GET /files/flows` | `{configured, editable, truncated, items}`: each file of `kind: flow` as `{path, id}`, or `{path, problem}` when it cannot be read |
-| `GET /files/flows/<path>` | `{path, text, editable, context}` with the file's `ETag` |
+| `GET /files/flows/<path>` | `{path, text, editable, context}` with the file's `ETag`; the context holds `endpoints` and `flows` |
 | `PUT /files/flows/<path>` `{text}` with `If-Match` | writes the text and answers as `GET` |
 | `PUT /files/flows/<path>` `{text}` with `If-None-Match: *` | creates the file (from the stage "the rest") |
 
@@ -112,8 +113,8 @@ interface FlowContext {
 }
 ```
 
-`steps` comes from the node's `GET /admin/steps` (below), read through the UI's `/admin` proxy at the
-same time as the file.
+The development server answers `endpoints` and `flows`. The browser adds `steps` from the node's
+`GET /admin/steps` (below), read through the UI's `/admin` proxy at the same time as the file.
 
 ### Reading: `view`
 
@@ -130,9 +131,9 @@ interface FlowView {
 type Path = readonly (string | number)[];   // where a value stands in the file: ['steps', 2, 'xpath']
 
 interface FlowNode {
-  id: string;           // its path as a JSON Pointer: '/steps/2'; with a suffix for a node drawn for a step: '/steps/4#calls'
+  id: string;           // path as a JSON Pointer, with a suffix for a node drawn beside it: '/steps/2', '/steps/4#calls'
   kind: 'from' | 'step' | 'destination' | 'flow' | 'end' | 'lane' | 'group';
-  path: Path;           // the step it comes from: ['steps', 2], ['processes', 'enrichOrder', 'steps', 0]
+  path: Path;           // what it is drawn for: ['steps', 2], ['steps', 3, 'endpoints', 'domestic'], ['from']
   runsAs: string[];     // at most 8 of the names its runs have in a message's history: 'validate'; 'enrich/map'
   runs: number;         // how many names it runs under, counted without listing them
   type?: string;
@@ -167,12 +168,20 @@ The kinds of edge tell apart what a message does:
 | `process` | from a `process` call to its process's lane, run in place |
 | `calls` | from a `to` to another flow, through a `direct` endpoint |
 
-A node's id is the path it is drawn for, written as a JSON Pointer. A step, a destination
-(`/steps/3/endpoints/domestic`) and a lane (`/processes/enrich/steps`) each stand at a path of their own,
-and a process's step is drawn once, so ids are unique in a view. A node drawn beside a path takes a
-suffix: `#calls` for the flow a `to` calls, `#ends` for a filter's end, `#end` for the end of a list. A
-move changes the ids of the steps it shifts, and the selection follows its step through `follow`. A
-step's label is its effective name: its `name`, else its default.
+A node's `path` is what it is drawn for: a step, a destination (`['steps', 3, 'endpoints',
+'domestic']`), a lane (its list, `['processes', 'enrich', 'steps']`), or `['from']`. Its id is that path
+written as a JSON Pointer. A node drawn beside a path takes the path and a suffix in its id:
+
+- `#calls` for the flow a `to` calls;
+- `#ends` for a filter's end;
+- `#end` for the end of a list;
+- `#each` for the frame of a split, on the split's path. A split in a process also frames the rest of
+  each list that calls the process, and that frame is on the call's path.
+
+A process's step is drawn once, so ids are unique in a view. A click on a node with a suffix selects the
+node of its path, or opens what it links to. A move changes the ids of the steps it shifts, and the
+selection follows its step through `follow`. A step's label is its effective name: its `name`, else its
+default.
 
 ### Writing: `edit`
 
@@ -209,8 +218,7 @@ How the text is changed:
   - A new key goes after the mapping's last key, or before the `}` of a one-line mapping.
 - **A new step** copies the style of the step before it in its list, else the one after it, else block
   style. It is written on one line, `{ … }`, when that step is and the line fits in 100 characters. Its
-  keys go in this order: `type`, `name`, the step's own settings in the order its form shows them,
-  `retryable`, `recording`. It takes the list's indentation.
+  keys are written in the value's order. It takes the list's indentation.
 - **A moved step** keeps its text, re-indented by one shift when the two lists are indented differently.
 - **A new value** is written plain only where both the browser's reader and the node's would read it as
   the same text. Otherwise it is written double-quoted. Numbers and true or false are written as they
@@ -254,17 +262,19 @@ says why. Anywhere else, only an edit whose span holds such a form is refused.
 #### The flow file's own rules
 
 `edit` writes only what the operations hold: it never writes a step's default name, and it never adds
-a key of its own. It refuses removing the last step of a list, and removing a process that a step still
-calls.
+a key of its own. It refuses any operation that leaves a list of steps empty, a `remove` or a `move`
+alike, and removing a process that a step still calls.
 
 #### Building the operations
 
 A few pure functions beside `edit` build the operations from the current view, so screen code writes no
 path by hand:
 
-- **Adding a step.** When the new step has no name and its default name is taken in its list, the
-  operation carries `name: <default>-<n>`, with the smallest free n from 2. The older step keeps its
-  name, and its history rows stay findable. The default is cut so that the name fits in 64 characters.
+- **Adding a step.** Its value's keys come in this order: `type`, `name`, the step's own settings in
+  the order its form shows them, `retryable`, `recording`. When the new step has no name and its
+  default name is taken in its list, the value carries `name: <default>-<n>`, with the smallest free n
+  from 2. The older step keeps its name, and its history rows stay findable. The default is cut so that
+  the name fits in 64 characters.
 - **Moving and deleting a step.** A `move` or a `remove` of its path.
 - **Setting a field.** Emptying an optional field removes its key. A required field keeps its key, and
   empty text is its value: a route's rule with `set: ""` sets the prop to empty.
@@ -288,8 +298,9 @@ same file always gives the same picture.
 - **`from`.** The top node: the inbound endpoint's id and scheme, and the address of a `direct` one.
 - **A step** is a node with its label and type, and one setting as its detail, such as a stylesheet.
 - **`route`.** One node in the line of steps, listing its rules (`when → set`, `otherwise`) and the prop
-  it sets. The flow does not fork at a route: every message goes on to the next step. A route only sets
-  a prop, which a later `to` reads.
+  it sets. The flow does not fork at a route: a message goes on to the next step, except that a message
+  no rule matches fails there when the route has no `otherwise`. A route only sets a prop, which a later
+  `to` reads.
 - **`to` with `endpoint`.** One node with the endpoint and its scheme.
 - **`to` with `byProp`.** Today the only fork: a column of one destination node per entry of
   `endpoints`, side by side in the file's order, each reached by a `choice` edge:
@@ -334,7 +345,7 @@ interface StepSettings extends Omit<SettingsDescription, 'fields'> {
   fields: StepField[];
 }
 type StepField =
-  | SettingsField                                                         // text, secret, integer, boolean, choice
+  | (SettingsField & { emptyAllowed?: boolean })                          // text, secret, integer, boolean, choice
   | (Omit<SettingsField, 'type'> & { type: 'list'; item: StepField[] })   // ordered rows, each of these fields
   | (Omit<SettingsField, 'type'> & { type: 'map'; key: { pattern?: string }; value: StepField });
 ```
@@ -348,25 +359,27 @@ description stays as it is; these two types are the UI's own, for step forms onl
 - **`map`.** Rows of a key and its value, in the file's order, shown as a table. Each key is unique and
   matches `pattern`.
 
+A text field marked `emptyAllowed` takes empty text as a value, and the check accepts it there: a route's
+`set` and `otherwise` are such fields, as the node takes them empty.
+
 Both are shown read-only until the stage "the rest", which edits them. A row's change is an `add`,
 `replace`, `remove` or `move` on its path, as any other field's.
 
 The description of a step comes from one of these sources:
 
 1. **Built-in steps** (`to`, `route`, `filter`, `extractKey`, `validate`, `split`, `process`).
-   - They are described in the UI.
+   - They are described in the UI, with the `language` of their expressions where the node takes one
+     (`route`, `filter`, `extractKey`, `validate`, `split`).
    - The choices of `to`'s `endpoint` and of `process`'s `process` are filled from the context and the
      file.
    - A test checks these descriptions against the flow schema and the node's rules: the keys each type
      requires, the keys it takes (a `process` call takes only `type`, `name` and `process`), and each
      field's type and pattern.
 2. **Steps of modules and plugins** (`xslt`, `xsd`, `jq`, `mapping` and a plugin's types).
-   - Their `configSchema`, from `GET /admin/steps`, describes the keys the node hands the step: all of
-     them but `type`, `name` and `retryable`. It becomes fields:
+   - Their `configSchema`, from `GET /admin/steps`, describes the keys the node checks against it: all
+     of them but `type`, `name`, `retryable` and `recording`. It becomes fields:
      - a string becomes text with its pattern, and a string with an `enum` a choice;
-     - an integer becomes a whole number with its bounds, and a boolean a switch;
-     - an array whose items are an object of such properties becomes a list;
-     - an object whose `additionalProperties` is one of them becomes a map.
+     - an integer becomes a whole number with its bounds, and a boolean a switch.
 
      `description`, `default` and `required` carry over.
    - Any other property becomes a raw field.
@@ -404,9 +417,11 @@ editor can break, as it meets them while it draws:
 - **References.** A step names an endpoint of the package and a process of the flow. A `direct`
   endpoint's address is one that a flow serves.
 - **Processes.** No process calls itself, and calls nest at most 8 deep.
-- **Keys.** A built-in type's required keys are there, and it has no key it does not take.
+- **Keys.** A built-in type's required keys are there. A key no field describes is a problem only where
+  the type closes its keys: a `process` call takes no key but `type`, `name` and `process`, and a step
+  of a module or plugin no key that its `configSchema` closes out with `additionalProperties: false`.
 - **Settings.** Each step's settings are checked against its description, as the endpoint form checks
-  an endpoint's.
+  an endpoint's, apart from the rule on undescribed keys above.
 
 The rules of names and processes repeat the node's own. One file of cases, each a flow and the problems
 it must give, is run by the node's test and by `view`'s test, so the two cannot drift apart silently, as
@@ -414,9 +429,8 @@ the endpoint form's checks share their cases with the node today. The built-in t
 against the flow schema.
 
 The flow's own settings cannot be edited before the stage "the rest", whose form checks them in the same
-way. The browser repeats no other rule of the node: the reserved prefix `rail8.`, the 1,024 steps of an
-expanded flow, and the rules of `delivery`, `limits` and `retry` are left to `rail8 validate` and the
-deploy.
+way. The browser repeats no other rule of the node: the 1,024 steps of an expanded flow and the rules of
+`delivery`, `limits` and `retry` are left to `rail8 validate` and the deploy.
 
 Check lists every problem in one place. Save stays possible with problems, as on the Endpoints screen,
 since a file may have them when it opens: Save is refused only while a field holds text it cannot turn
@@ -429,11 +443,11 @@ into a value. `rail8 validate` and the deploy stay the authority.
 - **A `schemaVersion` other than 1.** The file is drawn when it can be, and opens read-only, saying why.
 - **A step that is no mapping with a text `type`.** It is drawn in its place as a step with a problem,
   locked.
-- **Anchors, aliases, tags, merge keys, a second document, or `steps` written as `[ … ]`.** Operations
-  on the spans that hold them are refused, with the reason on the node. An edit elsewhere still works.
+- **Anchors, aliases, tags, merge keys or a second document.** Operations on the spans that hold them
+  are refused, with the reason on the node. An edit elsewhere still works.
 - **A plain value the node would read differently from the browser.** The node reads YAML with Jackson,
-  by YAML 1.1 rules, but keeps `yes`, `no`, `on`, `off`, `y` and `n` as text. `0o17`, `1_000` or a date
-  are examples. Such a value is a problem, and its key is locked.
+  by YAML 1.1 rules, but keeps `yes`, `no`, `on`, `off`, `y` and `n` as text. `0o17` and `1_000` are
+  examples. Such a value is a problem, and its key is locked.
 - **A key used twice in one mapping.** A problem; that mapping is locked.
 - **Unknown keys, unknown step types and unknown top-level keys.** They are shown raw and kept byte for
   byte.
@@ -460,7 +474,7 @@ come as work of its own. The editor is built so that its coming changes little:
   Which keys of a step hold lists of steps is part of the built-in step's description in the UI
   (`stepLists`, patterns such as `['when', '*', 'steps']`); no step has one today. `view` walks every
   list it finds, to any depth within the limits. What holds for a list holds for a nested one: a step's
-  span and its comments, new and moved steps, default names, unique names, the last step.
+  span and its comments, new and moved steps, default names, unique names, and a list never left empty.
 - **Ids and the selection.** A node's id is its path, so a nested step's id is its path too, such as
   `/steps/3/when/0/steps/1`. When two conditions swap, `follow` carries the selection to the step's new
   path, so it stays on the step and not on the place.
@@ -472,8 +486,7 @@ come as work of its own. The editor is built so that its coming changes little:
   added, moved and deleted on the canvas as in any list, and moved between a branch and the line around
   it, which a `move` between lists does today.
 - **What its coming changes.** The step's description, with its `stepLists` and its fields; how its node
-  is drawn; the name its steps run under in a message's history (`runsAs`); whether a branch may be
-  empty; and the tests. `view`'s walk, the layout's blocks, the ids, the paths, `edit`, `follow` and the
+  is drawn; the name its steps run under in a message's history (`runsAs`); and the tests. `view`'s walk, the layout's blocks, the ids, the paths, `edit`, `follow` and the
   problems stay as they are.
 - **What its own design decides.** What a `split` inside a branch repeats, and how a branch ends. The
   picture frames the rest of a split's own list, whichever list that is.
@@ -554,12 +567,11 @@ listed. It is behind the same browser rule and token as every other `/admin` rou
    - Edit, Check and Save, and `PUT` with `If-Match`.
    - The forms' fields editable, except `list` and `map` fields.
 3. **The rest.**
-   - `list` and `map` fields editable: the routes of a `route`, the `endpoints` of a `to`, and those of
-     the steps of modules and plugins.
+   - `list` and `map` fields editable: the routes of a `route` and the `endpoints` of a `to`.
    - Processes in their lanes: adding, renaming and deleting a process, and moving steps between lanes.
    - A call of another flow: a `to` a `direct` out endpoint whose address the flow called serves.
      - When no such endpoint file exists, it is created first, as a save of its own: the endpoint files'
-       route gains `PUT` with `If-None-Match: *`.
+       route gains `PUT` with `If-None-Match: *`, taking `{text}` that `edit('', …)` writes.
      - Then the flow is saved.
      - Cancel leaves a created endpoint file in place: it is listed, and unused.
    - A new flow from nothing.
