@@ -23,6 +23,7 @@
        components and steps depend on api only; testkit on api (F-1); core's tests use the testkit; cli on api + testkit. -->
   <modules>
     <module>api</module>
+    <module>ingress</module>
     <module>testkit</module>
     <module>core</module>
     <module>runtime</module>
@@ -88,6 +89,11 @@
       <dependency>
         <groupId>dev.rail8</groupId>
         <artifactId>rail8-api</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.rail8</groupId>
+        <artifactId>rail8-ingress</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

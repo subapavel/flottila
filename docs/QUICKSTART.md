@@ -39,7 +39,7 @@ java -Dquarkus.http.port=18080 -Drail8.mapping.workspace=$HOME/rail8-mapping-wor
 
 ```sh
 mkdir -p ~/rail8-workspace && cp -r examples/demo ~/rail8-workspace/demo   # once: the packages the endpoint forms edit
-cd ui && QUARKUS_HTTP_PORT=18080 RAIL8_WORKSPACE=$HOME/rail8-workspace npm run dev   # port 18080: the demo's http-in already uses 8080
+cd ui && QUARKUS_HTTP_PORT=18080 RAIL8_WORKSPACE=$HOME/rail8-workspace npm run dev   # port 18080: the node's HTTP port already uses 8080
 ```
 
 Open **http://localhost:5173**. The UI has **Messages**, the list of the messages the node recorded, **Endpoints**, the
@@ -101,10 +101,17 @@ once), with the same token exported in the UI's terminal.
 If the node does not start after a pull, the database volume may be from an older checkout. `docker compose down -v`
 removes this stack's database and archives; start again from `docker compose up`, then deploy the demo again.
 
+A package deployed by an older checkout can be listed FAILED after a pull when its endpoint files name an option the node
+no longer takes. For example, an `http` in endpoint now names its `address` (`/in`, served at `localhost:8080/http/in`),
+no longer a `host`, `port` or `path`. The node's restore keeps the package as it was deployed, so deploy it again from
+the checkout with `deploy/quickstart/deploy.sh examples/demo`. The UI's copy keeps the old files too: copy the changed
+ones over it, such as `cp examples/demo/endpoints/http-in*.yaml ~/rail8-workspace/demo/endpoints/`. This drops any edits
+of your own in those files.
+
 ## Seeing it work
 
 ```sh
-curl -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/in
+curl -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/http/in
 ```
 
 The flow validates the invoice, keys it by `invoiceId`, routes it by currency, maps it with XSLT and sends it to the
@@ -135,12 +142,12 @@ The list's statuses are completed, failed (parked after its retries, or a step o
 at-least-once message queued, waiting for its retry or running) and cancelled (ended by an operator). A message is
 listed by the start of its arrival, so a flow whose recording level is `errors` or `off` lists none.
 
-A foreign invoice takes the other route: `sed -e 's/4711/4712/' -e 's/CZK/EUR/' examples/demo/fixtures/sample-invoice.xml | curl -X POST --data-binary @- -H 'Content-Type: application/xml' localhost:8080/in`.
+A foreign invoice takes the other route: `sed -e 's/4711/4712/' -e 's/CZK/EUR/' examples/demo/fixtures/sample-invoice.xml | curl -X POST --data-binary @- -H 'Content-Type: application/xml' localhost:8080/http/in`.
 
 The flow `demo/invoice-async` takes the same invoice at least once: it answers `202` after saving it, and a worker sends it on.
 
 ```sh
-curl -i -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8082/invoice/async
+curl -i -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/http/invoice/async
 ```
 
 In **Messages** choose the flow `demo/invoice-async`: the invoice is its top row, Completed once the worker has sent it to the
@@ -163,7 +170,7 @@ The `demo/order-jq` flow turns a JSON order with a jq filter: it keeps the order
 partner.
 
 ```sh
-curl -X POST --data-binary @examples/demo/fixtures/sample-order.json -H 'Content-Type: application/json' localhost:8084/order
+curl -X POST --data-binary @examples/demo/fixtures/sample-order.json -H 'Content-Type: application/json' localhost:8080/http/order
 ```
 
 The reply is the partner's echo of what it was sent: `{"orderId":42,"customer":"Acme Corp","total":50}`. In the UI's

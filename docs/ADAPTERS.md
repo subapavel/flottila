@@ -35,7 +35,7 @@ bin/rail8 new-adapter ~/acme-adapter --scheme acme --package com.acme.rail8
 ```
 
 The folder must not exist or be empty. The scheme is a lower-case letter followed by lower-case letters and digits, and no
-scheme the node already has (`http`, `sftp`, `mock`); the package defaults to `com.example.<scheme>`. The skeleton is the
+scheme the node already has (`http`, `sftp`, `mock`) nor `rail8`; the package defaults to `com.example.<scheme>`. The skeleton is the
 sample under the new names:
 
 | File | What it is |
@@ -48,6 +48,18 @@ sample under the new names:
 | `src/test/java/…/AcmeComponentTest.java` | what the suite leaves to the component: its own answers and refusals |
 | `package/` | a package that uses the adapter: an in endpoint, an out endpoint, a flow, a test case and a fixture |
 
+The adapter's own address on the node's HTTP port is its prefix, `/<scheme>` in the template (`Component.httpPrefix()`), as
+`/http` is the http adapter's: the node opens one HTTP port, shared by every adapter that takes HTTP requests, and routes a
+request by its path. An in endpoint names the rest of the path in its `address` option, so the template's `address: /orders`
+is served at `/acme/orders`; the consumer mounts it on the port when it starts (`ComponentContext.http()`) and closes the
+mount when it stops. A prefix that another adapter on the node declares, or `/rail8`, refuses the node's start, and
+`rail8 validate --plugins` reports it; two flows at one path are refused at deploy. An adapter that takes no HTTP requests
+declares no prefix.
+
+An adapter runs inside the node as trusted code, and every adapter's requests share the node's event loops. The mount's
+handler is called on an event loop, so it must never block there: the template pauses the request, streams its body into
+the blob store and runs the flow on the message's own virtual thread. Keep that order when you add your protocol.
+
 It builds and passes the contract suite as written; it speaks HTTP. The comments marked `HTTP:` in the component are where
 your protocol goes; the rest (the body streamed through the blob store, the handler's acknowledgement, the deadline, the
 stop) is what every adapter keeps. Then change the settings description to your options, and the package's endpoint
@@ -55,8 +67,8 @@ files with it.
 
 A consumer that loses its connection after its start fails `broken()` with the cause; leave the waiting and the next
 attempt to the node, which stops the consumer and starts a fresh one of the same endpoint after a delay that grows with
-each failure in a row. A consumer that cannot break once started, such as a listener whose bind is its start, as in the
-sample, keeps the default.
+each failure in a row. A consumer that cannot break once started, such as one that mounts its endpoint on the node's HTTP
+port, as in the sample, keeps the default.
 
 ## Test it
 
@@ -74,15 +86,16 @@ bin/run-adapter ~/acme-adapter
 
 It builds the adapter's jar, starts an empty Postgres of its own in Docker, starts a node with the adapter's
 `target/plugin` as its plugins (admin API on `127.0.0.1:18081`), deploys `package/`, starts a partner that answers every
-request with the body it was sent on `127.0.0.1:18091`, and runs the UI on **http://localhost:5173**. The ports 18081,
-18091 and 5173 must be free; the quickstart's node may keep running, its UI may not.
+request with the body it was sent on `127.0.0.1:18091`, and runs the UI on **http://localhost:5173**. The node's HTTP
+port, where the adapter's in endpoints are served, is `127.0.0.1:18090`. The ports 18081, 18090, 18091 and 5173 must be
+free; the quickstart's node may keep running, its UI may not.
 
 - **Endpoints** lists the endpoint files of the adapter's folder, which is the run's working folder. An endpoint's form is
   drawn from your settings description. Edit, change a setting, Check, and Save writes the file in your folder.
 - **Send a test message** through the adapter. For the template's package, from another terminal:
 
   ```sh
-  curl -X POST --data-binary @$HOME/acme-adapter/package/fixtures/order.xml -H 'Content-Type: application/xml' localhost:18090/orders
+  curl -X POST --data-binary @$HOME/acme-adapter/package/fixtures/order.xml -H 'Content-Type: application/xml' localhost:18090/acme/orders
   ```
 
   The flow keys the order by its id and sends it out through the adapter's producer to the partner, whose answer is the

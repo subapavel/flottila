@@ -55,8 +55,25 @@ public interface Component {
     Future<Health> health();
 
     /**
-     * The local host and port a consumer of {@code cfg} binds, if it accepts connections; empty if it polls, subscribes or
-     * connects out. Answered from {@code cfg} alone — already checked against {@link #settings()} — as an unresolved address
+     * The component's own address on the node's HTTP port ({@link dev.rail8.api.plugin.HttpIngress}): {@code /} and one segment
+     * of {@link dev.rail8.api.plugin.HttpIngress#PREFIX_PATTERN}, such as {@code /http} or {@code /webhook}. An in endpoint of
+     * the component is served at this prefix followed by its {@code address} option. Empty, the default: no consumer of it takes
+     * requests on that port. It is the same on every call. The node reads it at its start, once its components are built, and
+     * so do {@code rail8 validate} and {@code rail8 test}. A throw, a prefix not of that form,
+     * {@link dev.rail8.api.plugin.HttpIngress#RESERVED_PREFIX}, a prefix another component declares, or a prefix without
+     * {@link dev.rail8.api.plugin.HttpIngress#ADDRESS} among the in fields of {@link #settings()} refuses the node's start,
+     * naming the owners.
+     *
+     * @since 0.3
+     */
+    default Optional<String> httpPrefix() {
+        return Optional.empty();
+    }
+
+    /**
+     * The local host and port a consumer of {@code cfg} binds, if it accepts connections on a port of its own; empty if it polls,
+     * subscribes, connects out or takes requests on the node's HTTP port ({@link #httpPrefix()}). Answered from {@code cfg}
+     * alone — already checked against {@link #settings()} — as an unresolved address
      * ({@link InetSocketAddress#createUnresolved}, the host as configured): nothing is bound and no name is resolved. Port 0
      * (any free port) is never compared. The node calls it at deploy and at restore, on a virtual thread, to refuse two
      * listeners on one host:port; a throw is a problem line of that deploy.

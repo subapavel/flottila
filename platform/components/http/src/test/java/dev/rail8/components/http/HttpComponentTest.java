@@ -8,8 +8,8 @@ import dev.rail8.api.Headers;
 import dev.rail8.api.Health;
 import dev.rail8.api.NackException;
 import dev.rail8.api.Producer;
+import dev.rail8.ingress.SharedHttpPort;
 import dev.rail8.testkit.FakeRuntime;
-import dev.rail8.testkit.Ports;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -27,10 +27,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
-import java.io.IOException;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -52,16 +48,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class HttpComponentTest {
 
     static Vertx vertx;
+    static SharedHttpPort port;
     static HttpClientAgent raw;
     static Context rawContext;
     final FakeRuntime rt = FakeRuntime.create();
-    final HttpComponent http = new HttpComponent(vertx, rt.blobs(), rt.ids());
+    final HttpComponent http = new HttpComponent(vertx, rt.blobs(), rt.ids(), onVertx(), port);
     final List<Consumer> started = new CopyOnWriteArrayList<>();
     final List<HttpServer> servers = new CopyOnWriteArrayList<>();
+
+    /** A timer on Vert.x timers: the producers' bounded sends are cut in real time, as with the three-argument constructor. */
+    static dev.rail8.api.Timer onVertx() {
+        return (delay, task) -> {
+            long id = vertx.setTimer(Math.max(1, delay.toMillis()), fired -> task.run());
+            return () -> vertx.cancelTimer(id);
+        };
+    }
 
     @BeforeAll
     static void start() {
         vertx = Vertx.vertx();
+        port = SharedHttpPort.loopback(vertx, Map.of("http", HttpComponent.PREFIX)).await();
         raw = vertx.createHttpClient();
         rawContext = vertx.getOrCreateContext();
     }
@@ -69,6 +75,7 @@ class HttpComponentTest {
     @AfterAll
     static void stop() {
         raw.close().await();
+        port.close().await();
         vertx.close().await();
     }
 
@@ -79,7 +86,7 @@ class HttpComponentTest {
     }
 
     HttpComponent.HttpConsumer listen(Function<Envelope, Future<Ack>> handler, long maxBodyBytes) {
-        EndpointConfig in = new EndpointConfig("http-in", URI.create("http://127.0.0.1:0/in"), Map.of("port", 0, "path", "/in", "flow", "invoice-sync", "maxBodyBytes", maxBodyBytes));
+        EndpointConfig in = new EndpointConfig("http-in", URI.create("http://http-in"), Map.of("address", "/in", "flow", "invoice-sync", "maxBodyBytes", maxBodyBytes));
         HttpComponent.HttpConsumer c = (HttpComponent.HttpConsumer) http.consumer(in, handler);
         c.start().await();
         started.add(c);
@@ -102,6 +109,11 @@ class HttpComponentTest {
         return answer.future();
     }
 
+    /** The port the consumer's mount is on; -1 when it has none. */
+    static int portOf(HttpComponent.HttpConsumer c) {
+        return c.url().map(URI::getPort).orElse(-1);
+    }
+
     Answer post(int port, String path, Buffer body, Map<String, String> headers) {
         return exchange(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + path), req -> {
             headers.forEach(req::putHeader);
@@ -118,8 +130,8 @@ class HttpComponentTest {
             onVirtual.add(Thread.currentThread().isVirtual());
             return Future.succeededFuture(new Ack.Reply(e.next(rt.store(e, Buffer.buffer("<Ack/>"))).withHeader("content-type", "application/xml").withHeader("x-flow", e.flow())));
         }, 4096);
-        assertTrue(c.port() > 0, "an ephemeral port was taken");
-        Answer a = post(c.port(), "/in", Buffer.buffer("<Invoice/>"), Map.of("Content-Type", "application/xml", "X-Request-Id", "r-1"));
+        assertEquals(Optional.of(URI.create("http://127.0.0.1:" + port.port() + "/http/in")), c.url(), "mounted on the shared port under /http");
+        Answer a = post(portOf(c), "/http/in", Buffer.buffer("<Invoice/>"), Map.of("Content-Type", "application/xml", "X-Request-Id", "r-1"));
         assertEquals(200, a.status());
         assertEquals("<Ack/>", a.body().toString());
         assertEquals("application/xml", a.headers().get("content-type"));
@@ -132,7 +144,7 @@ class HttpComponentTest {
         assertEquals("r-1", in.headers().get("x-request-id"), "header names arrive lower-cased");
         assertEquals("application/xml", in.headers().get("content-type"));
         assertEquals(Optional.of("POST"), in.get(HttpComponent.METHOD));
-        assertEquals(Optional.of("/in"), in.get(HttpComponent.PATH));
+        assertEquals(Optional.of("/http/in"), in.get(HttpComponent.PATH), "the request's whole path");
         assertEquals(List.of(true), onVirtual, "the handler runs on the message's virtual thread, never on the socket's event loop");
         assertEquals(Health.Status.UP, http.health().await().status());
     }
@@ -146,20 +158,20 @@ class HttpComponentTest {
             case "throw" -> throw new IllegalStateException("validation failed at step 'validate'");
             default -> Future.failedFuture(new IllegalStateException("partner down"));
         }, 4096);
-        Answer accepted = post(c.port(), "/in", Buffer.buffer("x"), Map.of("x-case", "accept"));
+        Answer accepted = post(portOf(c), "/http/in", Buffer.buffer("x"), Map.of("x-case", "accept"));
         assertEquals(202, accepted.status());
         assertTrue(accepted.headers().get(HttpComponent.H_MESSAGE_ID).startsWith("m-"), "the message id travels back: " + accepted.headers().get(HttpComponent.H_MESSAGE_ID));
-        Answer busy = post(c.port(), "/in", Buffer.buffer("x"), Map.of("x-case", "busy"));
+        Answer busy = post(portOf(c), "/http/in", Buffer.buffer("x"), Map.of("x-case", "busy"));
         assertEquals(503, busy.status());
         assertEquals("1", busy.headers().get("retry-after"));
         assertTrue(busy.body().toString().contains("admission"));
-        Answer bad = post(c.port(), "/in", Buffer.buffer("x"), Map.of("x-case", "bad"));
+        Answer bad = post(portOf(c), "/http/in", Buffer.buffer("x"), Map.of("x-case", "bad"));
         assertEquals(400, bad.status());
         assertEquals("no invoice id", bad.body().toString());
-        Answer thrown = post(c.port(), "/in", Buffer.buffer("x"), Map.of("x-case", "throw"));
+        Answer thrown = post(portOf(c), "/http/in", Buffer.buffer("x"), Map.of("x-case", "throw"));
         assertEquals(500, thrown.status());
         assertTrue(thrown.body().toString().contains("validation failed"), thrown.body().toString());
-        Answer failed = post(c.port(), "/in", Buffer.buffer("x"), Map.of("x-case", "fail"));
+        Answer failed = post(portOf(c), "/http/in", Buffer.buffer("x"), Map.of("x-case", "fail"));
         assertEquals(500, failed.status());
         assertTrue(failed.body().toString().contains("partner down"));
     }
@@ -180,21 +192,21 @@ class HttpComponentTest {
     void theBodyLimitIs413WrongPathIs404WrongMethodIs405() {
         List<Envelope> seen = new CopyOnWriteArrayList<>();
         CountingStore store = new CountingStore(rt.blobs());
-        HttpComponent counted = new HttpComponent(vertx, store, rt.ids());
-        EndpointConfig in = new EndpointConfig("http-in", URI.create("http://127.0.0.1:0/in"), Map.of("port", 0, "path", "/in", "flow", "invoice-sync", "maxBodyBytes", 16L));
+        HttpComponent counted = new HttpComponent(vertx, store, rt.ids(), onVertx(), port);
+        EndpointConfig in = new EndpointConfig("http-in", URI.create("http://http-in"), Map.of("address", "/in", "flow", "invoice-sync", "maxBodyBytes", 16L));
         HttpComponent.HttpConsumer c = (HttpComponent.HttpConsumer) counted.consumer(in, e -> { seen.add(e); return Future.succeededFuture(new Ack.Accepted(e.id())); });
         c.start().await();
         started.add(c);
-        Answer declared = post(c.port(), "/in", Buffer.buffer("x".repeat(17)), Map.of());
+        Answer declared = post(portOf(c), "/http/in", Buffer.buffer("x".repeat(17)), Map.of());
         assertEquals(413, declared.status(), "declared above the limit: refused before a byte is stored");
         assertEquals(0, store.streamingWrites.get(), "the store was never asked: the declared length is refused at the door");
-        Answer chunked = exchange(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + c.port() + "/in"),
+        Answer chunked = exchange(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + portOf(c) + "/http/in"),
                 req -> { req.setChunked(true); return req.send(Buffer.buffer("y".repeat(40))); }).await();
         assertEquals(413, chunked.status(), "undeclared length: the store stops at the limit");
         assertEquals(1, store.streamingWrites.get(), "undeclared: the store is asked and refuses at the limit");
-        assertEquals(202, post(c.port(), "/in", Buffer.buffer("x".repeat(16)), Map.of()).status(), "at the limit is fine");
-        assertEquals(404, post(c.port(), "/elsewhere", Buffer.buffer("x"), Map.of()).status());
-        Answer get = exchange(new RequestOptions().setMethod(HttpMethod.GET).setAbsoluteURI("http://127.0.0.1:" + c.port() + "/in"), HttpClientRequest::send).await();
+        assertEquals(202, post(portOf(c), "/http/in", Buffer.buffer("x".repeat(16)), Map.of()).status(), "at the limit is fine");
+        assertEquals(404, post(portOf(c), "/http/elsewhere", Buffer.buffer("x"), Map.of()).status(), "the port answers a path no endpoint serves");
+        Answer get = exchange(new RequestOptions().setMethod(HttpMethod.GET).setAbsoluteURI("http://127.0.0.1:" + portOf(c) + "/http/in"), HttpClientRequest::send).await();
         assertEquals(405, get.status());
         assertEquals("POST, PUT", get.headers().get("allow"));
         assertEquals(1, seen.size(), "only the body within the limit reached the handler");
@@ -202,76 +214,48 @@ class HttpComponentTest {
     }
 
     @Test
-    void limitsAreNeverDefaultedAndAStoppedConsumerFreesThePort() {
-        EndpointConfig noLimit = new EndpointConfig("in", URI.create("http://127.0.0.1:0/in"), Map.of("port", 0, "path", "/in"));
+    void limitsAreNeverDefaultedAndAStoppedConsumerFreesItsPath() {
+        EndpointConfig noLimit = new EndpointConfig("in", URI.create("http://in"), Map.of("address", "/in"));
         assertTrue(assertThrows(IllegalArgumentException.class, () -> http.consumer(noLimit, e -> Future.succeededFuture(new Ack.Accepted(e.id())))).getMessage().contains("maxBodyBytes"));
         EndpointConfig noReplyLimit = new EndpointConfig("out", URI.create("http://127.0.0.1:1/x"), Map.of("url", "http://127.0.0.1:1/x"));
         assertTrue(assertThrows(IllegalArgumentException.class, () -> http.producer(noReplyLimit)).getMessage().contains("maxBodyBytes"));
         HttpComponent.HttpConsumer c = listen(e -> Future.succeededFuture(new Ack.Accepted(e.id())), 4096);
-        int port = c.port();
         c.stop().await();
         started.remove(c);
-        assertEquals(-1, c.port());
+        assertEquals(Optional.empty(), c.url());
         assertEquals(Health.Status.DOWN, http.health().await().status());
-        Future<Answer> after = exchange(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + "/in"), req -> req.send(Buffer.buffer("x")));
-        after.otherwiseEmpty().await();
-        assertTrue(after.failed(), "connection refused: the port is free again");
-    }
-
-    // --- P1-09g (D-072): where a consumer would listen, answered from the config alone
-
-    /** A loopback port free right now: bound once and released. */
-    static int freePort() throws IOException {
-        return Ports.free();
-    }
-
-    static Optional<InetSocketAddress> where(String host, int port) {
-        return Optional.of(InetSocketAddress.createUnresolved(host, port));
-    }
-
-    static EndpointConfig in(String uri, Map<String, Object> options) {
-        return new EndpointConfig("http-in", URI.create(uri), options);
-    }
-
-    /**
-     * For a port set by option and one set by the endpoint's URI, listensOn answers loopback on that port, unresolved, and the
-     * consumer built from the same config, started, listens there: a POST to that address reaches it.
-     */
-    @Test
-    void listensOnIsWhereTheStartedConsumerBinds() throws IOException {
-        for (boolean byOption : List.of(true, false)) {
-            int free = freePort();
-            EndpointConfig cfg = byOption
-                    ? in("http://http-in/in", Map.of("host", "127.0.0.1", "port", free, "path", "/in", "flow", "f", "maxBodyBytes", 4096L))
-                    : in("http://127.0.0.1:" + free + "/in", Map.of("path", "/in", "flow", "f", "maxBodyBytes", 4096L));
-            String how = byOption ? "the port option" : "the URI's port";
-
-            Optional<InetSocketAddress> where = http.listensOn(cfg);
-
-            assertEquals(where("127.0.0.1", free), where, how);
-            assertTrue(where.get().isUnresolved(), how + ": unresolved, no DNS");
-            HttpComponent.HttpConsumer c = (HttpComponent.HttpConsumer) http.consumer(cfg, e -> Future.succeededFuture(new Ack.Accepted(e.id())));
-            c.start().await();
-            started.add(c);
-            assertEquals(where.get().getPort(), c.port(), how + ": the started consumer listens on the port listensOn answered");
-            assertEquals(202, post(where.get().getPort(), "/in", Buffer.buffer("x"), Map.of()).status(), how + ": and is reached at " + where.get());
-        }
+        assertEquals(404, post(port.port(), "/http/in", Buffer.buffer("x"), Map.of()).status(), "nothing serves the path any more");
+        HttpComponent.HttpConsumer again = listen(e -> Future.succeededFuture(new Ack.Accepted(e.id())), 4096);
+        assertEquals(202, post(portOf(again), "/http/in", Buffer.buffer("x"), Map.of()).status(), "the path is free for the next consumer at once");
     }
 
     @Test
-    void listensOnDefaultsToLoopbackAndUriPortElseZero() throws IOException {
-        assertEquals(where("127.0.0.1", 9000), http.listensOn(in("http://http-in/in", Map.of("port", 9000))), "no host option: loopback");
-        assertEquals(where("0.0.0.0", 9000), http.listensOn(in("http://http-in/in", Map.of("host", "0.0.0.0", "port", 9000))), "the host as configured");
-        assertEquals(where("127.0.0.1", 7000), http.listensOn(in("http://orders.example:7000/in", Map.of())),
-                "no port option: the URI's port; the URI's host is not where a consumer binds");
-        assertEquals(where("127.0.0.1", 9000), http.listensOn(in("http://http-in:7000/in", Map.of("port", 9000))), "the port option wins over the URI's");
-        assertEquals(where("127.0.0.1", 0), http.listensOn(in("http://http-in:7000/in", Map.of("port", 0))), "port 0 as configured wins too: any free port");
-        assertEquals(where("127.0.0.1", 0), http.listensOn(in("http://http-in", Map.of())), "neither: 0 (the URI a deploy builds has no port)");
-        try (ServerSocket held = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
-            assertEquals(where("127.0.0.1", held.getLocalPort()), http.listensOn(in("http://http-in/in", Map.of("port", held.getLocalPort()))),
-                    "answered from the config alone: nothing is bound, so a port another socket holds is answered as it is");
-        }
-        assertEquals(Health.Status.DOWN, http.health().await().status(), "no consumer was started");
+    void itsPrefixIsHttpItListensOnNoPortOfItsOwnAndItsAddressIsAnInOption() {
+        assertEquals(Optional.of("/http"), http.httpPrefix());
+        assertEquals(Optional.empty(), http.listensOn(new EndpointConfig("http-in", URI.create("http://http-in"), Map.of("address", "/in"))));
+        assertEquals(Map.of("http", "/http"), SharedHttpPort.prefixes(List.of(http)), "the node takes its prefix as it is");
+    }
+
+    @Test
+    void aSecondConsumerOfOnePathDoesNotStartUntilTheFirstStopped() {
+        HttpComponent.HttpConsumer first = listen(e -> Future.succeededFuture(new Ack.Accepted(e.id())), 4096);
+        EndpointConfig same = new EndpointConfig("other", URI.create("http://other"), Map.of("address", "/in", "flow", "other", "maxBodyBytes", 4096L));
+        Consumer second = http.consumer(same, e -> Future.succeededFuture(new Ack.Accepted(e.id())));
+        Future<Void> refused = second.start();
+        refused.otherwiseEmpty().await();
+        assertTrue(refused.failed(), "the path is held");
+        assertTrue(refused.cause().getMessage().contains("is mounted by endpoint 'http-in'"), refused.cause().getMessage());
+        assertEquals(Optional.of(URI.create("http://127.0.0.1:" + port.port() + "/http/in")), first.url());
+    }
+
+    @Test
+    void withoutAnHttpPortNoConsumerStarts() {
+        HttpComponent alone = new HttpComponent(vertx, rt.blobs(), rt.ids());
+        Future<Void> start = alone.consumer(new EndpointConfig("in", URI.create("http://in"), Map.of("address", "/in", "maxBodyBytes", 1L)),
+                e -> Future.succeededFuture(new Ack.Accepted(e.id()))).start();
+        start.otherwiseEmpty().await();
+        assertTrue(start.failed());
+        assertEquals("endpoint 'in': no HTTP port is open here", start.cause().getMessage());
     }
 
     HttpServer partner(Function<io.vertx.core.http.HttpServerRequest, Void> handler) {

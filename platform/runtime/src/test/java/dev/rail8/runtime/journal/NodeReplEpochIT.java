@@ -94,6 +94,7 @@ class NodeReplEpochIT {
         env.put("RAIL8_PEER_BIND", "127.0.0.1");
         env.put("RAIL8_PEER_HOST", "127.0.0.1");
         env.put("RAIL8_PEER_PORT", "0");
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_NODE_LEASE", "PT2S");
         env.put("RAIL8_NODE_LEASE_RENEW", "PT0.5S");
         TestJournalKey.with(env);   // the environment's master key: node-b's HELLO proves it as node-a's does (D-106)

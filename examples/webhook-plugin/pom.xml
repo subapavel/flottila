@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <!-- An adapter plugin, built with the development kit alone: rail8-api for the contract, rail8-testkit for the
-       contract suite and the mock. It has no parent; the node provides rail8-api and Vert.x core at run time, so the plugin
+       contract suite and the mock, rail8-ingress for the node's HTTP port in the tests. It has no parent; the node provides rail8-api and Vert.x core at run time, so the plugin
        jar holds only the plugin's own classes. `mvn package` writes the jar into target/plugin, a directory a node can load
        as RAIL8_PLUGINS. -->
   <groupId>dev.rail8.examples</groupId>
@@ -41,6 +41,13 @@
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-testkit</artifactId>
+      <version>${rail8.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- The node's shared HTTP port, which the tests mount the consumers on -->
+    <dependency>
+      <groupId>dev.rail8</groupId>
+      <artifactId>rail8-ingress</artifactId>
       <version>${rail8.version}</version>
       <scope>test</scope>
     </dependency>

@@ -1,8 +1,13 @@
 package dev.rail8.cli;
 
+import dev.rail8.runtime.node.NodeConfig;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.net.BindException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,6 +63,20 @@ final class CliRuns {
             }
         }
         return to;
+    }
+
+    /**
+     * The node's default HTTP port, {@code 127.0.0.1:8080}: the one a node config without {@code RAIL8_HTTP_HOST} and
+     * {@code RAIL8_HTTP_PORT} names, as validate's and test's do. The socket holds it bound until the caller closes it; null when
+     * another process holds it already, which leaves it taken all the same.
+     */
+    static ServerSocket holdTheDefaultHttpPort() throws IOException {
+        NodeConfig.Http http = NodeConfig.Http.DEFAULTS;
+        try {
+            return new ServerSocket(http.port(), 0, InetAddress.ofLiteral(http.host()));
+        } catch (BindException taken) {
+            return null;
+        }
     }
 
     /** {@code file} with each {@code from → to} of {@code rewrites} applied; every one must hit. */

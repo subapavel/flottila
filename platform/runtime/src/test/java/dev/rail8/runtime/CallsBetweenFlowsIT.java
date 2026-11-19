@@ -52,8 +52,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * of a chain carries the key {@code rail8.ref}, the id of the chain's first message, and the admin API finds them all by it. A
  * chain deeper than 8 calls is refused for good at the ninth: the first caller's sender gets 502 and the last flow never runs.
  *
- * <p>The node runs on its modules ({@link Plugins}), the shipped components and steps. Each sender is an http in endpoint on a
- * free loopback port; each partner a local HTTP server that records what it saw. Every case runs on a database of its own.
+ * <p>The node runs on its modules ({@link Plugins}), the shipped components and steps. Each sender is an http in endpoint at an
+ * address of its own on the node's HTTP port; each partner a local HTTP server that records what it saw. Every case runs on a database of its own.
  */
 class CallsBetweenFlowsIT {
 
@@ -102,6 +102,7 @@ class CallsBetweenFlowsIT {
         env.put("RAIL8_NODE_ID", "node-calls");
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", Files.createDirectories(data.resolve("node-calls")).toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -134,9 +135,9 @@ class CallsBetweenFlowsIT {
         return PackageDraft.of(name, "1.0.0");
     }
 
-    /** Adds the http in endpoint {@code id} on 127.0.0.1:{@code port}, path {@code /in}. */
-    static PackageDraft door(PackageDraft p, String id, int port) {
-        return p.endpoint(id, "http", "in", new JsonObject().put("host", "127.0.0.1").put("port", port).put("path", "/in"));
+    /** Adds the http in endpoint {@code id} at {@code address}: served at {@code /http<address>} on the node's HTTP port. */
+    static PackageDraft door(PackageDraft p, String id, String address) {
+        return p.endpoint(id, "http", "in", new JsonObject().put("address", address));
     }
 
     /** Adds the direct endpoint {@code id} of {@code direction} on {@code address}. */
@@ -169,8 +170,9 @@ class CallsBetweenFlowsIT {
         assertEquals(200, put.statusCode(), "fixture: the package " + p.name() + " deploys: " + put.body());
     }
 
-    static HttpResponse<String> post(int port, String body, String contentType) throws IOException, InterruptedException {
-        return NodeIT.send(NodeIT.http(), "POST", port, "/in", body.getBytes(StandardCharsets.UTF_8), contentType);
+    /** POSTs {@code body} to the http in endpoint at {@code address} on {@code node}'s HTTP port. */
+    static HttpResponse<String> post(Node node, String address, String body, String contentType) throws IOException, InterruptedException {
+        return NodeIT.send(NodeIT.http(), "POST", node.httpPort(), "/http" + address, body.getBytes(StandardCharsets.UTF_8), contentType);
     }
 
     /** The ids {@code GET /admin/messages?key=rail8.ref:<ref>} lists. */
@@ -232,7 +234,7 @@ class CallsBetweenFlowsIT {
     @Test
     void aSyncChainAnswersTheSenderAndEveryMessageOfItIsFoundByItsRef() throws Exception {
         Node node = startNode();
-        int door = NodeIT.freePort();
+        String door = "/in";
         PackageDraft shop = direct(door(pkg("shop"), "in", door), "pricing", "out", "/pricing")
                 .flow("front", "1.0.0", "sync", "in", 4096, steps(to("price", "pricing")));
         PackageDraft pricing = direct(direct(pkg("pricing"), "price-in", "in", "/pricing"), "tax", "out", "/tax")
@@ -241,7 +243,7 @@ class CallsBetweenFlowsIT {
         deploy(node, shop);   // before its callee: a call no flow serves is no refusal
         deploy(node, pricing);
 
-        HttpResponse<String> answer = post(door, "{\"id\": 7}", "application/json");
+        HttpResponse<String> answer = post(node, door, "{\"id\": 7}", "application/json");
 
         assertEquals(200, answer.statusCode(), answer.body());
         assertEquals(new JsonObject().put("id", 7).put("price", 100).put("vat", 20), new JsonObject(answer.body()), "the reply of the whole chain");
@@ -273,7 +275,7 @@ class CallsBetweenFlowsIT {
         List<String> saw = new CopyOnWriteArrayList<>();
         HttpServer partner = partner(saw, 0);
         Node node = startNode();
-        int door = NodeIT.freePort();
+        String door = "/in";
         PackageDraft shop = direct(door(pkg("shop"), "in", door), "audit", "out", "/audit")
                 .flow("front", "1.0.0", "sync", "in", 4096, steps(to("audited", "audit"), jq("done", ". + {done: true}")));
         PackageDraft audit = toPartner(direct(pkg("audit"), "audit-in", "in", "/audit"), "partner", partner)
@@ -281,7 +283,7 @@ class CallsBetweenFlowsIT {
         deploy(node, audit);
         deploy(node, shop);
 
-        HttpResponse<String> answer = post(door, "{\"id\": 8}", "application/json");
+        HttpResponse<String> answer = post(node, door, "{\"id\": 8}", "application/json");
 
         assertEquals(200, answer.statusCode(), answer.body());
         assertEquals(new JsonObject().put("id", 8).put("done", true), new JsonObject(answer.body()), "the caller went on with its message as it sent it");
@@ -301,7 +303,7 @@ class CallsBetweenFlowsIT {
         List<String> saw = new CopyOnWriteArrayList<>();
         HttpServer partner = partner(saw, 0);
         Node node = startNode();
-        int door = NodeIT.freePort();
+        String door = "/in";
         PackageDraft shop = direct(door(pkg("shop"), "in", door), "notify", "out", "/notify")
                 .flow("front", "1.0.0", "sync", "in", 4096, steps(to("notified", "notify")));
         PackageDraft notify = toPartner(direct(pkg("notify"), "notify-in", "in", "/notify"), "partner", partner)
@@ -309,7 +311,7 @@ class CallsBetweenFlowsIT {
         deploy(node, notify);
         deploy(node, shop);
 
-        HttpResponse<String> answer = post(door, "{\"id\": 9}", "application/json");
+        HttpResponse<String> answer = post(node, door, "{\"id\": 9}", "application/json");
 
         assertEquals(200, answer.statusCode(), answer.body());
         assertEquals(new JsonObject().put("id", 9), new JsonObject(answer.body()), "the caller's message as it sent it");
@@ -327,8 +329,8 @@ class CallsBetweenFlowsIT {
     @Test
     void aSyncCalleesInvalidInputAnswersTheSender422AndParksAnAtLeastOnceCaller() throws Exception {
         Node node = startNode();
-        int syncDoor = NodeIT.freePort();
-        int asyncDoor = NodeIT.freePort();
+        String syncDoor = "/in";
+        String asyncDoor = "/in-async";
         PackageDraft check = direct(pkg("check"), "check-in", "in", "/check")
                 .flow("order", "1.0.0", "sync", "check-in", 4096, steps(new JsonObject().put("type", "validate").put("name", "hasId").put("required", "/Order/Id")));
         PackageDraft shop = direct(door(door(pkg("shop"), "in", syncDoor), "in-async", asyncDoor), "check", "out", "/check")
@@ -338,12 +340,12 @@ class CallsBetweenFlowsIT {
         deploy(node, check);
         deploy(node, shop);
 
-        HttpResponse<String> fine = post(syncDoor, "<Order><Id>1</Id></Order>", "application/xml");
+        HttpResponse<String> fine = post(node, syncDoor, "<Order><Id>1</Id></Order>", "application/xml");
         assertEquals(200, fine.statusCode(), "control: a valid order passes the callee: " + fine.body());
-        HttpResponse<String> invalid = post(syncDoor, "<Order/>", "application/xml");
+        HttpResponse<String> invalid = post(node, syncDoor, "<Order/>", "application/xml");
         assertEquals(422, invalid.statusCode(), "the callee's invalid input is the sender's: " + invalid.body());
 
-        HttpResponse<String> accepted = post(asyncDoor, "<Order/>", "application/xml");
+        HttpResponse<String> accepted = post(node, asyncDoor, "<Order/>", "application/xml");
         assertEquals(202, accepted.statusCode(), accepted.body());
         String caller = messageId(accepted);
         int admin = node.adminPort();
@@ -368,7 +370,7 @@ class CallsBetweenFlowsIT {
         HttpServer calleePartner = partner(calleeSaw, 0);
         HttpServer callerPartner = partner(callerSaw, 1);   // 503 once: the caller's first run fails after its call
         Node node = startNode();
-        int door = NodeIT.freePort();
+        String door = "/in";
         PackageDraft audit = toPartner(direct(pkg("audit"), "audit-in", "in", "/audit"), "partner", calleePartner)
                 .flow("keep", "1.0.0", "at-least-once", "audit-in", 4096, steps(to("send", "partner")));
         PackageDraft shop = toPartner(direct(door(pkg("shop"), "in", door), "audit", "out", "/audit"), "partner", callerPartner)
@@ -377,7 +379,7 @@ class CallsBetweenFlowsIT {
         deploy(node, audit);
         deploy(node, shop);
 
-        HttpResponse<String> accepted = post(door, "{\"id\": 10}", "application/json");
+        HttpResponse<String> accepted = post(node, door, "{\"id\": 10}", "application/json");
 
         assertEquals(202, accepted.statusCode(), accepted.body());
         String caller = messageId(accepted);
@@ -419,7 +421,7 @@ class CallsBetweenFlowsIT {
     @Test
     void aChainDeeperThanEightCallsIsRefusedForGood() throws Exception {
         Node node = startNode();
-        int door = NodeIT.freePort();
+        String door = "/in";
         PackageDraft chain = door(pkg("chain"), "in", door);
         for (int i = 0; i <= 9; i++) {
             if (i > 0) chain = direct(chain, "d" + i + "-in", "in", "/d" + i);
@@ -429,7 +431,7 @@ class CallsBetweenFlowsIT {
         }
         deploy(node, chain);
 
-        HttpResponse<String> answer = post(door, "{\"id\": 11}", "application/json");
+        HttpResponse<String> answer = post(node, door, "{\"id\": 11}", "application/json");
 
         assertEquals(502, answer.statusCode(), "a final refusal of a partner: " + answer.body());
         assertTrue(answer.body().contains("more than the 8"), "the answer names the cap: " + answer.body());

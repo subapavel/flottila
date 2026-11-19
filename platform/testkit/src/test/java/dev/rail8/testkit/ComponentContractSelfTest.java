@@ -147,6 +147,9 @@ class ComponentContractSelfTest {
         java.util.function.Supplier<Settings> settings = () -> Settings.NONE;
 
         @Override public Settings settings() { return settings.get(); }
+        /** What {@link #httpPrefix} answers on each call; the correct variant declares none. */
+        java.util.function.Supplier<java.util.Optional<String>> prefix = java.util.Optional::empty;
+        @Override public java.util.Optional<String> httpPrefix() { return prefix.get(); }
 
         /** {@link #settings} answers {@code settings} on every call. */
         static Variant describedAs(Settings settings) { Variant v = correct(); v.settings = () -> settings; return v; }
@@ -432,6 +435,26 @@ class ComponentContractSelfTest {
                 "the consumer's endpoint lacks a required setting");
         assertEquals(Set.of("theEndpointsPassTheDescription"), failing(Variant.describedAs(Settings.of(Field.text("url", "Where to send.").required().out()))),
                 "the producer's endpoint lacks a required setting");
+    }
+
+    @Test
+    void aPrefixOfTheWrongFormUnstableOrWithoutTheAddressFailsOnlyItsCase() {
+        String prefixCase = "anHttpPrefixIsOfItsFormTheSameOnEveryCallAndItsSettingsListTheAddress";
+        for (String bad : java.util.List.of("loop", "/Loop", "/a/b", "/rail8")) {
+            Variant v = Variant.correct();
+            v.prefix = () -> java.util.Optional.of(bad);
+            assertEquals(Set.of(prefixCase), failing(v), bad);
+        }
+        Variant unstable = Variant.correct();
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        unstable.prefix = () -> java.util.Optional.of("/p" + calls.incrementAndGet());
+        assertEquals(Set.of(prefixCase), failing(unstable), "another prefix on every call");
+        Variant answersNull = Variant.correct();
+        answersNull.prefix = () -> null;
+        assertEquals(Set.of(prefixCase), failing(answersNull), "null instead of an Optional");
+        Variant noAddress = Variant.describedAs(Settings.of(Field.text("dir", "Where files go.")));
+        noAddress.prefix = () -> java.util.Optional.of("/loop");
+        assertEquals(Set.of(prefixCase), failing(noAddress), "a prefix, and no address among the settings");
     }
 
     @Test

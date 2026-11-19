@@ -57,7 +57,7 @@ public final class StreamHeapNode {
     static void serve(Map<String, String> env, InputStream asks, PrintStream answers) throws IOException {
         Vertx vertx = Vertx.vertx();
         try {
-            Node node = Node.start(NodeConfig.from(env), vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+            Node node = Node.start(NodeConfig.from(env), vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())),
                     List.of(new StreamCopy()), List.of());
             try {
                 answer(new BufferedReader(new InputStreamReader(asks, StandardCharsets.UTF_8)), answers);

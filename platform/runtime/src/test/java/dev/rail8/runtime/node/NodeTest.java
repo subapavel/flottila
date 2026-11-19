@@ -91,7 +91,7 @@ class NodeTest {
                 "RAIL8_PG_HOST", "127.0.0.1", "RAIL8_PG_PORT", String.valueOf(closedPort())));
         Set<String> before = Set.copyOf(vertx.deploymentIDs());
         IllegalStateException refused = assertThrows(IllegalStateException.class, () -> OnVirtualThread.call(() -> Node.start(config, vertx,
-                ctx -> List.of(new PlainComponent("jms"), new PlainComponent("http"), new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())), List.of(), List.of())));
+                ctx -> List.of(new PlainComponent("jms"), new PlainComponent("http"), new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())), List.of(), List.of())));
         String message = String.valueOf(refused.getMessage());
         assertTrue(message.contains(PlainComponent.class.getName()) && message.contains(HttpComponent.class.getName()),
                 "the refusal names both classes bound to http: " + message);

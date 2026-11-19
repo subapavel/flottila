@@ -120,6 +120,7 @@ class NodePoolRolesIT {
         env.put("RAIL8_NODE_ID", NODE);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", Files.createDirectories(data.resolve(NODE)).toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -131,16 +132,16 @@ class NodePoolRolesIT {
         return env;
     }
 
-    /** A node with the http component and the Saxon and XSD steps, invoice-async deployed on {@code inPort}, its partners a server no unparsable body reaches. */
-    Node startDeployed(HttpClient client, int inPort) throws Exception {
+    /** A node with the http component and the Saxon and XSD steps, invoice-async deployed at /http/in on its HTTP port, its partners a server no unparsable body reaches. */
+    Node startDeployed(HttpClient client) throws Exception {
         SaxonXml xml = new SaxonXml();
         NodeConfig config = NodeConfig.from(env());
-        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())),
                 Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
         nodes.add(node);
         HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.response().setStatusCode(500).end("not expected")).listen(0, "127.0.0.1").await();
         servers.add(partner);
-        InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + partner.actualPort())));
+        InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partner.actualPort())));
         return node;
     }
 
@@ -163,17 +164,16 @@ class NodePoolRolesIT {
         return count("select count(*) from pg_stat_activity where datname = $1 and application_name = $2 and wait_event_type = 'Lock'", database, WORK);
     }
 
-    HttpResponse<String> postNoXml(HttpClient client, int inPort) throws Exception {
-        return NodeIT.send(client, "POST", inPort, "/in", NO_XML, "application/xml");
+    HttpResponse<String> postNoXml(HttpClient client, Node node) throws Exception {
+        return NodeIT.send(client, "POST", node.httpPort(), "/http/in", NO_XML, "application/xml");
     }
 
     /** P3: every session of a 2 + 2 node names its role and the node; each pool within its share, one membership and one LISTEN connection. */
     @Test
     void everySessionNamesItsRole() throws Exception {
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
-            startDeployed(client, inPort);
-            HttpResponse<String> accepted = postNoXml(client, inPort);
+            Node node = startDeployed(client);
+            HttpResponse<String> accepted = postNoXml(client, node);
             assertEquals(202, accepted.statusCode(), "fixture: saved and queued: " + accepted.body());
             NodeIT.until(() -> count("select count(*) from dlq") == 1, "fixture: a worker ran it and parked it (the work pool was used)");
 
@@ -197,7 +197,7 @@ class NodePoolRolesIT {
     @Test
     void theListenSessionIsTheOneThatListens() throws Exception {
         try (HttpClient client = NodeIT.http()) {
-            startDeployed(client, NodeIT.freePort());
+            startDeployed(client);
             Map<String, List<String>> lastQuery = new TreeMap<>();
             for (Row r : observer.preparedQuery("select application_name, query from pg_stat_activity where datname = $1 and backend_type = 'client backend'"
                     + " and application_name in ($2, $3)").execute(Tuple.of(database, LISTEN, MEMBERSHIP)).await()) {
@@ -224,21 +224,20 @@ class NodePoolRolesIT {
     @Test
     void aSaturatedWorkPoolDoesNotDelayASave() throws Exception {
         try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
-            Node node = startDeployed(client, inPort);
+            Node node = startDeployed(client);
             PgConnection locker = PgConnection.connect(vertx, options("test-locker")).await();
             lockers.add(locker);
             locker.query("begin").execute().await();
             locker.query("lock table dlq in access exclusive mode").execute().await();
 
             for (int i = 1; i <= 3; i++) {
-                HttpResponse<String> accepted = postNoXml(client, inPort);
+                HttpResponse<String> accepted = postNoXml(client, node);
                 assertEquals(202, accepted.statusCode(), "message " + i + " saved and queued, whatever the parks before it hold: " + accepted.body());
             }
             NodeIT.until(() -> workWaitingOnALock() == 2, "two parks hold the work pool's two connections, waiting on the locked dlq: " + sessions());
             assertEquals(2L, sessions().getOrDefault(WORK, 0L), "the work pool is saturated at its share of 2: " + sessions());
 
-            HttpResponse<String> probe = postNoXml(client, inPort);
+            HttpResponse<String> probe = postNoXml(client, node);
             assertEquals(202, probe.statusCode(), "a save is accepted while the work pool is saturated: " + probe.body());
             String id = probe.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("a 202 names its message: " + probe.headers()));
             assertEquals(1, count("select count(*) from messages where id = $1 and step = 0", id), "its ingress row is committed at the 202");

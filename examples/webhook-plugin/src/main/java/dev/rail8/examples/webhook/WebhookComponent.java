@@ -16,6 +16,7 @@ import dev.rail8.api.NackException;
 import dev.rail8.api.Producer;
 import dev.rail8.api.Timer;
 import dev.rail8.api.Views;
+import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.api.settings.Field;
 import dev.rail8.api.settings.Settings;
 import io.vertx.core.AsyncResult;
@@ -29,13 +30,10 @@ import io.vertx.core.http.HttpClientAgent;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.HttpServer;
-import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 
-import java.net.InetSocketAddress;
 import java.net.URI;
 import java.time.Duration;
 import java.util.HashMap;
@@ -49,16 +47,16 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
 /**
- * The {@code webhook} component: a consumer that takes HTTP POSTs on a path and a producer that POSTs to a URL, over the
- * Vert.x HTTP server and client.
+ * The {@code webhook} component: a consumer that takes HTTP POSTs on the node's HTTP port and a producer that POSTs to a URL,
+ * over the Vert.x HTTP client.
  *
- * <p><b>Consumer</b> (options {@code host}, default 127.0.0.1; {@code port}, default 0, any free port, see
- * {@link WebhookConsumer#port()}; {@code path}, default {@code /}; and {@code flow} and {@code maxBodyBytes}, which the node sets).
- * A POST to the path is streamed into the blob store, refused with 413 above {@code maxBodyBytes}, and handed to the flow's
- * handler as a new message, on a virtual thread of its own. The handler's {@link Ack} is the answer: {@code Accepted} 202 with
- * the message id in {@code x-message-id}, {@code Reply} 200 with the reply's headers and body, a retryable {@code Nack} 503 and
- * a final one 400, both with the reason as the body. A handler that fails is 500 with its message. Another path is 404, another
- * method 405. Once {@link Consumer#stop()} began, a request is 503 and the handler is not called.
+ * <p><b>Consumer</b> (options {@code address}, required, the path under the prefix {@value #PREFIX} that senders call, see
+ * {@link WebhookConsumer#url()}; and {@code flow} and {@code maxBodyBytes}, which the node sets). Its start mounts the endpoint on
+ * the node's HTTP port, its stop closes the mount. A POST to the endpoint's path is streamed into the blob store, refused with 413
+ * above {@code maxBodyBytes}, and handed to the flow's handler as a new message, on a virtual thread of its own. The handler's
+ * {@link Ack} is the answer: {@code Accepted} 202 with the message id in {@code x-message-id}, {@code Reply} 200 with the reply's
+ * headers and body, a retryable {@code Nack} 503 and a final one 400, both with the reason as the body. A handler that fails is
+ * 500 with its message. Another method is 405. Once {@link Consumer#stop()} began, a request is 503 and the handler is not called.
  *
  * <p><b>Producer</b> (options {@code url}, required; {@code maxBodyBytes}, required, the most a reply may hold;
  * {@code timeoutMs}, default 30 000). A send POSTs the envelope's body, streamed from a fresh {@code open()}, with its headers
@@ -67,26 +65,28 @@ import java.util.function.Function;
  * response body: retryable for 429 and 5xx, final otherwise. A send that times out fails retryable, and so does a bounded send
  * still unanswered when its {@link Deadline} runs out: the request is reset.
  *
- * <p><b>What is HTTP here.</b> The options {@code host}, {@code port}, {@code path}, {@code url} and {@code timeoutMs}, the
- * server in {@link WebhookConsumer}, the client in {@link WebhookProducer}, and the statuses they answer and read are this
- * component's protocol; the parts marked {@code HTTP:} below are where an adapter for another protocol puts its own. What every
- * adapter keeps: the body streamed into and out of the blob store, one handler call on a virtual thread of its own per
- * message, the answer taken only from the handler's {@link Ack}, the message id sent on, the cut at the deadline on the
- * {@link Timer}, and a stop that waits for the deliveries in flight.
+ * <p><b>What is HTTP here.</b> The prefix and the options {@code address}, {@code url} and {@code timeoutMs}, the mount on the
+ * node's HTTP port in {@link WebhookConsumer}, the client in {@link WebhookProducer}, and the statuses they answer and read are
+ * this component's protocol; the parts marked {@code HTTP:} below are where an adapter for another protocol puts its own. An
+ * adapter taking requests over HTTP keeps the prefix, its own, and the mount; one for a protocol that is not HTTP declares no
+ * prefix and opens its listener or connection itself. What every adapter keeps: the body streamed into and out of the blob
+ * store, one handler call on a virtual thread of its own per message, the answer taken only from the handler's {@link Ack}, the
+ * message id sent on, the cut at the deadline on the {@link Timer}, and a stop that waits for the deliveries in flight.
  */
 public final class WebhookComponent implements Component {
 
     /** The scheme this component serves. */
     public static final String SCHEME = "webhook";
 
+    /** Its address on the node's HTTP port: an in endpoint is served at this prefix followed by its {@code address}. */
+    public static final String PREFIX = "/webhook";
+
     /**
      * What a webhook endpoint may set: the node checks every endpoint file against it, and the UI draws the endpoint's form
      * from it. The consumer's {@code flow} and {@code maxBodyBytes} are the node's and are no field here.
      */
     static final Settings SETTINGS = Settings.of(
-            Field.text("host", "The address the server listens on.").byDefault("127.0.0.1").in(),
-            Field.integer("port", "The port the server listens on; 0 for any free port.").range(0, 65535).byDefault(0).in(),
-            Field.text("path", "The path POSTs are taken at; others get 404.").byDefault("/").in(),
+            HttpIngress.ADDRESS,
             Field.text("url", "The URL each message is posted to.").required().out(),
             Field.integer("maxBodyBytes", "The largest reply body taken, in bytes.").required().min(1).out(),
             Field.integer("timeoutMs", "How long a request may take, in milliseconds.").min(1).byDefault(30_000).out());
@@ -94,8 +94,6 @@ public final class WebhookComponent implements Component {
     /** Headers that describe one connection, never copied from a message to a request or a response, or back. */
     private static final Set<String> HOP_BY_HOP =
             Set.of("content-length", "transfer-encoding", "connection", "host", "keep-alive", "upgrade", "expect", "te", "trailer");
-    /** How long a stopping consumer lets the requests in flight answer before it closes their connections. */
-    private static final Duration SHUTDOWN = Duration.ofSeconds(30);
     /** How much of a refusal's response body the send's failure names. */
     static final int REASON_BYTES = 512;
 
@@ -103,17 +101,24 @@ public final class WebhookComponent implements Component {
     private final BlobStore blobs;
     private final IdGenerator ids;
     private final Timer timer;
+    private final HttpIngress http;
     private final Set<WebhookConsumer> running = ConcurrentHashMap.newKeySet();
 
-    /** A component on {@code vertx}; it stores bodies in {@code blobs}, names messages from {@code ids}, cuts sends on {@code timer}. */
-    public WebhookComponent(Vertx vertx, BlobStore blobs, IdGenerator ids, Timer timer) {
+    /**
+     * A component on {@code vertx}; it stores bodies in {@code blobs}, names messages from {@code ids}, cuts sends on {@code timer}
+     * and mounts its consumers on {@code http}, the node's HTTP port.
+     */
+    public WebhookComponent(Vertx vertx, BlobStore blobs, IdGenerator ids, Timer timer, HttpIngress http) {
         this.vertx = Objects.requireNonNull(vertx, "vertx");
         this.blobs = Objects.requireNonNull(blobs, "blobs");
         this.ids = Objects.requireNonNull(ids, "ids");
         this.timer = Objects.requireNonNull(timer, "timer");
+        this.http = Objects.requireNonNull(http, "http");
     }
 
     @Override public String scheme() { return SCHEME; }
+
+    @Override public Optional<String> httpPrefix() { return Optional.of(PREFIX); }
 
     @Override public Settings settings() { return SETTINGS; }
 
@@ -127,16 +132,10 @@ public final class WebhookComponent implements Component {
         return new WebhookProducer(cfg);
     }
 
-    /** Up while a consumer listens. */
+    /** Up while a consumer is mounted. */
     @Override
     public Future<Health> health() {
-        return Future.succeededFuture(running.isEmpty() ? Health.down("no consumer listening") : Health.up());
-    }
-
-    /** The host and port a consumer of {@code cfg} binds, so the node refuses two consumers on one. */
-    @Override
-    public Optional<InetSocketAddress> listensOn(EndpointConfig cfg) {
-        return Optional.of(InetSocketAddress.createUnresolved(text(cfg, "host", "127.0.0.1"), (int) number(cfg, "port", 0L)));
+        return Future.succeededFuture(running.isEmpty() ? Health.down("no consumer mounted") : Health.up());
     }
 
     /**
@@ -178,61 +177,51 @@ public final class WebhookComponent implements Component {
         return new Headers(kept);
     }
 
-    /** A consumer: an HTTP server on its host and port. */
+    /** A consumer: its endpoint mounted on the node's HTTP port. */
     public final class WebhookConsumer implements Consumer {
+        private final EndpointConfig cfg;
         private final Function<Envelope, Future<Ack>> handler;
-        private final String host;
-        private final int port;
-        private final String path;
         private final String flow;
         private final long maxBodyBytes;
-        private volatile HttpServer server;
+        private volatile HttpIngress.Mount mount;
 
         WebhookConsumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {
+            this.cfg = Objects.requireNonNull(cfg, "cfg");
             this.handler = Objects.requireNonNull(handler, "handler");
-            this.host = text(cfg, "host", "127.0.0.1");
-            this.port = (int) number(cfg, "port", 0L);
-            this.path = text(cfg, "path", "/");
             this.flow = text(cfg, "flow", cfg.name());
             this.maxBodyBytes = number(cfg, "maxBodyBytes", null);
         }
 
-        /** The port the server listens on, the one it was given when the option {@code port} is 0; -1 while it is not started. */
-        public int port() {
-            HttpServer s = server;
-            return s == null ? -1 : s.actualPort();
+        /** The URL senders call, on the node's HTTP port; empty while it is not started. */
+        public Optional<URI> url() {
+            return Optional.ofNullable(mount).map(HttpIngress.Mount::url);
         }
 
         @Override
         public Future<Void> start() {
-            // HTTP: a server on the endpoint's host and port; another protocol opens its listener or connection here.
-            HttpServer s = vertx.createHttpServer(new HttpServerOptions().setHost(host).setPort(port)).requestHandler(this::handle);
-            return s.listen().map(listening -> {
-                server = listening;
+            // HTTP: the endpoint mounted on the node's HTTP port; another protocol opens its listener or connection here.
+            return http.mount(cfg, this::handle).map(mounted -> {
+                mount = mounted;
                 running.add(this);
                 return null;
             });
         }
 
         /**
-         * Takes no new message from now on, and completes once the requests in flight were answered (or after
-         * {@code 30 s}, when their connections are closed).
+         * Takes no new message from now on, and completes once the requests in flight were answered (or at the node's stop
+         * deadline, when the node resets them).
          */
         @Override
         public Future<Void> stop() {
-            HttpServer s = server;
-            server = null;
+            HttpIngress.Mount m = mount;
+            mount = null;
             running.remove(this);
-            return s == null ? Future.succeededFuture() : s.shutdown(SHUTDOWN);
+            return m == null ? Future.succeededFuture() : m.close();
         }
 
         // HTTP: one request is one message; its body goes into the blob store, its headers become the message's.
         private void handle(HttpServerRequest req) {
             HttpServerResponse res = req.response();
-            if (!path.equals(req.path())) {
-                res.setStatusCode(404).end();
-                return;
-            }
             if (req.method() != HttpMethod.POST) {
                 res.setStatusCode(405).putHeader("allow", "POST").end();
                 return;

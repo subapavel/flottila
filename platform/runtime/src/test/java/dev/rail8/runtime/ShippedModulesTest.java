@@ -9,6 +9,7 @@ import dev.rail8.api.StepConfig;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.StepResources;
 import dev.rail8.api.plugin.ComponentContext;
+import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.runtime.plugin.Plugins;
 import dev.rail8.runtime.plugin.fixture.PluginFixtures;
 import dev.rail8.testkit.FakeRuntime;
@@ -50,7 +51,7 @@ class ShippedModulesTest {
     }
 
     static ComponentContext context() {
-        return new ComponentContext(vertx, RT.blobs(), RT.ids(), RT.timer(), RT.clock());
+        return new ComponentContext(vertx, RT.blobs(), RT.ids(), RT.timer(), RT.clock(), HttpIngress.NONE);
     }
 
     static List<String> types(List<StepFactory> steps) {

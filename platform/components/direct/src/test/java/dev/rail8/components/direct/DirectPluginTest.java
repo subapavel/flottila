@@ -2,6 +2,7 @@ package dev.rail8.components.direct;
 
 import dev.rail8.api.Component;
 import dev.rail8.api.plugin.ComponentContext;
+import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.api.plugin.Plugin;
 import dev.rail8.api.plugin.PluginSettings;
 import dev.rail8.testkit.FakeRuntime;
@@ -28,7 +29,7 @@ class DirectPluginTest {
         FakeRuntime rt = FakeRuntime.create();
         Vertx vertx = Vertx.vertx();
         try {
-            List<Component> components = module.components(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock()));
+            List<Component> components = module.components(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock(), HttpIngress.NONE));
             assertEquals(1, components.size());
             assertInstanceOf(DirectComponent.class, components.getFirst());
             assertEquals("direct", components.getFirst().scheme());

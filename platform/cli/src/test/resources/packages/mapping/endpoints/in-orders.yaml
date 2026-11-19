@@ -4,6 +4,4 @@ id: in-orders
 scheme: http
 direction: in
 config:
-  host: 127.0.0.1
-  port: 18082
-  path: /orders
+  address: /orders

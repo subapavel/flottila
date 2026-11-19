@@ -4,6 +4,4 @@ id: in-forward
 scheme: http
 direction: in
 config:
-  host: 127.0.0.1
-  port: 18086
-  path: /forward
+  address: /forward

@@ -436,7 +436,7 @@ public final class NodeBenchMain {
         Harness h = new Harness(o, vertx, pool, client, body, in, echo.actualPort(), config.journal().dir());
         SaxonXml xml = new SaxonXml();
         JsonObject measured;
-        Node node = Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())), xml.steps(),
+        Node node = Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())), xml.steps(),
                 xml.languages());
         try {
             int admin = node.adminPort();
@@ -573,7 +573,8 @@ public final class NodeBenchMain {
     private static NodeConfig nodeConfig(Options o, Path data, int echo) {
         return NodeConfig.from(Map.ofEntries(Map.entry("RAIL8_ENV", "dev"), Map.entry("RAIL8_NODE_ID", "node-bench"),
                 Map.entry("RAIL8_JOURNAL_KEY", JOURNAL_KEY),
-                Map.entry("RAIL8_ADMIN_PORT", "0"), Map.entry("RAIL8_PEER_PORT", "0"), Map.entry("RAIL8_DATA_DIR", data.toString()),
+                Map.entry("RAIL8_ADMIN_PORT", "0"), Map.entry("RAIL8_PEER_PORT", "0"), Map.entry("RAIL8_HTTP_PORT", "0"),
+                Map.entry("RAIL8_DATA_DIR", data.toString()),
                 Map.entry("RAIL8_PG_HOST", o.host()),
                 Map.entry("RAIL8_PG_PORT", String.valueOf(o.port())), Map.entry("RAIL8_PG_DATABASE", o.db()), Map.entry("RAIL8_PG_USER", o.user()),
                 Map.entry("RAIL8_PG_PASSWORD", o.password()), Map.entry("RAIL8_CPU_SAMPLING", o.cpuSampling()),

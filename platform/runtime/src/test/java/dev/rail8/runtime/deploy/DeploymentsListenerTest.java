@@ -38,7 +38,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code in} endpoint that feeds a flow would listen ({@code Component.listensOn}, on the config as checked: schema-valid, this
  * node's environment laid over it) and refuses — one {@link Kind#INVALID} line each, before anything is built or stopped — an
  * address that overlaps (same port, not 0; equal hosts, or either a wildcard) another of the same new version (once per pair, on
- * the later flow id), the node's admin listener ({@code RAIL8_ADMIN_HOST/PORT}), its peer link ({@code RAIL8_PEER_BIND/PORT}), or a
+ * the later flow id), the node's admin listener ({@code RAIL8_ADMIN_HOST/PORT}), its HTTP port ({@code RAIL8_HTTP_HOST/PORT}), its
+ * peer link ({@code RAIL8_PEER_BIND/PORT}), or a
  * running flow of another RUNNING package.
  * The deploying package's current version and FAILED flows and packages hold no port; a RESTARTING flow holds its own. A restore runs the same check: the later
  * package of a clashing pair is FAILED with that line.
@@ -50,14 +51,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Every endpoint is a {@link Doors} one: its {@code listensOn} answers {@code host} (default 127.0.0.1) and {@code port} when the
  * endpoint sets a port, and records every call; nothing binds, so any port serves. A second {@link Doors} serves the scheme
- * {@value #GATE}. Every node's admin port is {@value #ADMIN_PORT} unless a case says otherwise.
+ * {@value #GATE}. Every node's admin port is {@value #ADMIN_PORT} and its HTTP port {@value #HTTP_PORT} unless a case says otherwise.
  */
 class DeploymentsListenerTest {
 
     static final int ADMIN_PORT = 8181;
+    static final int HTTP_PORT = 8280;
     static final String GATE = "gate";
     static final String ADMIN = "the node's admin API (RAIL8_ADMIN_HOST/PORT)";
     static final String PEER = "the node's peer link (RAIL8_PEER_BIND/PORT)";
+    static final String HTTP = "the node's HTTP port (RAIL8_HTTP_HOST/PORT)";
     static final DeployedPackage.State RUNNING = DeployedPackage.State.RUNNING;
     static final DeployedFlow.State FLOW_RUNNING = DeployedFlow.State.RUNNING;
 
@@ -84,7 +87,7 @@ class DeploymentsListenerTest {
 
     // --- fixture
 
-    /** A dev node {@code nodeId}: data under {@code <tmp>/<nodeId>}, its admin API on 127.0.0.1:{@value #ADMIN_PORT}. */
+    /** A dev node {@code nodeId}: data under {@code <tmp>/<nodeId>}, its admin API on 127.0.0.1:{@value #ADMIN_PORT}, its HTTP port on 127.0.0.1:{@value #HTTP_PORT}. */
     Map<String, String> env(String nodeId) {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "dev");
@@ -93,6 +96,7 @@ class DeploymentsListenerTest {
         env.put("RAIL8_STOP_DEADLINE", "PT37S");
         env.put("RAIL8_BLOB_DURABLE_MAX", "4096");
         env.put("RAIL8_ADMIN_PORT", Integer.toString(ADMIN_PORT));
+        env.put("RAIL8_HTTP_PORT", Integer.toString(HTTP_PORT));
         return env;
     }
 
@@ -341,6 +345,22 @@ class DeploymentsListenerTest {
         assertEquals(List.of(line("orders", "orders-in", "[::1]:" + ADMIN_PORT, "[::]:" + ADMIN_PORT, ADMIN)),
                 refused(wildcard, listening(pkg("shop"), "orders", on("::1", ADMIN_PORT))).problems(),
                 "an admin API on the wildcard :: overlaps any host on its port; both hosts as configured, IPv6 in brackets");
+        assertEquals(List.of(), consumersOf(doors, "shop"), "no consumer was built: " + doors.events());
+    }
+
+    @Test
+    void theHttpPortIsTaken() throws Exception {
+        PackageDraft shop = listening(listening(pkg("shop"), "orders", on("0.0.0.0", HTTP_PORT)), "audit", port(HTTP_PORT + 1));
+
+        assertEquals(List.of(line("orders", "orders-in", "0.0.0.0:" + HTTP_PORT, "127.0.0.1:" + HTTP_PORT, HTTP)), refused(deployments, shop).problems(),
+                "the node's HTTP port (RAIL8_HTTP_HOST, 127.0.0.1 by default, and RAIL8_HTTP_PORT) holds its port, and only that one");
+
+        Map<String, String> env = env("node-2");
+        env.put("RAIL8_HTTP_PORT", "0");
+        Deployments ephemeral = node(env);
+
+        deploy(ephemeral, listening(pkg("billing"), "invoices", port(HTTP_PORT)));
+        assertEquals(Map.of("billing/invoices", FLOW_RUNNING), flows(ephemeral), "an HTTP port of 0 (any free port) holds no port to compare");
         assertEquals(List.of(), consumersOf(doors, "shop"), "no consumer was built: " + doors.events());
     }
 

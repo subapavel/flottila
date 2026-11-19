@@ -9,6 +9,8 @@ import dev.rail8.core.record.Meter;
 import dev.rail8.runtime.deploy.Deployments;
 import dev.rail8.runtime.deploy.Secrets;
 import dev.rail8.api.plugin.ComponentContext;
+import dev.rail8.api.plugin.HttpIngress;
+import dev.rail8.ingress.SharedHttpPort;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.plugin.Plugins;
 import dev.rail8.schemas.Package;
@@ -129,7 +131,7 @@ final class Validate {
      * after it), its steps and languages, a fake clock, timer and ids, in-memory blobs and stores, and an empty data directory
      * of the run's own (deleted after it). Nothing of the closure is deployed or started, so no component of it listens or
      * connects, in every environment. The node is closed after the build. A plugin's component that is refused, as it would
-     * stop a node's start, is the one problem.
+     * stop a node's start (its HTTP prefix included), is the one problem.
      */
     private static DryBuild dryBuild(String name, Path dir, String env, List<Dependencies.Found> closure, Plugins plugins) throws IOException {
         Path data = Files.createTempDirectory("rail8-validate-");
@@ -141,7 +143,8 @@ final class Validate {
             try {
                 List<Component> built;
                 try {
-                    built = plugins.components(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock()));
+                    built = plugins.components(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock(), HttpIngress.NONE));
+                    SharedHttpPort.prefixes(built);   // a prefix the node's start would refuse
                 } catch (IllegalStateException refused) {
                     return new DryBuild(List.of(String.valueOf(refused.getMessage())), Set.of());
                 }

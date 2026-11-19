@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * P2-03b1 (D-080): {@code MockComponent.ingest(endpoint, headers, bytes)} — what {@code rail8 test} sends a case with — builds
  * the ingress envelope as the endpoint's running consumer would (an id from the mock's generator, the flow and the
  * {@code maxBodyBytes} of the consumer's config, the body under {@code BlobKey.body(id, 0)}; on an http-scheme mock the props
- * {@code http.method} POST and {@code http.path} the endpoint's {@code path}) and delivers it through that consumer's handler,
+ * {@code http.method} POST and {@code http.path} the endpoint's path on the node's HTTP port) and delivers it through that consumer's handler,
  * answering what the handler answers. No running consumer on the endpoint: {@link IllegalStateException}; a body above the
  * consumer's {@code maxBodyBytes}: {@link BodyTooLargeException}, the handler never called. {@code delivered(endpoint)} is the
  * consumer-side record; an ingest is never recorded as sent.
@@ -54,7 +54,7 @@ class MockIngestTest {
     final MockComponent http = new MockComponent("http", rt.blobs(), rt.timer(), ids);
     /** As Deployments hands it to the consumer: {@code <scheme>://<id>}, the endpoint's config plus the flow and its maxBodyBytes. */
     final EndpointConfig in = new EndpointConfig("http-in", URI.create("http://http-in"),
-            Map.of("host", "0.0.0.0", "port", 8080, "path", "/in", "flow", "orders", "maxBodyBytes", 8L));
+            Map.of("address", "/in", "flow", "orders", "maxBodyBytes", 8L));
     final List<Consumer> started = new ArrayList<>();
     final List<Promise<Ack>> holds = new ArrayList<>();
 
@@ -179,22 +179,22 @@ class MockIngestTest {
 
         Envelope e = viaHttp.envelopes().getFirst();
         assertEquals("POST", e.get(METHOD).orElseThrow(), "an http ingress is a POST");
-        assertEquals("/in", e.get(PATH).orElseThrow(), "at the endpoint's path (its config's, not the URI's)");
+        assertEquals("/http/in", e.get(PATH).orElseThrow(), "at the endpoint's path: the http prefix and its config's address, not the URI's path");
         Envelope dropped = viaSftp.envelopes().getFirst();
         assertTrue(dropped.get(METHOD).isEmpty() && dropped.get(PATH).isEmpty(), "no http props on another scheme: " + dropped.props());
     }
 
-    /** An http endpoint without a {@code path} is served at the root: the ingress envelope's {@code http.path} is {@code /}. */
+    /** An http endpoint without an {@code address} is at the prefix alone: the ingress envelope's {@code http.path} is {@code /http}. */
     @Test
-    void ingestOnHttpWithoutAPathIsAtTheRoot() {
+    void ingestOnHttpWithoutAnAddressIsAtThePrefix() {
         Handled handled = consume(http, new EndpointConfig("http-root", URI.create("http://http-root"),
-                Map.of("host", "0.0.0.0", "port", 8080, "flow", "orders", "maxBodyBytes", 8L)), e -> Future.succeededFuture(new Ack.Accepted(e.id())));
+                Map.of("flow", "orders", "maxBodyBytes", 8L)), e -> Future.succeededFuture(new Ack.Accepted(e.id())));
 
         http.ingest("http-root", Headers.empty(), Buffer.buffer("<a/>")).await();
 
         Envelope e = handled.envelopes().getFirst();
         assertEquals("POST", e.get(METHOD).orElseThrow());
-        assertEquals("/", e.get(PATH).orElseThrow(), "no path in the config: the root");
+        assertEquals("/http", e.get(PATH).orElseThrow(), "no address in the config: the prefix alone");
     }
 
     @Test

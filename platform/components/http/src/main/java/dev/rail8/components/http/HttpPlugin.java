@@ -17,9 +17,9 @@ public final class HttpPlugin implements Plugin {
 
     @Override public String api() { return API; }
 
-    /** The http component, built over the node's {@code context}. */
+    /** The http component, built over the node's {@code context}: its consumers mount on the node's HTTP port. */
     @Override
     public List<Component> components(ComponentContext context) {
-        return List.of(new HttpComponent(context.vertx(), context.blobs(), context.ids(), context.timer()));
+        return List.of(new HttpComponent(context.vertx(), context.blobs(), context.ids(), context.timer(), context.http()));
     }
 }

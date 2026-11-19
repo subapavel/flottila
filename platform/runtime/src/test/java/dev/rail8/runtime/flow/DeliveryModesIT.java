@@ -10,6 +10,8 @@ import dev.rail8.api.Keys;
 import dev.rail8.api.Props;
 import dev.rail8.api.Runtime;
 import dev.rail8.components.http.HttpComponent;
+import dev.rail8.ingress.SharedHttpPort;
+import dev.rail8.runtime.time.VertxTimer;
 import dev.rail8.core.batch.BatchingWriter;
 import dev.rail8.core.flow.Delivery;
 import dev.rail8.core.flow.FlowBuilder;
@@ -105,6 +107,7 @@ class DeliveryModesIT {
     static final long MIB = 1L << 20;
     static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
+    static SharedHttpPort httpPort;
     static Pool pool;
     static HttpClientAgent caller;
 
@@ -128,6 +131,7 @@ class DeliveryModesIT {
         pg.start();
         vertx = Vertx.vertx();
         caller = vertx.createHttpClient();
+        httpPort = SharedHttpPort.loopback(vertx, Map.of("http", HttpComponent.PREFIX)).await();
         PgConnectOptions connect = new PgConnectOptions().setHost(pg.getHost()).setPort(pg.getMappedPort(5432))
                 .setDatabase(pg.getDatabaseName()).setUser(pg.getUsername()).setPassword(pg.getPassword()).setCachePreparedStatements(true);
         pool = PgBuilder.pool().connectingTo(connect).with(new PoolOptions().setMaxSize(8)).using(vertx).build();
@@ -138,6 +142,7 @@ class DeliveryModesIT {
     static void stop() {
         caller.close().await();
         pool.close().await();
+        httpPort.close().await();
         vertx.close().await();
         pg.stop();
     }
@@ -165,9 +170,9 @@ class DeliveryModesIT {
         FlowBuilder builder = builder(blobs, store, queue, dlq);
         Function<Envelope, Future<Ack>> delivery = builder.delivery(def, DEMO);
         worker = builder.worker(def, DEMO, "w1");
-        HttpComponent http = new HttpComponent(vertx, blobs, ids);
+        HttpComponent http = new HttpComponent(vertx, blobs, ids, new VertxTimer(vertx), httpPort);
         EndpointConfig in = new EndpointConfig("http-in", URI.create("http://127.0.0.1:0/in"),
-                Map.of("host", "127.0.0.1", "port", 0, "path", "/in", "flow", def.id(), "maxBodyBytes", def.maxBodyBytes()));
+                Map.of("address", "/in", "flow", def.id(), "maxBodyBytes", def.maxBodyBytes()));
         consumer = (HttpComponent.HttpConsumer) http.consumer(in, delivery);
         consumer.start().await();
     }
@@ -206,7 +211,7 @@ class DeliveryModesIT {
 
     /** Posts the order; the answer, whenever it comes. */
     Future<Answer> post() {
-        return caller.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + consumer.port() + "/in"))
+        return caller.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI(consumer.url().orElseThrow().toString()))
                 .compose(req -> { req.putHeader("content-type", "application/xml"); return req.send(ORDER); })
                 .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.getHeader(HttpComponent.H_MESSAGE_ID))));
     }

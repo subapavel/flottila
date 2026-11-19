@@ -1,4 +1,4 @@
-# The flow's door: an HTTP consumer. Component config under `config` is the component's own business
+# The flow's door: an HTTP consumer, served at /http/in on the node's HTTP port. Component config under `config` is the component's own business
 # (checked at deploy time against its settings description); the schema fixes only the envelope around it.
 schemaVersion: 1
 kind: endpoint
@@ -6,6 +6,4 @@ id: http-in
 scheme: http
 direction: in
 config:
-  host: 0.0.0.0
-  port: 8080
-  path: /in
+  address: /in

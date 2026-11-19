@@ -2,6 +2,7 @@ package dev.rail8.runtime.deploy;
 
 import dev.rail8.api.Ack;
 import dev.rail8.api.Component;
+import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.api.Consumer;
 import dev.rail8.api.EndpointConfig;
 import dev.rail8.api.Envelope;
@@ -31,6 +32,7 @@ import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.Meter;
 import dev.rail8.core.record.MessageStore;
 import dev.rail8.core.scope.MessageContext;
+import dev.rail8.ingress.SharedHttpPort;
 import dev.rail8.runtime.deploy.DeployRefusedException.Kind;
 import dev.rail8.runtime.lease.InMemoryPollerLeases;
 import dev.rail8.runtime.lease.PollerLeases;
@@ -103,7 +105,10 @@ import java.util.stream.Stream;
  * no flow from an out endpoint, every flow definition, no {@code delivery.queue} on a flow that is not at-least-once and none of
  * {@code kafka}, the optional add-on not in this build, no at-least-once flow above {@code RAIL8_BLOB_DURABLE_MAX}, no
  * in endpoint feeding a flow whose consumer would listen where another of the package, the node's admin API, its peer link or a running flow of
- * another package listens (one listener per host:port on a node, {@code Component.listensOn}, {@link #listeners}), no flow
+ * another package listens (one listener per host:port on a node, {@code Component.listensOn}, {@link #listeners}; the node's
+ * HTTP port is one of them), no in endpoint feeding a flow at a path of the node's HTTP port that another flow of the package or a
+ * running flow of another package takes requests at (its component's prefix and its {@code address}, {@code Component.httpPrefix},
+ * {@link #paths}), no flow
  * serving a node-local address another of the package or a running flow of another package serves and no cycle of calls between
  * flows ({@code Component.internalAddress}, {@link #links}, {@link Calls#check}), and
  * no at-least-once flow the package runs that the new version removes or makes non-at-least-once while the work queue holds
@@ -240,6 +245,8 @@ public final class Deployments {
     private final NodeConfig config;
     private final Runtime runtime;
     private final Map<String, Component> components;
+    /** The HTTP prefix of each scheme whose component declares one ({@code Component.httpPrefix}), read once. */
+    private final Map<String, String> prefixes;
     private final Clock clock;
     private final Timer timer;
     private final List<StepFactory> steps;
@@ -377,6 +384,7 @@ public final class Deployments {
         this.config = Objects.requireNonNull(config, "config");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.components = Map.copyOf(components);
+        this.prefixes = SharedHttpPort.prefixes(List.copyOf(this.components.values()));
         this.clock = Objects.requireNonNull(clock, "clock");
         this.timer = Objects.requireNonNull(timer, "timer");
         this.steps = List.copyOf(steps);
@@ -453,12 +461,13 @@ public final class Deployments {
      * What a flow's build took besides the builder's stamps: its definition, its yaml, the package's endpoints as built — their
      * {@code secret://} references resolved — and as {@code written}, references kept (what its effective hash covers),
      * and where its consumer listens as its check asked the component ({@link #listeners}; empty when it accepts no connections):
-     * the address it holds against another package's deploy while it runs; and the node-local addresses it serves and calls as its
-     * check asked the components ({@link #links}), which it holds the same way. A flow a redeploy keeps by its hash keeps both answers
-     * as they were, though a {@code secret://} value they came from may have changed since.
+     * the address it holds against another package's deploy while it runs; the path of the node's HTTP port it takes requests at
+     * ({@link #paths}; empty when its component declares no prefix), held the same way; and the node-local addresses it serves and
+     * calls as its check asked the components ({@link #links}), which it holds the same way. A flow a redeploy keeps by its hash keeps
+     * these answers as they were, though a {@code secret://} value they came from may have changed since.
      */
     private record Recipe(FlowDefinition def, Path flowFile, Map<String, EndpointConfig> endpoints, Map<String, EndpointConfig> written,
-                          Optional<InetSocketAddress> listensOn, Calls.Links calls, Visible dependencies) {}
+                          Optional<InetSocketAddress> listensOn, Optional<String> httpPath, Calls.Links calls, Visible dependencies) {}
 
     /**
      * The package's direct dependencies as its steps read them: each name to the directory of the version its lock
@@ -490,12 +499,13 @@ public final class Deployments {
      * What the checks hand the build: each valid endpoint's scheme and config (environment laid over) as written and with its
      * {@code secret://} references resolved ({@code resolved}), each valid flow's definition, the qualified ids of the
      * at-least-once flows running that the new version does not run at-least-once, where each flow's consumer listens, by
-     * the flow's local id (a flow whose consumer accepts no connections is not in it), the node-local addresses each flow serves
-     * and calls, by its local id, and the package's dependencies as resolved.
+     * the flow's local id (a flow whose consumer accepts no connections is not in it), the path of the node's HTTP port each flow
+     * takes requests at, by its local id (a flow whose component declares no prefix is not in it), the node-local addresses each
+     * flow serves and calls, by its local id, and the package's dependencies as resolved.
      */
     private record Checked(Map<String, String> schemes, Map<String, JsonObject> configs, Map<String, JsonObject> resolved,
                            Map<String, FlowDefinition> flows, Set<String> leaving, Map<String, InetSocketAddress> listening,
-                           Map<String, Calls.Links> calls, Resolved dependencies) {}
+                           Map<String, String> paths, Map<String, Calls.Links> calls, Resolved dependencies) {}
 
     /** Where {@code holder} — a flow and its in endpoint, or the node's admin API — listens. */
     private record Listener(String holder, InetSocketAddress at) {}
@@ -1265,6 +1275,7 @@ public final class Deployments {
             if (ins.contains(endpoint)) asked.put(fed.getFirst(), endpoint(endpoint, schemes.get(endpoint), resolved.get(endpoint)));
         });
         Map<String, InetSocketAddress> listening = listeners(name, asked, problems);
+        Map<String, String> paths = paths(name, asked, configs, problems);
         Map<String, Calls.Links> calls = links(flows, asked, callable, problems);
         List<Calls.Node> fresh = new ArrayList<>();
         calls.forEach((id, links) -> fresh.add(new Calls.Node(id, flows.get(id).fromEndpoint(), links)));
@@ -1294,7 +1305,8 @@ public final class Deployments {
         if (!problems.isEmpty()) throw invalid(name, problems);
         if (unanswered != null) throw unanswered;
         if (pooled != null) throw refused(Kind.BUSY, pooled);   // every failed question was the pool's: retryable, nothing changed
-        return new Checked(schemes, configs, resolved, flows, Set.copyOf(leaving), Map.copyOf(listening), Map.copyOf(calls), dependencies);
+        return new Checked(schemes, configs, resolved, flows, Set.copyOf(leaving), Map.copyOf(listening), Map.copyOf(paths), Map.copyOf(calls),
+                dependencies);
     }
 
     /**
@@ -1445,8 +1457,8 @@ public final class Deployments {
      * schema takes, this node's environment laid over it and every {@code secret://} reference resolved (one that does
      * not resolve is not asked), by the local id of the flow it feeds — where its consumer would listen,
      * and adds a line to {@code problems} for every address that overlaps ({@link Listeners#overlap}) the address of a flow before
-     * it in id order (once per pair, on the later flow), the node's admin API ({@code RAIL8_ADMIN_HOST/PORT}), its peer link
-     * ({@code RAIL8_PEER_BIND/PORT}: Vert.x lets a second server of the node join a port the node already listens on, and then
+     * it in id order (once per pair, on the later flow), the node's admin API ({@code RAIL8_ADMIN_HOST/PORT}), its HTTP port
+     * ({@code RAIL8_HTTP_HOST/PORT}), its peer link ({@code RAIL8_PEER_BIND/PORT}: Vert.x lets a second server of the node join a port the node already listens on, and then
      * hands its connections to either server, so the port must be refused here), or a running
      * flow of another package, as that flow's check answered it. A FAILED flow holds no port, nor does a FAILED package (it
      * lists no flows), nor the version of {@code name} this deploy replaces. A component that throws is one line naming the
@@ -1456,8 +1468,9 @@ public final class Deployments {
      */
     private Map<String, InetSocketAddress> listeners(String name, Map<String, EndpointConfig> asked, List<String> problems) {
         List<Listener> taken = new ArrayList<>();   // the new version's flows asked so far
-        List<Listener> held = new ArrayList<>();    // the admin API, the peer link, then every other package's running flows
+        List<Listener> held = new ArrayList<>();    // the admin API, the HTTP port, the peer link, then every other package's running flows
         held.add(new Listener("the node's admin API (RAIL8_ADMIN_HOST/PORT)", InetSocketAddress.createUnresolved(config.admin().host(), config.admin().port())));
+        held.add(new Listener("the node's HTTP port (RAIL8_HTTP_HOST/PORT)", InetSocketAddress.createUnresolved(config.http().host(), config.http().port())));
         held.add(new Listener("the node's peer link (RAIL8_PEER_BIND/PORT)", InetSocketAddress.createUnresolved(config.peer().bind(), config.peer().port())));
         for (Deployed d : deployed.values()) {
             if (d.pkg().name().equals(name)) continue;   // the version this deploy replaces
@@ -1485,6 +1498,69 @@ public final class Deployments {
             listening.put(each.getKey(), at.at());
         }
         return listening;
+    }
+
+    /**
+     * One flow per path on the node's HTTP port. For each of {@code asked} — as {@link #listeners} takes them — whose component
+     * declares a prefix, the path its consumer would mount (the prefix, then its {@code address}, {@link SharedHttpPort#path}), and a
+     * line in {@code problems} for an address {@code written} (the endpoint's config before its references were resolved) as a
+     * secret reference, one that is not a path, and every path equal to that of a flow before it in id order (once per pair, on the later flow) or of a
+     * running flow of another package, as that flow's check answered it. A FAILED flow holds no path, nor does a FAILED package, nor
+     * the version of {@code name} this deploy replaces: its paths are free for the new version, whose consumers mount them as the
+     * old ones unmount. Called under the deploy lock: the flows it compares with change only when a deploy returns.
+     *
+     * @return the path each flow's consumer takes requests at, by its local id
+     */
+    private Map<String, String> paths(String name, Map<String, EndpointConfig> asked, Map<String, JsonObject> written, List<String> problems) {
+        Map<String, String> holders = new HashMap<>();   // by path: who takes requests there, every other package's running flows first
+        for (Deployed d : deployed.values()) {
+            if (d.pkg().name().equals(name)) continue;   // the version this deploy replaces
+            for (Flow f : d.flows()) {
+                if (f.runs()) f.recipe().httpPath().ifPresent(path -> holders.putIfAbsent(path, listener(f.id(), f.from().name())));
+            }
+        }
+        Map<String, String> paths = new LinkedHashMap<>();
+        for (Map.Entry<String, EndpointConfig> each : asked.entrySet()) {
+            EndpointConfig endpoint = each.getValue();
+            String prefix = prefixes.get(endpoint.scheme());
+            if (prefix == null) continue;
+            Object address = endpoint.options().get(HttpIngress.ADDRESS.name());
+            if (!Objects.equals(address, written.get(endpoint.name()).getValue(HttpIngress.ADDRESS.name()))) {
+                problems.add("endpoint '" + endpoint.name() + "' (scheme '" + endpoint.scheme() + "'): its address is written as a secret reference; "
+                        + "an address is the path senders call, written as it is");
+                continue;
+            }
+            String path;
+            try {
+                path = SharedHttpPort.path(prefix, address);
+            } catch (IllegalArgumentException bad) {
+                problems.add("endpoint '" + endpoint.name() + "' (scheme '" + endpoint.scheme() + "'): " + bad.getMessage());
+                continue;
+            }
+            String holder = listener(each.getKey(), endpoint.name());
+            String other = holders.putIfAbsent(path, holder);
+            if (other != null) {
+                problems.add(holder + " takes requests at " + path + " on the node's HTTP port, where " + other + " takes them: one flow per path");
+                continue;
+            }
+            paths.put(each.getKey(), path);
+        }
+        return paths;
+    }
+
+    /**
+     * Whether a running flow of a package deployed here takes requests at {@code path} of the node's HTTP port, as its check
+     * answered it, whether or not its consumer has mounted it at the moment (a redeploy swaps it, it restarts, it stops). A
+     * FAILED flow does not. Reads the listing as it is, without the deploy lock: called on an event loop for every request no mount
+     * takes, it never blocks.
+     */
+    public boolean serves(String path) {
+        for (Deployed d : deployed.values()) {
+            for (Flow f : d.flows()) {
+                if (f.runs() && f.recipe().httpPath().filter(path::equals).isPresent()) return true;
+            }
+        }
+        return false;
     }
 
     /** A flow as a listener line names it: {@code flow '<id>' (endpoint '<endpoint>')}. */
@@ -1691,7 +1767,8 @@ public final class Deployments {
             try {
                 flows.add(flow(builder, name, version, revision, archive,
                         new Recipe(each.getValue(), pkg.flowFile(id), Map.copyOf(endpoints), Map.copyOf(written),
-                                Optional.ofNullable(checked.listening().get(id)), checked.calls().get(id), checked.dependencies().visible()), dir));
+                                Optional.ofNullable(checked.listening().get(id)), Optional.ofNullable(checked.paths().get(id)), checked.calls().get(id),
+                                checked.dependencies().visible()), dir));
             } catch (RuntimeException refused) {
                 problems.add("flow '" + id + "' does not build: " + fromRoot(reason(refused), dir, checked.dependencies().visible()));
             }

@@ -71,13 +71,14 @@ class WebhookPluginIT {
         if (partner != null) partner.close().await();
     }
 
-    /** The environment of a node on the class's database, with {@code plugins} as its plugin directory. */
-    Map<String, String> env(int adminPort, Path plugins) {
+    /** The environment of a node on the class's database, its admin API on {@code adminPort} and its HTTP port on {@code httpPort}, with {@code plugins} as its plugin directory. */
+    Map<String, String> env(int adminPort, int httpPort, Path plugins) {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "ci");
         env.put("RAIL8_NODE_ID", "webhook-plugin-it");
         env.put("RAIL8_ADMIN_PORT", String.valueOf(adminPort));
         env.put("RAIL8_PEER_PORT", "0");
+        env.put("RAIL8_HTTP_PORT", String.valueOf(httpPort));
         env.put("RAIL8_DATA_DIR", dir.resolve("data").toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -102,15 +103,14 @@ class WebhookPluginIT {
         return plugins;
     }
 
-    /** The sample's package, its webhook endpoint on {@code inPort} and its partner at {@code partnerPort}. */
-    static Map<String, byte[]> packageFiles(int inPort, int partnerPort) throws IOException {
+    /** The sample's package, its webhook endpoint served at /webhook/orders on the node's HTTP port, its partner at {@code partnerPort}. */
+    static Map<String, byte[]> packageFiles(int partnerPort) throws IOException {
         Map<String, byte[]> files = new TreeMap<>();
         try (Stream<Path> walk = Files.walk(PACKAGE)) {
             for (Path p : walk.filter(Files::isRegularFile).toList()) {
                 files.put(PACKAGE.relativize(p).toString().replace('\\', '/'), Files.readAllBytes(p));
             }
         }
-        files.put("endpoints/orders-in.yaml", NodeIT.replaced(files.get("endpoints/orders-in.yaml"), Map.of("port: 18090", "port: " + inPort)));
         files.put("endpoints/partner.yaml", NodeIT.replaced(files.get("endpoints/partner.yaml"),
                 Map.of("http://127.0.0.1:18091", "http://127.0.0.1:" + partnerPort)));
         return files;
@@ -126,20 +126,20 @@ class WebhookPluginIT {
             req.response().putHeader("content-type", "application/xml").end("<Ack><Id>7</Id></Ack>");
         })).listen(0, "127.0.0.1").await();
         int admin = Ports.free();
-        int in = Ports.free();
+        int http = Ports.free();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
         PrintStream errors = new PrintStream(err, true, StandardCharsets.UTF_8);
-        started = OnVirtualThread.call(() -> Main.start(env(admin, plugins()), errors));
+        started = OnVirtualThread.call(() -> Main.start(env(admin, http, plugins()), errors));
         assertEquals(0, started.code(), "the node starts with the plugin: " + err.toString(StandardCharsets.UTF_8));
 
         try (HttpClient client = NodeIT.http()) {
             HttpResponse<String> deployed = NodeIT.send(client, "PUT", admin, "/admin/packages/webhook-relay",
-                    NodeIT.zip(packageFiles(in, partner.actualPort())), "application/zip");
+                    NodeIT.zip(packageFiles(partner.actualPort())), "application/zip");
             assertEquals(200, deployed.statusCode(), "the package over the plugin's scheme deploys: " + deployed.body());
             assertEquals(new JsonArray().add("webhook-relay/relay"), new JsonObject(deployed.body()).getJsonArray("flows"), deployed.body());
 
             byte[] order = Files.readAllBytes(PACKAGE.resolve("fixtures/order.xml"));
-            HttpResponse<String> answer = NodeIT.send(client, "POST", in, "/orders", order, "application/xml");
+            HttpResponse<String> answer = NodeIT.send(client, "POST", http, "/webhook/orders", order, "application/xml");
 
             assertEquals(200, answer.statusCode(), "the plugin's consumer answers with the flow's reply: " + answer.body());
             assertEquals("<Ack><Id>7</Id></Ack>", answer.body(), "the reply is the partner's, brought back by the plugin's producer");

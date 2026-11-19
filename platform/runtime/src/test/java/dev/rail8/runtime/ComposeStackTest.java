@@ -297,23 +297,27 @@ class ComposeStackTest {
     }
 
     @Test
-    void theNodePublishesTheAsyncDoorOnLoopbackBesideTheOthers() throws IOException {
+    void theNodePublishesItsHttpPortAndItsAdminApiOnLoopbackOnly() throws IOException {
         // FIX-105: the ports are published by the namespace holder `netns`, no longer by the node (the old pin on rail8 contradicted it)
         List<String> ports = ports(service("netns"));
-        assertTrue(ports.contains("127.0.0.1:8082:8082"), "the async http door 8082 is published on loopback: " + ports);
-        assertTrue(ports.contains("127.0.0.1:8080:8080") && ports.contains("127.0.0.1:8081:8081"), "the sync door and the admin API stay: " + ports);
+        assertTrue(ports.contains("127.0.0.1:8080:8080"), "the node's HTTP port, every http door's, is published on loopback: " + ports);
+        assertTrue(ports.contains("127.0.0.1:8081:8081"), "the admin API keeps a port of its own: " + ports);
         assertTrue(ports.stream().allMatch(p -> p.startsWith("127.0.0.1:")), "every published port is on loopback only: " + ports);
-        assertEquals(3, ports.size(), "nothing else is published: " + ports);
+        assertEquals(2, ports.size(), "nothing else is published: " + ports);
+        for (Path file : NODE_PORTS.keySet()) {
+            assertEquals("0.0.0.0", environment(serviceIn(file, "rail8")).get("RAIL8_HTTP_HOST"),
+                    file + ": the node's HTTP port listens on every address of its namespace, so the published port reaches it");
+        }
     }
 
     // ---- FIX-105: a network-namespace holder outlives the node and the echo, in both compose files -----------------------------
 
     private static final Path ROOT_FILE = Path.of("..", "..", "docker-compose.yml").toAbsolutePath().normalize();
 
-    /** Both stacks with the ports the node published before the holder (deploy: 8080, 8082, 8081; root quickstart: 8080, 8084, 8081, 8082). */
+    /** Both stacks with the node's two published ports: its HTTP port 8080, shared by every http door, and its admin API 8081. */
     private static final Map<Path, List<String>> NODE_PORTS = Map.of(
-            FILE, List.of("127.0.0.1:8080:8080", "127.0.0.1:8082:8082", "127.0.0.1:8081:8081"),
-            ROOT_FILE, List.of("127.0.0.1:8080:8080", "127.0.0.1:8084:8084", "127.0.0.1:8081:8081", "127.0.0.1:8082:8082"));
+            FILE, List.of("127.0.0.1:8080:8080", "127.0.0.1:8081:8081"),
+            ROOT_FILE, List.of("127.0.0.1:8080:8080", "127.0.0.1:8081:8081"));
 
     private static JsonNode serviceIn(Path file, String name) throws IOException {
         assertTrue(Files.isRegularFile(file), file + " must exist");
@@ -327,7 +331,7 @@ class ComposeStackTest {
         for (var stack : NODE_PORTS.entrySet()) {
             JsonNode netns = serviceIn(stack.getKey(), "netns");
             assertEquals(new java.util.TreeSet<>(stack.getValue()), new java.util.TreeSet<>(ports(netns)),
-                    stack.getKey() + ": netns publishes exactly the node's former bindings");
+                    stack.getKey() + ": netns publishes exactly the node's ports");
             assertEquals(stack.getValue().size(), ports(netns).size(), stack.getKey() + ": no binding twice");
             assertEquals("sleep infinity", joined(netns.path("command")).replace("\"", ""), stack.getKey() + ": the holder only sleeps");
             assertFalse(joined(netns.path("healthcheck").path("test")).isBlank(), stack.getKey() + ": the holder has a healthcheck");
@@ -493,7 +497,7 @@ class ComposeStackTest {
     @Test
     void theReadmeNamesTheAsyncDoorAndHowToDropAFile() throws IOException {
         String readme = Files.readString(DIR.resolve("README.md"));
-        assertTrue(readme.contains("8082") && readme.contains("/invoice/async"), "the async door: port and path");
+        assertTrue(readme.contains("8080") && readme.contains("/http/invoice/async"), "the async door: the node's HTTP port and its path there");
         assertTrue(readme.contains("inbox") && (readme.contains("docker compose cp") || readme.contains("sftp ")), "how to drop a file into the sftp inbox");
         assertTrue(readme.toLowerCase(java.util.Locale.ROOT).contains("fingerprint") && readme.contains("ssh-keygen"), "the fingerprint command");
     }

@@ -114,6 +114,7 @@ class QuickstartIT {
         env.put("RAIL8_NODE_ID", "quickstart-it");
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", Files.createDirectories(work.resolve("data")).toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -125,7 +126,7 @@ class QuickstartIT {
         TestJournalKey.with(env);   // a node needs a journal master key (CORE-4c1, D-106): a required configuration
         NodeConfig config = NodeConfig.from(env);
         SaxonXml xml = new SaxonXml();
-        node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+        node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())),
                 Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
     }
 
@@ -155,8 +156,7 @@ class QuickstartIT {
     @Test
     void deployShDeploysTheDemoAndACzkInvoiceGetsTheEchosAnswerAndItsTimeline() throws Exception {
         int echoPort = startTheEcho();
-        int inPort = freePort();
-        Path demo = demoCopy(inPort, echoPort);
+        Path demo = demoCopy(echoPort);
 
         Run deployed = deploySh(demo.toString());
 
@@ -173,7 +173,7 @@ class QuickstartIT {
                 "the archive held every file of the package at its package-relative path, package.yaml at the root, nothing else");
 
         String invoice = Files.readString(DEMO.resolve("fixtures/sample-invoice.xml"));
-        HttpResponse<String> answer = post(inPort, "/in", invoice);
+        HttpResponse<String> answer = post(node.httpPort(), "/http/in", invoice);
 
         assertEquals(200, answer.statusCode(), "the demo answers the invoice: " + answer.body());
         assertPartnersAnswer(answer.body(), "4711", "CZK");
@@ -196,14 +196,13 @@ class QuickstartIT {
     @Test
     void aForeignInvoiceGetsTheEchosAnswerFromEchoForeign() throws Exception {
         int echoPort = startTheEcho();
-        int inPort = freePort();
-        Path demo = demoCopy(inPort, echoPort);
+        Path demo = demoCopy(echoPort);
         Run deployed = deploySh(demo.toString(), "demo");
         assertEquals(0, deployed.exit(), "fixture: the demo deploys: " + deployed.output());
         String invoice = new String(replaced(Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")),
                 Map.of("<Id>4711</Id>", "<Id>4712</Id>", "<Currency>CZK</Currency>", "<Currency>EUR</Currency>")), StandardCharsets.UTF_8);
 
-        HttpResponse<String> answer = post(inPort, "/in", invoice);
+        HttpResponse<String> answer = post(node.httpPort(), "/http/in", invoice);
 
         assertEquals(200, answer.statusCode(), "the foreign partner's path answers: " + answer.body());
         assertPartnersAnswer(answer.body(), "4712", "EUR");
@@ -217,7 +216,7 @@ class QuickstartIT {
      */
     @Test
     void deployShExitsNonZeroAndPrintsTheAnswerWhenTheNodeRefuses() throws Exception {
-        Path demo = demoCopy(freePort(), freePort());
+        Path demo = demoCopy(freePort());
 
         Run refused = deploySh(demo.toString(), "other");
 
@@ -234,7 +233,7 @@ class QuickstartIT {
      */
     @Test
     void deployShExitsNonZeroOnTheNodes401WithoutTheTokenOrWithAWrongOne() throws Exception {
-        Path demo = demoCopy(freePort(), freePort());
+        Path demo = demoCopy(freePort());
 
         Run without = deploySh(Map.of(), demo.toString());
         Run wrong = deploySh(Map.of("RAIL8_ADMIN_TOKEN", "not-the-token"), demo.toString());
@@ -260,7 +259,7 @@ class QuickstartIT {
         for (String tool : List.of("sh", "curl", "mktemp", "rm", "basename", "cat")) Files.createSymbolicLink(bin.resolve(tool), onPath(tool));
         Files.createSymbolicLink(bin.resolve("jar"), Path.of(System.getProperty("java.home"), "bin", "jar"));
         assertTrue(Files.notExists(bin.resolve("zip")), "fixture: no zip on the script's PATH");
-        Path demo = demoCopy(freePort(), freePort());
+        Path demo = demoCopy(freePort());
 
         Run deployed = deploySh(Map.of("PATH", bin.toString(), "RAIL8_ADMIN_TOKEN", TOKEN), demo.toString());
 
@@ -342,10 +341,10 @@ class QuickstartIT {
     }
 
     /**
-     * The demo copied to {@code <work>/demo}: http-in on 127.0.0.1:{@code inPort}, both partners at the echo on
-     * 127.0.0.1:{@code echoPort} (their paths kept), every rewrite asserted.
+     * The demo copied to {@code <work>/demo}: http-in served at {@code /http/in} on the node's HTTP port as the demo has it, both
+     * partners at the echo on 127.0.0.1:{@code echoPort} (their paths kept), every rewrite asserted.
      */
-    Path demoCopy(int inPort, int echoPort) throws IOException {
+    Path demoCopy(int echoPort) throws IOException {
         Path copy = work.resolve("demo");
         try (Stream<Path> walk = Files.walk(DEMO)) {
             for (Path p : walk.filter(Files::isRegularFile).toList()) {
@@ -355,7 +354,6 @@ class QuickstartIT {
                 Files.copy(p, target);
             }
         }
-        rewrite(copy.resolve("endpoints/http-in.yaml"), Map.of("host: 0.0.0.0", "host: 127.0.0.1", "port: 8080", "port: " + inPort));
         for (String partner : List.of("endpoints/partner-domestic.yaml", "endpoints/partner-foreign.yaml")) {
             rewrite(copy.resolve(partner), Map.of("http://localhost:8090", "http://127.0.0.1:" + echoPort));
         }

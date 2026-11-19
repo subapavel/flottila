@@ -6,6 +6,4 @@ id: http-in
 scheme: http
 direction: in
 config:
-  host: 0.0.0.0
-  port: 8080
-  path: /in
+  address: /in

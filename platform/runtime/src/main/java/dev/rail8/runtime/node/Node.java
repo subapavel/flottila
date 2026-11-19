@@ -16,6 +16,7 @@ import dev.rail8.core.node.NodeLease;
 import dev.rail8.core.record.MessageStore;
 import dev.rail8.core.record.Meter;
 import dev.rail8.core.record.StepCpu;
+import dev.rail8.ingress.SharedHttpPort;
 import dev.rail8.runtime.admin.AdminServer;
 import dev.rail8.runtime.blob.TieredBlobStore;
 import dev.rail8.runtime.db.Migrations;
@@ -84,8 +85,9 @@ import java.util.function.Function;
  * <p>{@code start} builds the two pools (the intake pool of {@code RAIL8_PG_POOL_INTAKE} connections for the
  * at-least-once saves and the journal's segment rows, the work pool of the rest of {@code RAIL8_PG_POOL_SIZE} for everything
  * else; no connection yet), the timer, ids and clock, builds the components from them and from the
- * node's blob store (bound once the journal is open, see below), refuses two components
- * for one scheme (in every environment) and, in a deployed environment, a mock binding — the scheme {@code mock}, or a component
+ * node's blob store (bound once the journal is open, see below) and its HTTP port ({@code RAIL8_HTTP_HOST}:{@code RAIL8_HTTP_PORT},
+ * not listening yet), refuses two components for one scheme and a component whose HTTP prefix is refused
+ * ({@link SharedHttpPort#prefixes}) (in every environment) and, in a deployed environment, a mock binding — the scheme {@code mock}, or a component
  * class in {@code dev.rail8.components.mock..} or {@code dev.rail8.testkit..} — and, in a deployed environment, the dir archive
  * store and an S3 endpoint over plain http before it touches Postgres, and loads the body journal's master key
  * (from {@code RAIL8_JOURNAL_KEY_FILE}, {@code RAIL8_JOURNAL_KEY} or the opted-in generated one; none refuses the start, so a
@@ -106,7 +108,9 @@ import java.util.function.Function;
  * one S3 client the node builds) and the poller leases (in the Valkey of {@code RAIL8_VALKEY_URI} over one client the
  * node builds; without it in the node's memory, with one WARNING), builds the {@link Deployments} over them and the node's
  * one {@link Targets} ({@code RAIL8_TARGET_*}: every flow it builds sends under it, across packages and versions), starts the
- * {@link CpuSampler} when {@code RAIL8_CPU_SAMPLING} sets a period, restores
+ * {@link CpuSampler} when {@code RAIL8_CPU_SAMPLING} sets a period, binds the HTTP port — until the start returns it answers
+ * 503 for every path no mount takes, after that 503 for the path of a flow deployed here whose consumer has not mounted it at the
+ * moment and 404 for any other ({@link Deployments#serves}) — restores
  * what the pool's records name ({@link Deployments#restore}: rows that cannot be read or a data directory that cannot be
  * written fail the start; a package or a flow that cannot be restored is listed FAILED and the node starts), builds the
  * {@link Retention} job over the work pool, the clock and the timer ({@code RAIL8_RETENTION_*}) and only then starts the admin
@@ -116,12 +120,13 @@ import java.util.function.Function;
  * stopped, DEGRADED while a segment row is retried), then the
  * retention job, whose first run begins at once and does not hold
  * the start, then the journal's {@link SegmentSweeper} ({@code RAIL8_JOURNAL_SWEEP_*}, its first pass an interval later); when any of this fails, what was opened closes again — the deployments first (the
- * restored flows stop while the pools are open; a stop that fails is added to the start's failure as suppressed), then the node lease
+ * restored flows stop while the pools are open; a stop that fails is added to the start's failure as suppressed), then the HTTP port, then the node lease
  * and its connection, then the sampler, then the work queue's completion batch, then the work events, then the peer link (its reads,
  * then its listener), then the journal, the store, the intake pool, the work pool, the S3 client, the Valkey client — so nothing is left running, listening
  * or pooled; {@code /ready}'s lifecycle is UP only once the start returns. {@code close} first marks the node not ready
  * ({@code /ready} 503), then closes the deployments — no deploy is taken any more and every deployed flow stops within {@code RAIL8_STOP_DEADLINE}, its lease
- * released, while the admin port still answers — then stops renewing the node lease and closes its connection (the row expires;
+ * released, while the admin port still answers; a request a consumer took on the HTTP port and has not answered by that deadline is
+ * reset — then closes the HTTP port, then stops renewing the node lease and closes its connection (the row expires;
  * a peer or the next start takes the items over), then closes the sampler (if one runs), then stops the admin server, then closes the retention job (no next run; the
  * batch in flight commits or rolls back first), then the sweeper (its pass in flight ends first), then the work queue's completion
  * batch (every completion handed over answered first), then the work events, then the peer link (its reads, then its
@@ -151,6 +156,8 @@ public final class Node implements AutoCloseable {
     static final String ALONE = "no other live member at this node's start: no other node takes its at-least-once items over while it is down (D-101)";
 
     private final Deployments deployments;
+    /** The node's HTTP port, shared by the in endpoints of every adapter with an HTTP prefix. */
+    private final SharedHttpPort http;
     /** The node's lease, renewed on its membership's own connection. */
     private final NodeLease lease;
     private final PgMembership membership;
@@ -179,10 +186,12 @@ public final class Node implements AutoCloseable {
     private final PeerReads peerReads;
     private final PeerServer peerServer;
 
-    private Node(Deployments deployments, NodeLease lease, PgMembership membership, Optional<CpuSampler> sampler, AdminServer admin, int adminPort,
-                 Retention retention, SegmentSweeper sweeper, Journal journal, PgMessageStore messages, Pool intake, Pool pool, Runnable closeS3,
-                 Runnable closeValkey, Runnable closeSignals, Runnable closeWork, AtomicBoolean ready, PeerReads peerReads, PeerServer peerServer) {
+    private Node(Deployments deployments, SharedHttpPort http, NodeLease lease, PgMembership membership, Optional<CpuSampler> sampler, AdminServer admin,
+                 int adminPort, Retention retention, SegmentSweeper sweeper, Journal journal, PgMessageStore messages, Pool intake, Pool pool,
+                 Runnable closeS3, Runnable closeValkey, Runnable closeSignals, Runnable closeWork, AtomicBoolean ready, PeerReads peerReads,
+                 PeerServer peerServer) {
         this.deployments = deployments;
+        this.http = http;
         this.lease = lease;
         this.membership = membership;
         this.sampler = sampler;
@@ -207,7 +216,8 @@ public final class Node implements AutoCloseable {
      * Starts a node on {@code vertx}; see the class comment for the order.
      *
      * @param components builds the node's components, once, from the node's own context
-     * @throws IllegalStateException two components for one scheme, a deployed environment and a mock binding among the components,
+     * @throws IllegalStateException two components for one scheme, a component whose HTTP prefix is refused
+     *                               ({@link SharedHttpPort#prefixes}), a deployed environment and a mock binding among the components,
      *                               the dir archive store or an S3 endpoint over plain http, or a Postgres the durability profile
      *                               refuses ({@link PgDurability}): under both profiles a session that does not commit with
      *                               {@code synchronous_commit=on} and a server in recovery; under {@code ha} also an empty
@@ -246,6 +256,8 @@ public final class Node implements AutoCloseable {
         Runnable closeSignals = () -> {};   // the work events once built: closed after the deployments, before the stores and the pools
         Runnable closeWork = () -> {};   // the work queue's completion batch once built: closed after the deployments, before the signals
         Deployments deployments = null;   // once built: closed first, its flows stopping while the pool is open
+        // binds nothing until it listens: closed after the deployments, whose consumers' mounts drain within the stop deadline
+        SharedHttpPort http = new SharedHttpPort(vertx, timer, config.http().host(), config.http().port(), config.stopDeadline());
         NodeLease lease = null;   // once joined: closed after the deployments, its connection with it
         PgMembership membership = null;
         PeerServer peerServer = null;   // once listening: closed with the reads, after the work events, before the journal it serves
@@ -253,8 +265,9 @@ public final class Node implements AutoCloseable {
         Optional<CpuSampler> sampler = Optional.empty();   // once started: closed after the deployments
         try {
             LateBlobStore late = new LateBlobStore(tiers.treeLimit());   // the node's store once the journal it writes to is open
-            List<Component> built = List.copyOf(components.apply(new ComponentContext(vertx, late, ids, timer, clock)));
+            List<Component> built = List.copyOf(components.apply(new ComponentContext(vertx, late, ids, timer, clock, http)));
             Map<String, Component> byScheme = byScheme(built);
+            Map<String, String> prefixes = SharedHttpPort.prefixes(built);
             if (config.deployed()) {
                 refuseMocks(config.env(), built);
                 refuseArchiveStore(config);
@@ -330,9 +343,11 @@ public final class Node implements AutoCloseable {
             StepCpu cpu = new StepCpu(StepCpu.Limits.DEFAULT);
             // before the restore: the restored flows' steps are sampled from their first message on
             sampler = config.cpuSampling().map(period -> CpuSampler.start(period, cpu, clock, timer, CpuSampler.READ_EVERY));
+            AtomicBoolean ready = new AtomicBoolean();   // /ready's lifecycle: DOWN until the start finished (a failed start never sets it)
+            // before the restore, whose consumers mount on it; a path no mount takes is 503 until the start finished
+            http.listen(prefixes, path -> !ready.get() || restored.serves(path)).await();
             restored.restore();   // before the admin port opens: what the pool recorded runs before a deploy can be taken
             Retention retention = new Retention(pool, clock, timer, config.retention());
-            AtomicBoolean ready = new AtomicBoolean();   // /ready's lifecycle: DOWN until the start finished (a failed start never sets it)
             // /ready's inputs are in-memory reads: the fence, the journal's and the deployments' health — both synchronous
             AdminServer.Readiness readiness = new AdminServer.Readiness(ready::get, lease,
                     () -> opened.health().status() == Health.Status.UP, () -> restored.health().status() != Health.Status.DOWN);
@@ -347,8 +362,8 @@ public final class Node implements AutoCloseable {
             // the segments no row pins go; its first pass an interval later, on a virtual thread of its own
             SegmentSweeper sweeper = new SegmentSweeper(opened, new PgSegmentRows(pool), intake::openSaves, config.journalSweep(), clock, timer);
             sweeper.start();
-            Node node = new Node(restored, lease, membership, sampler, admin, port, retention, sweeper, opened, messages, intakePool, pool, closeS3,
-                    closeValkey, closeSignals, closeWork, ready, peerReads, peerServer);
+            Node node = new Node(restored, http, lease, membership, sampler, admin, port, retention, sweeper, opened, messages, intakePool, pool,
+                    closeS3, closeValkey, closeSignals, closeWork, ready, peerReads, peerServer);
             ready.set(true);   // the start's last act: from here /ready may answer UP
             return node;
         } catch (Throwable failure) {
@@ -361,7 +376,11 @@ public final class Node implements AutoCloseable {
                 failure.addSuppressed(unstopped);
             } finally {
                 try {
-                    closeLease(lease, membership);
+                    try {
+                        http.close().await();   // after the flows that mounted on it
+                    } finally {
+                        closeLease(lease, membership);
+                    }
                 } finally {
                     try {
                         sampler.ifPresent(CpuSampler::close);
@@ -475,6 +494,9 @@ public final class Node implements AutoCloseable {
     /** The port the admin server bound: the actual one when {@code RAIL8_ADMIN_PORT} is 0. */
     public int adminPort() { return adminPort; }
 
+    /** The node's HTTP port as bound: the actual one when {@code RAIL8_HTTP_PORT} is 0. */
+    public int httpPort() { return http.port(); }
+
     /** The node's message store over Postgres. */
     public MessageStore messages() { return messages; }
 
@@ -529,7 +551,7 @@ public final class Node implements AutoCloseable {
     public Journal journal() { return journal; }
 
     /**
-     * Marks the node not ready ({@code /ready} 503 from here), then closes the deployments (every flow stopped, its lease released, deploys refused), then stops the node lease and closes its connection, then the CPU sampler (if one runs), then stops the admin server, then closes the
+     * Marks the node not ready ({@code /ready} 503 from here), then closes the deployments (every flow stopped, its lease released, deploys refused), then the HTTP port, then stops the node lease and closes its connection, then the CPU sampler (if one runs), then stops the admin server, then closes the
      * retention job (waits for its batch in flight), then the segment sweeper (waits for its pass in flight), then the work queue's
      * completion batch (waits until every completion handed over is answered), then the work events
      * (their listening connection; nothing sent from then on), then the peer link (its reads, then its listener), then closes the
@@ -543,7 +565,11 @@ public final class Node implements AutoCloseable {
             deployments.close();
         } finally {
             try {
-                closeLease(lease, membership);   // after the deployments: no flow is left to fence
+                try {
+                    http.close().await();   // after the flows that mounted on it
+                } finally {
+                    closeLease(lease, membership);   // after the deployments: no flow is left to fence
+                }
             } finally {
                 try {
                     sampler.ifPresent(CpuSampler::close);   // after the deployments; it feeds nothing more, their last one to two read cycles unread

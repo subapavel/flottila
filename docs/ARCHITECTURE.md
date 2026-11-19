@@ -462,9 +462,10 @@ deploy made on another node.
 ### The component contract
 
 A component has a scheme, a description of its endpoint settings, a consumer, a producer and a health
-check. It may also say which host and port its consumer listens on (two endpoints may not share one),
-whether it polls something other nodes could poll too, what identifies a delivery, and which target
-system a producer calls.
+check. It may also declare its prefix on the node's HTTP port, say which host and port its consumer
+listens on when it takes connections on a port of its own (two endpoints may not share one), whether
+it polls something other nodes could poll too, what identifies a delivery, and which target system a
+producer calls.
 
 - The **settings description** (`Component.settings()`, types in `dev.rail8.api.settings`) lists
   each option an endpoint may set: its name, type (text, secret, whole number, true or false, one of
@@ -478,6 +479,27 @@ system a producer calls.
   way; a description that cannot be built refuses the node's start, naming its owner. A component
   that describes nothing is checked against its `configSchema()`, a JSON Schema.
 
+- **The node's HTTP port** (`RAIL8_HTTP_HOST`, default 127.0.0.1, and `RAIL8_HTTP_PORT`, default
+  8080) is one port shared by every component that takes HTTP requests, as in SAP Integration Suite,
+  where the HTTPS adapter serves `/http/<address>` and the SOAP adapter `/cxf/<address>` on one host.
+  A component declares its prefix (`Component.httpPrefix()`): `/` and one segment, such as `/http` or a
+  plugin's `/webhook`; `/rail8` is kept for the platform. An in endpoint of it names the rest of the
+  path in its `address` option (`/orders`), so `http` serves that endpoint at `/http/orders`, matched
+  exactly; an address is written as it is, never as a secret reference. A prefix of the wrong form, a prefix two components declare, or one whose component
+  describes no `address` refuses the node's start, naming the owners, and `rail8 validate` reports it.
+  The deploy refuses two flows at one path, within a package or against another package's running
+  flow; a redeploy keeps its own paths. The consumer mounts its endpoint on the port when it starts
+  and closes the mount when it stops (`HttpIngress`, reached through `ComponentContext.http()`), and
+  answers each request by its own protocol: methods, body limit, streaming into the blob store and
+  the status from the flow's answer are the component's. The node answers only what no mount can:
+  404 for a path no flow serves, 503 with `Retry-After` for a deployed flow's path while it has no
+  mount (a redeploy's swap, a restart, a stop, and until the node is ready), and 500 for a request
+  whose handler threw before it wrote the response head (a reset after). The port binds at start
+  before the packages are restored. A mount's close waits for the requests it took to answer or lose
+  their connection, and resets those still open at the stop deadline, counted from that close.
+  Components are trusted code and share the node's event loops: a mount's handler never blocks. The admin API and the peer link keep ports of
+  their own: an HTTP port equal to either refuses the start, and the deploy refuses a component's
+  own listener on any of the three.
 - A **consumer** calls the flow's handler for every message and finishes its protocol from the
   answer: *accepted* (the message is durable; the sender may let go), *reply* (sync), or *refused*,
   either "try again" or for good.
@@ -518,15 +540,15 @@ and the shipped modules. The runtime's build brings the modules for its tests on
 them from the node's build. Other plugins are jars, or folders of jars, in the folder that
 `RAIL8_PLUGINS` names. Each implements `dev.rail8.api.plugin.Plugin`, named in the
 `META-INF/services/dev.rail8.api.plugin.Plugin` of its own jar: a name, the api version it was
-built against, and what it adds. The api is 0.2.
+built against, and what it adds. The api is 0.3.
 
 At start the node finds its modules on its class path (Java's `ServiceLoader`), in name order,
 then loads every entry of `RAIL8_PLUGINS`, in name order. Modules and plugins share one space of
 names, and `rail8` stands for the platform itself. The node logs each one: module or plugin, its
 name, its version (its jar's `Implementation-Version`, else `-`), its api version, the SHA-256 of
 its jars (`-` for a directory) and where it came from. Their components are built over the node's
-`ComponentContext` (Vert.x, blob store, ids, timer, clock), inside the node's start; building them
-opens nothing.
+`ComponentContext` (Vert.x, blob store, ids, timer, clock, the node's HTTP port), inside the node's
+start; building them opens nothing.
 
 - **Settings.** A plugin's settings are the variables `RAIL8_<NAME>_<KEY>` of the node's
   environment, its name in upper case with each dash an underscore: the jq module reads
@@ -582,8 +604,12 @@ What a component promises the node:
 - **Breaking.** A consumer that stops working on its own after its start fails `broken()` with
   the cause; the node then stops it and builds a fresh one with the same endpoint and handler. A
   stop is not a break, and a failed answer of the handler is that message's failure. A consumer that
-  cannot break once started, such as a listener whose bind is its start, keeps the default, which
-  never completes.
+  cannot break once started, such as one that mounts its endpoint on the node's HTTP port, keeps the
+  default, which never completes.
+- **Address.** An adapter that takes HTTP requests declares its own prefix on the node's HTTP port,
+  as the built-in `http` does, lists `HttpIngress.ADDRESS` among its in settings, and mounts each in
+  endpoint there; the sample's prefix is `/webhook`, the template's `/<scheme>`. It opens no server of
+  its own. An adapter of another protocol that accepts connections says where with `listensOn`.
 - **Settings.** `settings()` describes every option an endpoint may set, the same on every call;
   the node checks endpoint files against it and the UI draws the form from it. `flow` and
   `maxBodyBytes` on an in endpoint are the node's and are no field of it.
@@ -612,11 +638,12 @@ Two tools start a new adapter and run it (`docs/ADAPTERS.md`):
   description, the plugin, the contract tests of the component and of its mock, and a package that
   uses it. It builds and passes the contract suite as written; the comments marked `HTTP:` are
   where another protocol goes. The cli jar carries the sample's files, copied at build time. A
-  scheme the node already has, a name that is not a valid scheme or Java package, and a folder that
-  is not empty are refused.
+  scheme the node already has, `rail8`, a name that is not a valid scheme or Java package, and a
+  folder that is not empty are refused.
 - **Local run.** `bin/run-adapter <dir>`, in a checkout with the platform built, builds the
   adapter's jar, starts an empty Postgres in Docker on a free port and a node of environment `dev`
-  with the adapter's `target/plugin` as its plugins (admin API on `127.0.0.1:18081`, no token),
+  with the adapter's `target/plugin` as its plugins (admin API on `127.0.0.1:18081`, no token, its
+  HTTP port on `127.0.0.1:18090`),
   deploys the adapter's `package/`, starts a partner that echoes on `127.0.0.1:18091`, and runs the
   UI with the adapter's folder as its working folder, until Ctrl+C. A taken port or a missing tool
   stops it before it starts anything.
@@ -676,6 +703,9 @@ a file to poll; a deployed node refuses it.
   in SAP XI.
 - Custom code sends through an outbound endpoint of its package.
 - Priority: the core and the contracts first, then HTTP inbound and outbound.
+- HTTPS on the node's HTTP port, from a certificate and key the node is given.
+- The endpoint form and the flow picture show an in endpoint's full URL on the node's HTTP port:
+  `GET /admin/components` serves each component's prefix.
 
 ## 6. Several nodes and failures
 

@@ -52,8 +52,8 @@ class ModuleBoundaryViolationTest {
     @Test void thePluginContractMayNameVertxAndTheApiSurfaceRuleLeavesItAlone() {
         JavaClasses contractOnly = new ClassFileImporter()
                 .withImportOption(new ImportOption.OnlyIncludeTests())
-                .importClasses(dev.rail8.api.plugin.violation.PluginNamesVertx.class);
-        assertDoesNotThrow(() -> Rules.PLUGIN_SURFACE.check(contractOnly), "Vertx, an allowlisted type and the contract itself");
+                .importClasses(dev.rail8.api.plugin.violation.PluginNamesVertx.class, dev.rail8.api.plugin.violation.PluginNamesAnHttpRequest.class);
+        assertDoesNotThrow(() -> Rules.PLUGIN_SURFACE.check(contractOnly), "Vertx, HttpServerRequest, an allowlisted type and the contract itself");
         for (ArchRule rule : java.util.List.of(Rules.API_SURFACE, Rules.NOTHING_ELSE_NAMES_THE_PLUGIN_CONTRACT)) {
             AssertionError others = assertThrows(AssertionError.class, () -> rule.check(fixtures), rule.getDescription());
             assertFalse(others.getMessage().contains("PluginNamesVertx"), () -> "the contract has a rule of its own:\n" + others.getMessage());
@@ -78,6 +78,7 @@ class ModuleBoundaryViolationTest {
         assertFalse(e.getMessage().contains("RuntimeFixture"), () -> "runtime may use the client, but the report says:\n" + e.getMessage());
     }
     @Test void testkitDependingOnRuntimeIsCaught() { assertFails(Rules.TESTKIT_DEPENDS_ON_CORE_AND_API, "TestkitDependsOnRuntime"); }
+    @Test void theSharedHttpPortDependingOnRuntimeIsCaught() { assertFails(Rules.INGRESS_DEPENDS_ON_API_ONLY, "IngressDependsOnRuntime"); }
     // --- cli is the outermost module (F-16, D-079): it may depend on everything, nothing depends on it
     @Test void nothingDependsOnCliCatchesARuntimeClassNamingTheCli() { assertFails(Rules.NOTHING_DEPENDS_ON_CLI, "RuntimeDependsOnTheCli"); }
     @Test void nothingDependsOnCliCatchesAClassOfAModuleNoOtherRuleNames() { assertFails(Rules.NOTHING_DEPENDS_ON_CLI, "SchemasDependsOnTheCli"); }

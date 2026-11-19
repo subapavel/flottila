@@ -1,6 +1,7 @@
 package dev.rail8.runtime;
 
 import dev.rail8.components.http.HttpComponent;
+import dev.rail8.runtime.deploy.PackageDraft;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
@@ -150,6 +151,7 @@ class TargetLimitIT {
         env.put("RAIL8_NODE_ID", "node-1");
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", data.toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -163,13 +165,14 @@ class TargetLimitIT {
 
     Node start(Map<String, String> env) throws Exception {
         NodeConfig config = NodeConfig.from(env);
-        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())), List.of(), List.of()));
+        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())), List.of(), List.of()));
         nodes.add(node);
         return node;
     }
 
-    static CompletableFuture<HttpResponse<String>> post(HttpClient client, int inPort, String text) {
-        return client.sendAsync(NodeIT.request("POST", inPort, "/in", ("<order>" + text + "</order>").getBytes(StandardCharsets.UTF_8), "application/xml"),
+    /** POSTs {@code text} as an order to {@code path} on the node's HTTP port {@code httpPort}. */
+    static CompletableFuture<HttpResponse<String>> post(HttpClient client, int httpPort, String path, String text) {
+        return client.sendAsync(NodeIT.request("POST", httpPort, path, ("<order>" + text + "</order>").getBytes(StandardCharsets.UTF_8), "application/xml"),
                 HttpResponse.BodyHandlers.ofString());
     }
 
@@ -228,16 +231,17 @@ class TargetLimitIT {
         env.put("RAIL8_TARGET_MAX_WAIT", "PT4S");
         Node node = start(env);
         int admin = node.adminPort();
-        int inOne = NodeIT.freePort();
-        NodeIT.putOk(admin, "one", NodeIT.relay("one", inOne, target + "/one").zip());
-        int inTwo = NodeIT.freePort();
-        NodeIT.putOk(admin, "two", NodeIT.relay("two", inTwo, target + "/two").zip());
+        int http = node.httpPort();
+        NodeIT.putOk(admin, "one", NodeIT.relay("one", target + "/one").zip());   // served at /http/in
+        PackageDraft second = NodeIT.relay("two", target + "/two");
+        second.endpointDoc("in").put("config", new JsonObject().put("address", "/two"));   // served at /http/two
+        NodeIT.putOk(admin, "two", second.zip());
 
         try (HttpClient client = NodeIT.http()) {
             List<CompletableFuture<HttpResponse<String>>> answers = new ArrayList<>();
             for (int i = 0; i < 3; i++) {
-                answers.add(post(client, inOne, "one-" + i));
-                answers.add(post(client, inTwo, "two-" + i));
+                answers.add(post(client, http, "/http/in", "one-" + i));
+                answers.add(post(client, http, "/http/two", "two-" + i));
             }
             until(() -> partner.held() == 2 && gaugeIs(admin, target, "waiting", 4),
                     () -> "two sends at the partner, four waiting at the limit; partner holds " + partner.held() + ", arrivals " + partner.arrivals + ", targets " + targets(admin));
@@ -257,10 +261,10 @@ class TargetLimitIT {
             assertEquals(3, partner.arrivedAt("/one"), "flow one's three sends, each once: " + partner.arrivals);
             assertEquals(3, partner.arrivedAt("/two"), "flow two's three sends, each once: " + partner.arrivals);
 
-            CompletableFuture<HttpResponse<String>> one = post(client, inOne, "held-1");
-            CompletableFuture<HttpResponse<String>> two = post(client, inTwo, "held-2");
+            CompletableFuture<HttpResponse<String>> one = post(client, http, "/http/in", "held-1");
+            CompletableFuture<HttpResponse<String>> two = post(client, http, "/http/two", "held-2");
             until(() -> partner.held() == 2, () -> "two sends held at the partner; arrivals " + partner.arrivals);
-            CompletableFuture<HttpResponse<String>> late = post(client, inTwo, "late");
+            CompletableFuture<HttpResponse<String>> late = post(client, http, "/http/two", "late");
             until(() -> gaugeIs(admin, target, "waiting", 1), () -> "the third send waits at the limit; arrivals " + partner.arrivals + ", targets " + targets(admin));
 
             HttpResponse<String> refused = answer(late, "the answer past maxWait");

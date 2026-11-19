@@ -229,7 +229,7 @@ public final class StreamHeapMain {
                 Map.entry("RAIL8_ADMIN_PORT", String.valueOf(admin)), Map.entry("RAIL8_DATA_DIR", data.toString()),
                 Map.entry("RAIL8_PG_HOST", o.host()), Map.entry("RAIL8_PG_PORT", String.valueOf(o.port())), Map.entry("RAIL8_PG_DATABASE", o.db()),
                 Map.entry("RAIL8_PG_USER", o.user()), Map.entry("RAIL8_PG_PASSWORD", o.password()),
-                Map.entry("RAIL8_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY), Map.entry("RAIL8_PEER_PORT", "0"));
+                Map.entry("RAIL8_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY), Map.entry("RAIL8_PEER_PORT", "0"), Map.entry("RAIL8_HTTP_PORT", "0"));
     }
 
     /**

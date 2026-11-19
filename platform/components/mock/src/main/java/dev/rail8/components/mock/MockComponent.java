@@ -70,6 +70,8 @@ public final class MockComponent implements Component {
     /** The props an http consumer sets on what it takes in (HttpComponent.METHOD / PATH): the mock depends on the api only. */
     private static final Key<String> HTTP_METHOD = new Key<>("http.method");
     private static final Key<String> HTTP_PATH = new Key<>("http.path");
+    /** The http component's prefix on the node's HTTP port (HttpComponent.PREFIX): an http consumer's path is it and the address. */
+    private static final String HTTP_PREFIX = "/http";
 
     private final String scheme;
     private final BlobStore blobs;
@@ -176,7 +178,8 @@ public final class MockComponent implements Component {
      * Hands {@code bytes} with {@code headers} to the consumer running on the endpoint named {@code endpoint} as that consumer
      * takes in what its sender sends: stored under {@code BlobKey.body(id, 0)} within the {@code maxBodyBytes} of the
      * consumer's config, an id from this mock's generator and the config's {@code flow} ({@code Envelope.ingress}); an http
-     * mock's envelope carries the props {@code http.method} {@code POST} and {@code http.path} the config's {@code path}. It goes
+     * mock's envelope carries the props {@code http.method} {@code POST} and {@code http.path} the path the http component serves
+     * the endpoint at ({@code /http} and the config's {@code address}). It goes
      * through the consumer's own handler — on a virtual thread of its own, counted for the consumer's stop — and
      * is {@link #delivered}, never {@link #sent}.
      *
@@ -199,12 +202,13 @@ public final class MockComponent implements Component {
 
     /**
      * A consumer running on its endpoint: the {@code flow} and {@code maxBodyBytes} its config carries (the deploy sets both),
-     * the config's {@code path} (an http consumer's; {@code /} without one) and its tracked handler.
+     * the path an http consumer takes requests at (its prefix and its config's {@code address}; the prefix alone without one)
+     * and its tracked handler.
      */
     private record Running(String flow, Object maxBody, String path, Function<Envelope, Future<Ack>> handler) {
         Running(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {
             this(cfg.options().get("flow") instanceof String f ? f : cfg.name(), cfg.options().get("maxBodyBytes"),
-                    cfg.options().get("path") instanceof String p ? p : "/", handler);
+                    HTTP_PREFIX + (cfg.options().get("address") instanceof String a ? a : ""), handler);
         }
 
         /** The endpoint's limit, if its config sets one; else {@code size}, the bytes' own. */

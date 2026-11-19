@@ -54,7 +54,7 @@ public interface Plugin {
      * The api version of this interface, {@code major.minor}. It is a constant, so the {@code return API;} of {@link #api()}
      * compiles the version the plugin was built against into the plugin.
      */
-    String API = "0.2";
+    String API = "0.3";
 
     /** The most contributions of one kind (components, step factories, expression languages) a plugin may bring. */
     int MAX_CONTRIBUTIONS = 256;

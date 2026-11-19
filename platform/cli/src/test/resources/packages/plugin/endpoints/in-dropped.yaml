@@ -4,6 +4,4 @@ id: in-dropped
 scheme: http
 direction: in
 config:
-  host: 127.0.0.1
-  port: 18087
-  path: /dropped
+  address: /dropped

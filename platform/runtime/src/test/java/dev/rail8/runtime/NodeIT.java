@@ -186,6 +186,7 @@ class NodeIT {
         env.put("RAIL8_NODE_ID", "node-it");
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", data.toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -222,7 +223,7 @@ class NodeIT {
         SaxonXml xml = new SaxonXml();
         node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> {
             asked.add(ctx);
-            return List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids()), new PlainComponent("sftp"));
+            return List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http()), new PlainComponent("sftp"));
         }, Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
 
         assertEquals(1, asked.size(), "the node built its components once, from its own context");
@@ -234,8 +235,13 @@ class NodeIT {
         assertEquals(65536L, ctx.blobs().treeLimit(), "the components' BlobStore is the node's, built from RAIL8_BLOB_TREE_LIMIT");
 
         assertTrue(node.adminPort() > 0, "the port actually bound, not the configured 0: " + node.adminPort());
+        assertTrue(node.httpPort() > 0 && node.httpPort() != node.adminPort(), "the node's HTTP port, bound on a port of its own: " + node.httpPort());
         HttpResponse<String> health = get(node.adminPort(), "/health");
         assertEquals(200, health.statusCode(), health.body());
+        try (HttpClient client = http()) {
+            HttpResponse<String> nobody = send(client, "POST", node.httpPort(), "/http/in", new byte[0], "application/xml");
+            assertEquals(404, nobody.statusCode(), "a path no flow serves on the ready node's HTTP port: " + nobody.body());
+        }
         JsonObject body = new JsonObject(health.body());
         assertEquals("UP", body.getString("status"), body.encode());
         assertFalse(body.getJsonObject("checks").isEmpty(), "the node reports its checks, Postgres among them: " + body.encode());
@@ -602,10 +608,10 @@ class NodeIT {
     }
 
     /**
-     * The demo package's invoice-sync part as a zip, its http-in endpoint on 127.0.0.1:{@code inPort}, its partners at
-     * {@code partnerBase}; every rewrite asserted.
+     * The demo package's invoice-sync part, its http-in endpoint served at {@code /http/in} on the node's HTTP port, its partners
+     * at {@code partnerBase}; every rewrite asserted.
      */
-    static Map<String, byte[]> demoFiles(int inPort, String partnerBase) throws IOException {
+    static Map<String, byte[]> demoFiles(String partnerBase) throws IOException {
         Map<String, byte[]> files = new java.util.TreeMap<>();
         try (Stream<Path> walk = Files.walk(DEMO)) {
             for (Path p : walk.filter(Files::isRegularFile).toList()) {
@@ -613,7 +619,6 @@ class NodeIT {
                 if (!addedByP206(path)) files.put(path, Files.readAllBytes(p));
             }
         }
-        files.put("endpoints/http-in.yaml", replaced(files.get("endpoints/http-in.yaml"), Map.of("host: 0.0.0.0", "host: 127.0.0.1", "port: 8080", "port: " + inPort)));
         for (String partner : List.of("endpoints/partner-domestic.yaml", "endpoints/partner-foreign.yaml")) {
             files.put(partner, replaced(files.get(partner), Map.of("http://localhost:8090", partnerBase)));
         }
@@ -670,7 +675,7 @@ class NodeIT {
     Node startDemoNode(Map<String, String> env) throws Exception {
         SaxonXml xml = new SaxonXml();
         NodeConfig config = NodeConfig.from(env);
-        node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+        node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())),
                 Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
         return node;
     }
@@ -681,8 +686,7 @@ class NodeIT {
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
         try (HttpClient client = http()) {
-            int inPort = freePort();
-            Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
+            Map<String, byte[]> files = demoFiles("http://127.0.0.1:" + partner.actualPort());
             byte[] zip = zip(files);
             startDemoNode(env("ci"));
             int admin = node.adminPort();
@@ -694,7 +698,7 @@ class NodeIT {
                     .put("flows", new io.vertx.core.json.JsonArray().add("demo/invoice-sync")).put("added", new io.vertx.core.json.JsonArray().add("demo/invoice-sync"))
                     .put("swapped", new io.vertx.core.json.JsonArray()).put("removed", new io.vertx.core.json.JsonArray()), new JsonObject(put.body()), "the deploy's answer");
 
-            HttpResponse<String> invoice = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+            HttpResponse<String> invoice = send(client, "POST", node.httpPort(), "/http/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
             assertEquals(200, invoice.statusCode(), invoice.body());
             assertEquals(ack.toString(), invoice.body(), "the partner's reply comes back as the HTTP answer");
             assertEquals(1, partnerSaw.size(), "the partner saw the invoice once: " + partnerSaw);
@@ -753,15 +757,14 @@ class NodeIT {
         int messages = 5;
         String cpuPath = "/admin/flows/demo%2Finvoice-sync/cpu";
         try (HttpClient client = http()) {
-            int inPort = freePort();
-            byte[] zip = zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort()));
+            byte[] zip = zip(demoFiles("http://127.0.0.1:" + partner.actualPort()));
             Map<String, String> sampling = env("ci");
             sampling.put("RAIL8_CPU_SAMPLING", "PT0.004S");
             Node first = startDemoNode(sampling);
             putOk(first.adminPort(), "demo", zip);
             byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
             for (int i = 0; i < messages; i++) {
-                HttpResponse<String> sent = send(client, "POST", inPort, "/in", invoice, "application/xml");
+                HttpResponse<String> sent = send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml");
                 assertEquals(200, sent.statusCode(), "fixture: invoice " + i + " went through: " + sent.body());
             }
 
@@ -827,14 +830,13 @@ class NodeIT {
             external.enable("dev.rail8.Step");
             external.enable(Phase.class);
             external.start();
-            int inPort = freePort();
-            byte[] zip = zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort()));
+            byte[] zip = zip(demoFiles("http://127.0.0.1:" + partner.actualPort()));
             byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
 
             Node off = startDemoNode(env("ci"));
             putOk(off.adminPort(), "demo", zip);
             for (int i = 0; i < messages; i++) {
-                HttpResponse<String> sent = send(client, "POST", inPort, "/in", invoice, "application/xml");
+                HttpResponse<String> sent = send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml");
                 assertEquals(200, sent.statusCode(), "fixture: invoice " + i + " went through the node without sampling: " + sent.body());
             }
             closeNode(off);
@@ -847,7 +849,7 @@ class NodeIT {
             sampling.put("RAIL8_CPU_SAMPLING", "PT0.004S");
             startDemoNode(sampling);
             for (int i = 0; i < messages; i++) {
-                HttpResponse<String> sent = send(client, "POST", inPort, "/in", invoice, "application/xml");
+                HttpResponse<String> sent = send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml");
                 assertEquals(200, sent.statusCode(), "fixture: invoice " + i + " went through the sampling node: " + sent.body());
             }
             external.stop();
@@ -882,14 +884,13 @@ class NodeIT {
         int messages = 2;
         String cpuPath = "/admin/flows/demo%2Finvoice-sync/cpu";
         try (HttpClient client = http()) {
-            int inPort = freePort();
             Map<String, String> sampling = env("ci");
             sampling.put("RAIL8_CPU_SAMPLING", "PT0.004S");
             Node n = startDemoNode(sampling);
-            putOk(n.adminPort(), "demo", zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort())));
+            putOk(n.adminPort(), "demo", zip(demoFiles("http://127.0.0.1:" + partner.actualPort())));
             byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
             for (int i = 0; i < messages; i++) {
-                HttpResponse<String> sent = send(client, "POST", inPort, "/in", invoice, "application/xml");
+                HttpResponse<String> sent = send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml");
                 assertEquals(200, sent.statusCode(), "fixture: invoice " + i + " went through: " + sent.body());
             }
             JsonObject on = cpuUntil(n.adminPort(), cpuPath, a -> "on".equals(a.getString("sampling")) && a.getJsonArray("items").size() == 5
@@ -956,7 +957,7 @@ class NodeIT {
                 env.put("RAIL8_S3_PREFIX", prefix);
                 env.put("RAIL8_S3_ACCESS_KEY", localstack.getAccessKey());
                 env.put("RAIL8_S3_SECRET_KEY", localstack.getSecretKey());
-                byte[] zip = zip(demoFiles(freePort(), "http://127.0.0.1:9"));
+                byte[] zip = zip(demoFiles("http://127.0.0.1:9"));
                 String sha = sha256(zip);
                 startDemoNode(env);
 
@@ -1081,10 +1082,10 @@ class NodeIT {
         }
     }
 
-    /** The status of an invoice POSTed to the demo's in endpoint on a fresh connection; -1 when the connection is refused. */
-    static int postInvoice(int inPort) throws IOException, InterruptedException {
+    /** The status of an invoice POSTed to the demo's in endpoint on {@code httpPort} on a fresh connection; -1 when the connection is refused. */
+    static int postInvoice(int httpPort) throws IOException, InterruptedException {
         try (HttpClient client = http()) {
-            return send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml").statusCode();
+            return send(client, "POST", httpPort, "/http/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml").statusCode();
         } catch (ConnectException refused) {
             return -1;
         }
@@ -1102,12 +1103,11 @@ class NodeIT {
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
         try {
-            int inPort = freePort();
-            byte[] zip = zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort()));
+            byte[] zip = zip(demoFiles("http://127.0.0.1:" + partner.actualPort()));
             startDemoNode(env("ci"));
             putOk(node.adminPort(), "demo", zip);
             putOk(node.adminPort(), "lib", PackageDraft.of("lib", "1.0.0").file("xslt/lib.xsl", "<xsl:stylesheet/>").zip());
-            assertEquals(200, postInvoice(inPort), "fixture: the demo serves");
+            assertEquals(200, postInvoice(node.httpPort()), "fixture: the demo serves");
             assertEquals(1, partnerSaw.size(), "fixture: the partner saw the invoice: " + partnerSaw);
             assertEquals(List.of("demo", "lib"), recordedPackages(), "fixture: both are recorded");
 
@@ -1121,7 +1121,7 @@ class NodeIT {
             assertEquals(Set.of(), listed(node.adminPort(), "flows", "id").keySet(), "no flow is listed");
             HttpResponse<String> cpu = get(node.adminPort(), "/admin/flows/demo%2Finvoice-sync/cpu");
             assertEquals(404, cpu.statusCode(), "demo's flow answers as an unknown flow: " + cpu.body());
-            int after = postInvoice(inPort);
+            int after = postInvoice(node.httpPort());
             assertTrue(after == -1 || after == 404, "demo's in endpoint no longer runs an invoice (refused or 404): " + after);
             assertEquals(1, partnerSaw.size(), "the partner saw nothing more: " + partnerSaw);
             Path demoDir = data.resolve("packages").resolve("demo");
@@ -1139,7 +1139,7 @@ class NodeIT {
             assertEquals(Set.of("lib"), listed(node.adminPort(), "packages", "name").keySet(), "the restart restores lib, not demo");
             assertEquals("RUNNING", itemOf(listed(node.adminPort(), "packages", "name"), "lib", "restored").getString("state"), "witness: the restore ran");
             assertEquals(Set.of(), listed(node.adminPort(), "flows", "id").keySet(), "no flow runs");
-            int restarted = postInvoice(inPort);
+            int restarted = postInvoice(node.httpPort());
             assertTrue(restarted == -1 || restarted == 404, "demo's in endpoint does not run after the restart: " + restarted);
             assertEquals(1, partnerSaw.size(), "the partner saw nothing more: " + partnerSaw);
             assertEquals(List.of("lib"), recordedPackages());
@@ -1325,13 +1325,12 @@ class NodeIT {
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
         try (HttpClient client = http()) {
-            int inPort = freePort();
-            Map<String, byte[]> v1 = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
+            Map<String, byte[]> v1 = demoFiles("http://127.0.0.1:" + partner.actualPort());
             startDemoNode(env("ci"));
             int admin = node.adminPort();
             byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
             assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo?revision=r1", zip(v1), "application/zip").statusCode(), "fixture: v1 deploys");
-            assertEquals(200, send(client, "POST", inPort, "/in", invoice, "application/xml").statusCode(), "fixture: v1 serves");
+            assertEquals(200, send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml").statusCode(), "fixture: v1 serves");
             assertTrue(partnerSaw.get(0).contains(V1_ROOT), "fixture: v1 maps to PartnerInvoice: " + partnerSaw);
             String v1Hash = flowItem(admin).getString("hash");
             byte[] v2Zip = zip(withRenamedRoot(v1));
@@ -1348,7 +1347,7 @@ class NodeIT {
             assertNotEquals(v1Hash, listed.getString("hash"), "the listed hash moved with the stylesheet: " + listed);
             assertEquals("r2", listed.getString("revision"), "the swapped flow carries v2's revision: " + listed);
 
-            HttpResponse<String> next = send(client, "POST", inPort, "/in", invoice, "application/xml");
+            HttpResponse<String> next = send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml");
 
             assertEquals(200, next.statusCode(), next.body());
             assertEquals(ack.toString(), next.body(), "the partner's reply comes back");
@@ -1370,8 +1369,7 @@ class NodeIT {
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
         try (HttpClient client = http()) {
-            int inPort = freePort();
-            Map<String, byte[]> v1 = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
+            Map<String, byte[]> v1 = demoFiles("http://127.0.0.1:" + partner.actualPort());
             byte[] v1Zip = zip(v1);
             startDemoNode(env("ci"));
             int admin = node.adminPort();
@@ -1393,7 +1391,7 @@ class NodeIT {
             HttpResponse<String> packages = get(admin, "/admin/packages");
             assertEquals("sha256:" + sha256(v1Zip), new JsonObject(packages.body()).getJsonArray("items").getJsonObject(0).getString("archive"), "the package is v1's");
 
-            HttpResponse<String> next = send(client, "POST", inPort, "/in", invoice, "application/xml");
+            HttpResponse<String> next = send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml");
 
             assertEquals(200, next.statusCode(), next.body());
             assertEquals(ack.toString(), next.body());
@@ -1404,44 +1402,42 @@ class NodeIT {
         }
     }
 
-    /** {@code name} 1.0.0 on http: the sync flow {@code relay} from {@code in} (127.0.0.1:{@code inPort}, /in) to {@code partnerUrl}. */
-    static PackageDraft relay(String name, int inPort, String partnerUrl) {
+    /** {@code name} 1.0.0 on http: the sync flow {@code relay} from {@code in} (address {@code /in}) to {@code partnerUrl}. */
+    static PackageDraft relay(String name, String partnerUrl) {
         return PackageDraft.of(name, "1.0.0")
-                .endpoint("in", "http", "in", new JsonObject().put("host", "127.0.0.1").put("port", inPort).put("path", "/in"))
+                .endpoint("in", "http", "in", new JsonObject().put("address", "/in"))
                 .endpoint("partner", "http", "out", new JsonObject().put("url", partnerUrl).put("maxBodyBytes", 4096))
                 .flow("relay", "1.0.0", "sync", "in", 4096, PackageDraft.toPartner());
     }
 
     /**
-     * P1-09g (D-072): Vert.x 5.1 shares one server between the servers that listen on one host:port in a Vert.x instance (the
-     * second joins the first's and connections are balanced between them, no bind error), so a second package on the first's
-     * http port would take part of its traffic. The PUT of package two is 422 naming both flows and endpoints; package one alone
-     * is listed, and N POSTs, each on a connection of its own, all reach package one's partner path.
+     * One flow per path on the node's HTTP port: the PUT of a second package whose in endpoint names the first's address is 422
+     * naming both flows and endpoints; package one alone is listed, and N POSTs, each on a connection of its own, all reach
+     * package one's partner path.
      */
     @Test
-    void aSecondPackageOnTheFirstsHttpPortIs422AndTheFirstServesOn() throws Exception {
+    void aSecondPackageAtTheFirstsPathIs422AndTheFirstServesOn() throws Exception {
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), Buffer.buffer("<ok/>"));
         try {
-            int inPort = freePort();
             String partnerBase = "http://127.0.0.1:" + partner.actualPort();
-            start(env("ci"), ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())));
+            start(env("ci"), ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())));
             int admin = node.adminPort();
-            putOk(admin, "one", relay("one", inPort, partnerBase + "/one").zip());
+            putOk(admin, "one", relay("one", partnerBase + "/one").zip());
 
             HttpResponse<String> put;
             try (HttpClient client = http()) {
-                put = send(client, "PUT", admin, "/admin/packages/two", relay("two", inPort, partnerBase + "/two").zip(), "application/zip");
+                put = send(client, "PUT", admin, "/admin/packages/two", relay("two", partnerBase + "/two").zip(), "application/zip");
             }
 
-            assertEquals(422, put.statusCode(), "the second package on the first's port is refused: " + put.body());
-            assertEquals(new JsonArray().add("flow 'relay' (endpoint 'in') listens on 127.0.0.1:" + inPort + ", which overlaps 127.0.0.1:" + inPort
-                    + " of flow 'one/relay' (endpoint 'in'): one listener per port on a node (D-072)"), new JsonObject(put.body()).getJsonArray("problems"), put.body());
+            assertEquals(422, put.statusCode(), "the second package at the first's path is refused: " + put.body());
+            assertEquals(new JsonArray().add("flow 'relay' (endpoint 'in') takes requests at /http/in on the node's HTTP port, where flow 'one/relay' "
+                    + "(endpoint 'in') takes them: one flow per path"), new JsonObject(put.body()).getJsonArray("problems"), put.body());
             assertEquals(Set.of("one"), listed(admin, "packages", "name").keySet(), "only the first package is deployed");
             int n = 8;
             for (int i = 0; i < n; i++) {
-                try (HttpClient fresh = http()) {   // a connection of its own: a shared server balances connections, not requests
-                    HttpResponse<String> r = send(fresh, "POST", inPort, "/in", ("<n>" + i + "</n>").getBytes(StandardCharsets.UTF_8), "application/xml");
+                try (HttpClient fresh = http()) {   // a connection of its own
+                    HttpResponse<String> r = send(fresh, "POST", node.httpPort(), "/http/in", ("<n>" + i + "</n>").getBytes(StandardCharsets.UTF_8), "application/xml");
                     assertEquals(200, r.statusCode(), "request " + i + ": " + r.body());
                 }
             }
@@ -1459,8 +1455,7 @@ class NodeIT {
         io.vertx.core.Promise<Void> release = io.vertx.core.Promise.promise();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, release.future(), ack);
         try (HttpClient client = http()) {
-            int inPort = freePort();
-            byte[] zip = zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort()));
+            byte[] zip = zip(demoFiles("http://127.0.0.1:" + partner.actualPort()));
             Map<String, String> env = env("ci");
             env.put("RAIL8_STOP_DEADLINE", "PT2M");
             startDemoNode(env);
@@ -1468,14 +1463,14 @@ class NodeIT {
             HttpResponse<String> put = send(client, "PUT", admin, "/admin/packages/demo", zip, "application/zip");
             assertEquals(200, put.statusCode(), put.body());
             java.util.concurrent.CompletableFuture<HttpResponse<String>> held = client.sendAsync(
-                    request("POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml"), HttpResponse.BodyHandlers.ofString());
+                    request("POST", node.httpPort(), "/http/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml"), HttpResponse.BodyHandlers.ofString());
             until(() -> partnerSaw.size() == 1, "the invoice is held at the partner");
 
             closing = OnVirtualThread.start(node::close);
 
             until(() -> {
                 try (HttpClient probe = http()) {   // its own client, so its own connection: never the held request's
-                    return send(probe, "POST", inPort, "/in", "<NotAnInvoice/>".getBytes(StandardCharsets.UTF_8), "application/xml").statusCode() == 503;
+                    return send(probe, "POST", node.httpPort(), "/http/in", "<NotAnInvoice/>".getBytes(StandardCharsets.UTF_8), "application/xml").statusCode() == 503;
                 } catch (java.net.http.HttpTimeoutException noAnswer) {
                     throw new AssertionError("a probe got no answer within its timeout: a stopping consumer answers 503 or refuses, it never hangs", noAnswer);
                 } catch (IOException refusedOrReset) {
@@ -1570,15 +1565,14 @@ class NodeIT {
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
         try (HttpClient client = http()) {
-            int inPort = freePort();
-            byte[] zip = zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort()));
+            byte[] zip = zip(demoFiles("http://127.0.0.1:" + partner.actualPort()));
             Map<String, String> env = env("ci");
             env.put("RAIL8_ADMIN_TOKEN", token);
             startDemoNode(env);
             int admin = node.adminPort();
             HttpResponse<String> put = authed(client, "PUT", admin, "/admin/packages/demo", zip, token);
             assertEquals(200, put.statusCode(), "fixture: the demo deploys: " + put.body());
-            HttpResponse<String> invoice = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+            HttpResponse<String> invoice = send(client, "POST", node.httpPort(), "/http/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
             assertEquals(200, invoice.statusCode(), "fixture: the invoice went through: " + invoice.body());
             List<String> found = new CopyOnWriteArrayList<>();
             until(() -> {
@@ -1658,8 +1652,7 @@ class NodeIT {
      * {@value #DEMO_RETRIES} step retries. Returns the parked id.
      */
     String parkedWhilePartnerDown(HttpClient client, DownPartner partner) throws Exception {
-        int inPort = freePort();
-        Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.server().actualPort());
+        Map<String, byte[]> files = demoFiles("http://127.0.0.1:" + partner.server().actualPort());
         files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
         assertTrue(new String(files.get("flows/invoice-sync.yaml"), StandardCharsets.UTF_8).contains("attempts: " + DEMO_RETRIES),
                 "fixture: the demo flow retries its partner step " + DEMO_RETRIES + " times");
@@ -1668,7 +1661,7 @@ class NodeIT {
         startDemoNode(env);
         int admin = node.adminPort();
         assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip(files), "application/zip").statusCode(), "fixture: the demo deploys");
-        HttpResponse<String> accepted = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+        HttpResponse<String> accepted = send(client, "POST", node.httpPort(), "/http/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
         assertEquals(202, accepted.statusCode(), accepted.body());
         String parked = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
 
@@ -1786,8 +1779,7 @@ class NodeIT {
         Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         DownPartner partner = failingFirst(ack, 2 * (1 + DEMO_RETRIES));
         try (HttpClient client = http()) {
-            int inPort = freePort();
-            Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.server().actualPort());
+            Map<String, byte[]> files = demoFiles("http://127.0.0.1:" + partner.server().actualPort());
             files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
             Map<String, String> env = env("ci");
             env.put("RAIL8_RETRIES_COUNT", "2");
@@ -1795,7 +1787,7 @@ class NodeIT {
             startDemoNode(env);
             int admin = node.adminPort();
             assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip(files), "application/zip").statusCode(), "fixture: the demo deploys");
-            HttpResponse<String> accepted = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+            HttpResponse<String> accepted = send(client, "POST", node.httpPort(), "/http/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
             assertEquals(202, accepted.statusCode(), accepted.body());
             String id = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
 
@@ -1872,8 +1864,7 @@ class NodeIT {
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
         try (HttpClient client = http()) {
-            int inPort = freePort();
-            Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
+            Map<String, byte[]> files = demoFiles("http://127.0.0.1:" + partner.actualPort());
             files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
             Map<String, String> env = env("ci");
             env.put("RAIL8_BLOB_MEMORY_TIER", "4096");
@@ -1884,7 +1875,7 @@ class NodeIT {
             byte[] invoice = (Files.readString(DEMO.resolve("fixtures/sample-invoice.xml")) + "<!-- " + "padding ".repeat(1024) + "-->")
                     .getBytes(StandardCharsets.UTF_8);
             assertTrue(invoice.length > 8192, "fixture: above the 4 KiB memory tier");
-            HttpResponse<String> accepted = send(client, "POST", inPort, "/in", invoice, "application/xml");
+            HttpResponse<String> accepted = send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml");
             assertEquals(202, accepted.statusCode(), accepted.body());
             String id = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
             assertEquals(List.of("node-it"), keptRefNodes(id), "no wait: what the 202 promised is kept in this node's journal, under (id, 0, body)");
@@ -1941,8 +1932,7 @@ class NodeIT {
         Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         io.vertx.core.http.HttpServer partner = partner(new CopyOnWriteArrayList<>(), Future.succeededFuture(), ack);
         try (HttpClient client = http()) {
-            int inPort = freePort();
-            Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
+            Map<String, byte[]> files = demoFiles("http://127.0.0.1:" + partner.actualPort());
             files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
             startDemoNode(env("ci"));   // before FIX-136: refused, "synchronous_commit is off for the node's sessions"
             assertEquals(200, get(node.adminPort(), "/health").statusCode(), "the node starts on the database whose default is off");
@@ -1959,7 +1949,7 @@ class NodeIT {
                 ddl.close().await();
             }
 
-            HttpResponse<String> accepted = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+            HttpResponse<String> accepted = send(client, "POST", node.httpPort(), "/http/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
             assertEquals(202, accepted.statusCode(), accepted.body());
             PgConnection reader = PgConnection.connect(vertx, options(database)).await();
             try {
