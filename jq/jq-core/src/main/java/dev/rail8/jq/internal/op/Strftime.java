@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
  * swaps the case of names), a decimal width, an {@code E} or {@code O} modifier and the conversion's letter. A width
  * pads the conversion's text on the left to that many bytes. A conversion it does not know, a modifier the conversion
  * does not take and a conversion the format ends in are copied as they stand, padded to their width. {@code %s} is the
- * time read as a local time of the run's zone.
+ * time read as a local time of the run's zone, -1 when it does not convert.
  *
  * <p>The text of a format of {@code n} bytes holds at most {@code n + 99} bytes; a longer one, or an empty one of a
  * format that is not empty, fails, as glibc's does in jq's buffer.
@@ -50,8 +50,7 @@ final class Strftime {
 
   /**
    * The text of the format {@code fmt} for {@code tm}, or null where glibc's {@code strftime} fails in jq's buffer: a
-   * text longer than the format plus 99 bytes, an empty text of a format that is not empty, or a {@code %s} whose
-   * local time does not convert.
+   * text longer than the format plus 99 bytes, or an empty text of a format that is not empty.
    */
   static byte[] format(byte[] fmt, BrokenDownTime tm, HostTime zone) {
     Strftime s = new Strftime(tm, zone, fmt.length + 99L);
@@ -128,7 +127,8 @@ final class Strftime {
       case 'p' -> name(swap ? (tm.hour > 11 ? "pm" : "am") : tm.hour > 11 ? "PM" : "AM", pad, width, false);
       case 'P' -> name(tm.hour > 11 ? "pm" : "am", pad, width, false);
       case 'Z' -> {
-        String z = tm.zone == null ? "" : tm.zone;
+        // A time no conversion named: none when its daylight saving state is unknown, else the zone's standard name.
+        String z = tm.zone != null ? tm.zone : tm.isdst < 0 ? "" : zone.standardName();
         name(swap ? lower(z) : z, pad, width, up && !swap);
       }
       case 'c' -> composite("%a %b %e %H:%M:%S %Y", pad, width, up);
@@ -163,11 +163,8 @@ final class Strftime {
       case 'z' -> offset(pad, width);
       case 's' -> {
         long t = zone.mktime(tm.copy());
-        if (t == BrokenDownTime.FAILED) {
-          return false;
-        }
-        // Padded as a name is: the zeros of the flag 0 go before the sign.
-        name(Long.toString(t), pad, width, false);
+        // -1 when the local time does not convert; padded as a name is: the zeros of the flag 0 go before the sign.
+        name(Long.toString(t == BrokenDownTime.FAILED ? -1 : t), pad, width, false);
       }
       default -> {
         return false;
@@ -226,8 +223,14 @@ final class Strftime {
     return BrokenDownTime.leap(y) ? 366 : 365;
   }
 
-  /** {@code %z}: the sign padded to the width, then the hours and minutes east of UTC, at least four digits. */
+  /**
+   * {@code %z}: the sign padded to the width, then the hours and minutes east of UTC, at least four digits; nothing
+   * when the daylight saving state is unknown.
+   */
   private void offset(char pad, int width) {
+    if (tm.isdst < 0) {
+      return;
+    }
     long off = tm.gmtoff;
     long a = Math.abs(off);
     padLeft(width - 1, pad == '0' ? (byte) '0' : (byte) ' ');

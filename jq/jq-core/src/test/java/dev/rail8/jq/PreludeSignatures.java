@@ -60,7 +60,7 @@ public final class PreludeSignatures {
    *   <li>spec 3's paths: {@code path/1}, {@code getpath}, {@code setpath}, {@code delpaths} and the update and
    *       assignment operators (del, _assign, _modify, map_values, truncate_stream, fromstream, pick, INDEX/1,
    *       INDEX/2);
-   *   <li>spec 4's families: sub/2, sub/3, gsub/2 and gsub/3, whose bodies reach the update operators;
+   *   <li>the regex families: sub/2, sub/3, gsub/2 and gsub/3, whose bodies reach the update operators;
    *   <li>spec 7's host builtins: {@code halt_error/1}, {@code debug/0} (halt_error/0, debug/1).
    * </ul>
    *

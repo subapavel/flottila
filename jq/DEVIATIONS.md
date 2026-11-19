@@ -449,9 +449,9 @@ has only `GMT±hh:mm`, and `LMT` before the zone's first change of offset. Offse
 saving time come from the JDK's tzdb (F-66). jq-ref prints tzdata's abbreviation from the system's
 zoneinfo. They differ in these ways:
 - eras whose tzdata abbreviation the JDK lacks: war and peace time (`EWT`, `EPT`), mean times after
-  the first era (`DMT`, `MMT`, `SMT`), Newfoundland's `NST` eras, Casablanca's `+00` and `+01`
-  against `WET` and `WEST`, London's 1968-71 `BST` against `GMT`, Lord Howe's `AEST` before 1981,
-  Apia's second `LMT`;
+  the first era (`DMT`, `MMT`, `SMT`), Newfoundland's `NST` eras, Moscow's summer `MSD`, London's
+  double summer `BDST`, Casablanca's `+00` and `+01` against `WET` and `WEST`, London's 1968-71
+  `BST` against `GMT`, Lord Howe's `AEST` before 1981, Apia's second `LMT`;
 - zones whose daylight saving time tzdata and the JDK set on opposite sides: Dublin, whose winter
   tzdata calls the daylight saving time (negative saving), and Singapore's 1933-35 offsets. The
   name, and `strftime`'s `%s`, which asks for standard time, differ;

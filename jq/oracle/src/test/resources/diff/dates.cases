@@ -187,6 +187,85 @@ stdin {"t": [185542617816000, 1e+17]}\n
 env TZ=Australia/Lord_Howe
 end
 
+# A skipped local time of Moscow, standard time on both sides: the conversion goes back and forth, and takes the instant it reaches again first
+case dates/strflocaltime-gap-standard
+arg -c
+filter [.[] | try strflocaltime("%F %T %z %Z") catch .]
+stdin [[2011, 2, 27, 2, 30], [2011, 2, 27, 2, 0], [2011, 0, 1], [2011, 2, 27, 2, 30], [2011, 5, 1], [2011, 2, 27, 2, 59, 59]]\n
+env TZ=Europe/Moscow
+end
+
+# The same with %s, whose own conversion of the result sets the offset the next one starts from
+case dates/strflocaltime-gap-standard-seconds
+arg -c
+filter [.[] | try strflocaltime("%T %z %s") catch .]
+stdin [[2011, 2, 27, 2, 30], [2011, 2, 27, 2, 30], [2011, 0, 1], [2011, 2, 27, 2, 30], [2011, 2, 27, 2, 30]]\n
+env TZ=Europe/Moscow
+end
+
+# strftime's %s asks for standard time, which neither side of the gap has: -1
+case dates/strftime-s-gap-standard
+arg -c
+filter [.[] | strftime("%s")]
+stdin [[2011, 2, 27, 2, 30], [2011, 2, 27, 3, 0], [2011, 2, 27, 1, 59, 59]]\n
+env TZ=Europe/Moscow
+end
+
+# Kolkata's first change of offset skips 8 minutes 50 seconds
+case dates/strflocaltime-gap-first-change
+arg -c
+filter [.[] | strflocaltime("%F %T %z %s")]
+stdin [[1906, 0, 1, 0, 0], [1906, 0, 1, 0, 8, 49], [1906, 0, 1, 0, 8, 50], [1905, 11, 31, 23, 51, 9]]\n
+env TZ=Asia/Kolkata
+end
+
+# Kiritimati skips the whole of 31 December 1994
+case dates/strflocaltime-gap-day
+arg -c
+filter [.[] | strflocaltime("%F %T %z %s")]
+stdin [[1994, 11, 31, 12], [1994, 11, 31, 0], [1994, 11, 30, 23, 59, 59], [1995, 0, 1]]\n
+env TZ=Pacific/Kiritimati
+end
+
+# A time that does not convert: %s is -1; after strftime the offset is 0 and the name the zone's standard one; after strflocaltime both are empty
+case dates/strftime-unconverted
+arg -c
+filter .[] | [strftime("%Z|%z|a%10zb|%-z|%s|%010s"), strflocaltime("%Z|%z|a%10zb|%_z|%s|%Ez|%k")]
+stdin [[-2147483648], [-2147483648, 0, 1, 0, 0, 0]]\n
+end
+
+# The standard name of New York
+case dates/strftime-unconverted-new-york
+arg -c
+filter .[] | [strftime("%Z|%z|%s"), strflocaltime("%Z|%z|%s")]
+stdin [[-2147483648]]\n
+env TZ=America/New_York
+end
+
+# The standard name of Sydney, whose daylight saving time spans the turn of the year
+case dates/strftime-unconverted-sydney
+arg -c
+filter .[] | [strftime("%Z|%z|%s"), strflocaltime("%Z|%z|%s")]
+stdin [[-2147483648]]\n
+env TZ=Australia/Sydney
+end
+
+# strftime's %s asked for standard time at a daylight saving time takes the offset of the first standard time it probes, at steps of 601200 seconds, back before forward
+case dates/strftime-dst-search
+arg -c
+filter [.[] | strftime("%s")]
+stdin [[1992, 2, 29, 3, 0, 0, 0, 0], [1992, 2, 29, 2, 59, 59], [1992, 2, 29, 3, 0, 1], [1992, 8, 27, 2, 0]]\n
+env TZ=Europe/Moscow
+end
+
+# Apia changed its daylight saving time and its side of the date line within months
+case dates/strftime-dst-search-apia
+arg -c
+filter [.[] | strftime("%s")]
+stdin [[2011, 8, 24, 4], [2011, 8, 24, 3], [2011, 11, 29, 23], [2011, 11, 31, 1], [2012, 0, 15], [2012, 3, 1, 3], [2012, 3, 1, 4]]\n
+env TZ=Pacific/Apia
+end
+
 # mktime reads the fields as UTC and normalises them
 case dates/mktime
 arg -c
