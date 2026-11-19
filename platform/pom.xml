@@ -161,6 +161,11 @@
         <version>${rail8-mapping.version}</version>
       </dependency>
       <dependency>
+        <groupId>dev.rail8.mapping</groupId>
+        <artifactId>rail8-mapping-studio</artifactId>
+        <version>${rail8-mapping.version}</version>
+      </dependency>
+      <dependency>
         <groupId>dev.rail8</groupId>
         <artifactId>rail8-testkit</artifactId>
         <version>${project.version}</version>

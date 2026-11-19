@@ -109,21 +109,24 @@ class ModuleBoundaryViolationTest {
         assertDoesNotThrow(() -> Rules.SIM_DEPENDS_ON_API_CORE_TESTKIT.check(simOnly), "sim -> api, core, testkit and sim are allowed");
         assertDoesNotThrow(() -> Rules.NOTHING_DEPENDS_ON_SIM.check(simOnly), "sim -> sim is allowed");
     }
-    // --- the mapping engine: only the mapping step depends on it, and only on its embedding API
+    // --- the mapping engine: only the mapping step depends on it, and only on its embedding API and its studio
     @Test void aModuleOtherThanTheMappingStepDependingOnTheEngineIsCaught() {
         assertFails(Rules.ONLY_THE_MAPPING_STEP_DEPENDS_ON_THE_MAPPING_ENGINE, "RuntimeDependsOnTheMappingEngine");
     }
-    @Test void theMappingStepReachingPastTheEmbeddingApiIsCaught() {
-        assertFails(Rules.THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API, "MappingStepUsesTheEngineFacade");
+    @Test void theMappingStepReachingPastTheEmbeddingApiAndTheStudioIsCaught() {
+        assertFails(Rules.THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API_AND_THE_STUDIO, "MappingStepUsesTheEngineFacade");
     }
-    @Test void theMappingStepUsingTheEmbeddingApiIsAllowed() {
+    @Test void theMappingStepUsingTheEmbeddingApiAndTheStudioIsAllowed() {
         AssertionError others = assertThrows(AssertionError.class,
                 () -> Rules.ONLY_THE_MAPPING_STEP_DEPENDS_ON_THE_MAPPING_ENGINE.check(fixtures));
         assertFalse(others.getMessage().contains("MappingStepUsesTheEmbeddingApi"), "the step may depend on the engine");
+        assertFalse(others.getMessage().contains("MappingStepUsesTheStudio"), "the step may depend on the engine");
         JavaClasses stepOnly = new ClassFileImporter()
                 .withImportOption(new ImportOption.OnlyIncludeTests())
-                .importClasses(dev.rail8.steps.mapping.violation.MappingStepUsesTheEmbeddingApi.class);
-        assertDoesNotThrow(() -> Rules.THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API.check(stepOnly), "through its embedding API");
+                .importClasses(dev.rail8.steps.mapping.violation.MappingStepUsesTheEmbeddingApi.class,
+                        dev.rail8.steps.mapping.violation.MappingStepUsesTheStudio.class);
+        assertDoesNotThrow(() -> Rules.THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API_AND_THE_STUDIO.check(stepOnly),
+                "through its embedding API and its studio");
     }
     @Test void packageCycleIsCaught() { assertFails(Rules.NO_CYCLES, "cyclea"); }
 
