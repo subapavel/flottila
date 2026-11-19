@@ -29,36 +29,11 @@
     </resources>
     <plugins>
       <plugin>
-        <!-- the runnable distribution (P2-05a): `java -jar target/rail8-runtime-<v>.jar` starts a node; the manifest names Main
-             and a lib/ class path, which copy-dependencies below fills; no shading. -SNAPSHOT names, as copy-dependencies writes them. -->
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-jar-plugin</artifactId>
-        <configuration>
-          <archive>
-            <manifest>
-              <mainClass>dev.rail8.runtime.Main</mainClass>
-              <addClasspath>true</addClasspath>
-              <classpathPrefix>lib/</classpathPrefix>
-              <useUniqueVersions>false</useUniqueVersions>
-            </manifest>
-          </archive>
-        </configuration>
-      </plugin>
-      <plugin>
-        <!-- the jar's runtime class path next to it, in target/lib (deploy/quickstart/Dockerfile copies both); Apache-2.0 -->
+        <!-- artifacts the tests need as files of their own; Apache-2.0 -->
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>
         <version>3.8.1</version>
         <executions>
-          <execution>
-            <id>copy-runtime-classpath</id>
-            <phase>package</phase>
-            <goals><goal>copy-dependencies</goal></goals>
-            <configuration>
-              <outputDirectory>${project.build.directory}/lib</outputDirectory>
-              <includeScope>runtime</includeScope>
-            </configuration>
-          </execution>
           <execution>
             <!-- the sample plugin's jar, for WebhookPluginIT's RAIL8_PLUGINS; it stays off the tests' class path (below), where
                  the node would find it as a module of its own build -->
@@ -202,42 +177,42 @@
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-schemas</artifactId>
     </dependency>
-    <!-- the shipped modules, at runtime scope: on the node's class path and in target/lib, where the node finds them as
-         modules, never on the compile class path, so no runtime class can name one. They depend on api only. -->
+    <!-- the shipped modules, at test scope: the tests start nodes that find them as modules. The node's distribution,
+         platform/node, brings them; no runtime class can name one. -->
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-step-xslt</artifactId>
-      <scope>runtime</scope>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-step-validate</artifactId>
-      <scope>runtime</scope>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-step-jq</artifactId>
-      <scope>runtime</scope>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-step-mapping</artifactId>
-      <scope>runtime</scope>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-http</artifactId>
-      <scope>runtime</scope>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-sftp</artifactId>
-      <scope>runtime</scope>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-direct</artifactId>
-      <scope>runtime</scope>
+      <scope>test</scope>
     </dependency>
     <!-- schema migrations at start (D-034): Flyway community + its Postgres module; Flyway needs JDBC, so the
          driver is a runtime dependency for this one purpose — everything else goes through the Vert.x client -->

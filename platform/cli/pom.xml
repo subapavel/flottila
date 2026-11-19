@@ -54,7 +54,7 @@
       </plugin>
       <plugin>
         <!-- the runnable cli (D-079): `java -jar target/rail8-cli-<v>.jar` (bin/rail8) runs Cli; the manifest names it and a
-             lib/ class path, which copy-dependencies below fills, as rail8-runtime's jar does; no shading -->
+             lib/ class path, which copy-dependencies below fills, as rail8-node's jar does; no shading -->
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <configuration>
@@ -97,11 +97,11 @@
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-testkit</artifactId>
     </dependency>
-    <!-- cli is the outermost module: the node's Deployments and its loader, which finds the shipped modules on the class path;
-         they come with runtime at runtime scope, so no cli class names one -->
+    <!-- cli is the outermost module: the node, whose runtime brings Deployments and the loader that finds the shipped modules
+         on the class path; the node brings the modules at runtime scope, so no cli class names one -->
     <dependency>
       <groupId>dev.rail8</groupId>
-      <artifactId>rail8-runtime</artifactId>
+      <artifactId>rail8-node</artifactId>
     </dependency>
     <!-- the http component's answer to a status code, which rail8 test compares with a case's expect.status -->
     <dependency>

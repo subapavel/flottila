@@ -494,8 +494,11 @@ language (XPath today) is registered the same way.
 A plugin adds components, step factories and expression languages to the node's built-in steps.
 The components and step modules that ship with the platform (`direct`, `http`, `sftp`, `jq`,
 `mapping`, `xsd`, `xslt`) are plugins on the node's class path, called modules; the node names none
-of them in code. Other plugins are jars, or folders of jars, in the folder that `RAIL8_PLUGINS`
-names. Each implements `dev.rail8.api.plugin.Plugin`, named in the
+of them in code. The node's distribution is a build of its own, `platform/node`, with no code: its
+jar's manifest names `Main` and a class path in the `lib/` folder beside it, which holds the runtime
+and the shipped modules. The runtime's build brings the modules for its tests only, and the CLI gets
+them from the node's build. Other plugins are jars, or folders of jars, in the folder that
+`RAIL8_PLUGINS` names. Each implements `dev.rail8.api.plugin.Plugin`, named in the
 `META-INF/services/dev.rail8.api.plugin.Plugin` of its own jar: a name, the api version it was
 built against, and what it adds. The api is 0.2.
 
@@ -651,8 +654,6 @@ a file to poll; a deployed node refuses it.
 - The admin API lists the loaded modules and plugins (`GET /admin/modules`).
 - Commands of the command line and services of the admin API (under `/admin/modules/<name>/`)
   that a module brings; a plugin of `RAIL8_PLUGINS` brings neither.
-- The node's distribution assembled in a build of its own, so that the runtime's build no longer
-  brings the shipped modules.
 - A deferred acknowledgement in the adapter contract: system and application acknowledgements as
   in SAP XI.
 - Custom code sends through an outbound endpoint of its package.

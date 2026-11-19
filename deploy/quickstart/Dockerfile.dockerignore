@@ -1,7 +1,7 @@
 # The build context of deploy/quickstart/Dockerfile is the repository root: send only what the image copies.
 *
-!platform/runtime/target/lib/
-!platform/runtime/target/rail8-runtime-*.jar
-platform/runtime/target/rail8-runtime-*-sources.jar
-platform/runtime/target/rail8-runtime-*-tests.jar
-platform/runtime/target/rail8-runtime-*-javadoc.jar
+!platform/node/target/lib/
+!platform/node/target/rail8-node-*.jar
+platform/node/target/rail8-node-*-sources.jar
+platform/node/target/rail8-node-*-tests.jar
+platform/node/target/rail8-node-*-javadoc.jar

@@ -29,6 +29,7 @@
     <module>components</module>
     <module>steps</module>
     <module>schemas</module>
+    <module>node</module>
     <module>cli</module>
     <module>sim</module>
     <module>archtest</module>
@@ -155,6 +156,11 @@
       <dependency>
         <groupId>dev.rail8</groupId>
         <artifactId>rail8-testkit</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.rail8</groupId>
+        <artifactId>rail8-node</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

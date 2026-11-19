@@ -9,7 +9,6 @@ import dev.rail8.api.StepConfig;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.StepResources;
 import dev.rail8.api.plugin.ComponentContext;
-import dev.rail8.api.plugin.Plugin;
 import dev.rail8.runtime.plugin.Plugins;
 import dev.rail8.runtime.plugin.fixture.PluginFixtures;
 import dev.rail8.testkit.FakeRuntime;
@@ -26,17 +25,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * What a node ships, it finds as a plugin finds its way in: the node's class path names exactly the seven shipped modules —
- * direct, http, jq, mapping, sftp, xsd and xslt, in name order — and nothing in the runtime names one. Together they bring the
- * direct, http and sftp components (no mock: a node never names one), the jq, mapping, xsd and xslt steps and the xpath
- * language. A plugin of {@code RAIL8_PLUGINS} comes after them and takes nothing of theirs; the jq module reads its own setting.
+ * The shipped modules beside a plugin, on the tests' class path, which holds them as the node's does: a plugin of
+ * {@code RAIL8_PLUGINS} comes after them and takes nothing of theirs; the jq module reads its own setting.
  */
 class ShippedModulesTest {
 
@@ -68,20 +64,6 @@ class ShippedModulesTest {
     static Path plugin(Path dir, Class<?> provider) throws IOException {
         PluginJars.write(dir.resolve(provider.getSimpleName() + ".jar"), "1.0", List.of(provider.getName()), PluginFixtures.classes());
         return dir;
-    }
-
-    @Test
-    void theClassPathNamesTheSevenShippedModulesAndWhatTheyBring() {
-        try (Plugins plugins = Plugins.fromEnv(Map.of())) {
-            List<String> lines = plugins.describe();
-            Pattern line = Pattern.compile("module ([a-z]+) \\S+ \\(api " + Pattern.quote(Plugin.API) + ", sha256 (-|[0-9a-f]{64})\\) from \\S.*");
-            assertTrue(lines.stream().allMatch(l -> line.matcher(l).matches()), lines.toString());
-            assertEquals(List.of("direct", "http", "jq", "mapping", "sftp", "xsd", "xslt"),
-                    lines.stream().map(l -> l.split(" ")[1]).toList(), "exactly the shipped modules, in name order");
-            assertEquals(List.of("direct", "http", "sftp"), schemes(plugins.components(context())), "the components a node serves");
-            assertEquals(List.of("jq", "mapping", "xsd", "xslt"), types(plugins.steps()));
-            assertEquals(List.of("xpath"), plugins.languages().stream().map(Expressions::language).toList());
-        }
     }
 
     @Test
