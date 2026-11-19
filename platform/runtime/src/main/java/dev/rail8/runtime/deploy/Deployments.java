@@ -102,7 +102,7 @@ import java.util.stream.Stream;
  * nothing), no in endpoint setting {@code flow} or {@code maxBodyBytes}, one flow per in endpoint,
  * no flow from an out endpoint, every flow definition, no {@code delivery.queue} on a flow that is not at-least-once and none of
  * {@code kafka}, the optional add-on not in this build, no at-least-once flow above {@code RAIL8_BLOB_DURABLE_MAX}, no
- * in endpoint feeding a flow whose consumer would listen where another of the package, the node's admin API or a running flow of
+ * in endpoint feeding a flow whose consumer would listen where another of the package, the node's admin API, its peer link or a running flow of
  * another package listens (one listener per host:port on a node, {@code Component.listensOn}, {@link #listeners}), no flow
  * serving a node-local address another of the package or a running flow of another package serves and no cycle of calls between
  * flows ({@code Component.internalAddress}, {@link #links}, {@link Calls#check}), and
@@ -1434,7 +1434,9 @@ public final class Deployments {
      * schema takes, this node's environment laid over it and every {@code secret://} reference resolved (one that does
      * not resolve is not asked), by the local id of the flow it feeds — where its consumer would listen,
      * and adds a line to {@code problems} for every address that overlaps ({@link Listeners#overlap}) the address of a flow before
-     * it in id order (once per pair, on the later flow), the node's admin API ({@code RAIL8_ADMIN_HOST/PORT}), or a running
+     * it in id order (once per pair, on the later flow), the node's admin API ({@code RAIL8_ADMIN_HOST/PORT}), its peer link
+     * ({@code RAIL8_PEER_BIND/PORT}: Vert.x lets a second server of the node join a port the node already listens on, and then
+     * hands its connections to either server, so the port must be refused here), or a running
      * flow of another package, as that flow's check answered it. A FAILED flow holds no port, nor does a FAILED package (it
      * lists no flows), nor the version of {@code name} this deploy replaces. A component that throws is one line naming the
      * endpoint and its scheme. Called under the deploy lock: the flows it compares with change only when a deploy returns.
@@ -1443,8 +1445,9 @@ public final class Deployments {
      */
     private Map<String, InetSocketAddress> listeners(String name, Map<String, EndpointConfig> asked, List<String> problems) {
         List<Listener> taken = new ArrayList<>();   // the new version's flows asked so far
-        List<Listener> held = new ArrayList<>();    // the admin API, then every other package's running flows
+        List<Listener> held = new ArrayList<>();    // the admin API, the peer link, then every other package's running flows
         held.add(new Listener("the node's admin API (RAIL8_ADMIN_HOST/PORT)", InetSocketAddress.createUnresolved(config.admin().host(), config.admin().port())));
+        held.add(new Listener("the node's peer link (RAIL8_PEER_BIND/PORT)", InetSocketAddress.createUnresolved(config.peer().bind(), config.peer().port())));
         for (Deployed d : deployed.values()) {
             if (d.pkg().name().equals(name)) continue;   // the version this deploy replaces
             for (Flow f : d.flows()) {

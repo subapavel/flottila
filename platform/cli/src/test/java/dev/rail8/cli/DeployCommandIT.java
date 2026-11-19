@@ -151,7 +151,7 @@ class DeployCommandIT {
             CliRuns.rewrite(copy.resolve("endpoints/http-in-async.yaml"), Map.of("host: 0.0.0.0", "host: 127.0.0.1", "port: 8082", "port: " + freePort()));
         }
         if (Files.exists(copy.resolve("endpoints/http-in-order.yaml"))) {   // the demo's jq door has a port of its own
-            CliRuns.rewrite(copy.resolve("endpoints/http-in-order.yaml"), Map.of("host: 0.0.0.0", "host: 127.0.0.1", "port: 8083", "port: " + freePort()));
+            CliRuns.rewrite(copy.resolve("endpoints/http-in-order.yaml"), Map.of("host: 0.0.0.0", "host: 127.0.0.1", "port: 8084", "port: " + freePort()));
         }
         return copy;
     }

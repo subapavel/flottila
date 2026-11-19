@@ -38,13 +38,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code in} endpoint that feeds a flow would listen ({@code Component.listensOn}, on the config as checked: schema-valid, this
  * node's environment laid over it) and refuses — one {@link Kind#INVALID} line each, before anything is built or stopped — an
  * address that overlaps (same port, not 0; equal hosts, or either a wildcard) another of the same new version (once per pair, on
- * the later flow id), the node's admin listener ({@code RAIL8_ADMIN_HOST/PORT}), or a running flow of another RUNNING package.
+ * the later flow id), the node's admin listener ({@code RAIL8_ADMIN_HOST/PORT}), its peer link ({@code RAIL8_PEER_BIND/PORT}), or a
+ * running flow of another RUNNING package.
  * The deploying package's current version and FAILED flows and packages hold no port; a RESTARTING flow holds its own. A restore runs the same check: the later
  * package of a clashing pair is FAILED with that line.
  *
  * <p>The line (D-072): {@code flow '<flow>' (endpoint '<endpoint>') listens on <host>:<port>, which overlaps <host>:<port> of
  * <holder>: one listener per port on a node (D-072)}, the deploying package's flows by local id, another package's qualified,
- * the admin listener {@code the node's admin API (RAIL8_ADMIN_HOST/PORT)}, each host as configured, IPv6 in brackets.
+ * the admin listener {@code the node's admin API (RAIL8_ADMIN_HOST/PORT)}, the peer link {@code the node's peer link
+ * (RAIL8_PEER_BIND/PORT)}, each host as configured, IPv6 in brackets.
  *
  * <p>Every endpoint is a {@link Doors} one: its {@code listensOn} answers {@code host} (default 127.0.0.1) and {@code port} when the
  * endpoint sets a port, and records every call; nothing binds, so any port serves. A second {@link Doors} serves the scheme
@@ -55,6 +57,7 @@ class DeploymentsListenerTest {
     static final int ADMIN_PORT = 8181;
     static final String GATE = "gate";
     static final String ADMIN = "the node's admin API (RAIL8_ADMIN_HOST/PORT)";
+    static final String PEER = "the node's peer link (RAIL8_PEER_BIND/PORT)";
     static final DeployedPackage.State RUNNING = DeployedPackage.State.RUNNING;
     static final DeployedFlow.State FLOW_RUNNING = DeployedFlow.State.RUNNING;
 
@@ -342,6 +345,25 @@ class DeploymentsListenerTest {
     }
 
     @Test
+    void thePeerLinkAddressIsTaken() throws Exception {
+        PackageDraft shop = listening(listening(pkg("shop"), "orders", on("0.0.0.0", 8083)), "audit", port(8084));
+
+        assertEquals(List.of(line("orders", "orders-in", "0.0.0.0:8083", "0.0.0.0:8083", PEER)), refused(deployments, shop).problems(),
+                "the node's peer link (RAIL8_PEER_BIND, 0.0.0.0 by default, and RAIL8_PEER_PORT, 8083 by default) holds its port, and only that one");
+
+        Map<String, String> env = env("node-2");
+        env.put("RAIL8_PEER_BIND", "127.0.0.1");
+        env.put("RAIL8_PEER_PORT", "9093");
+        Deployments moved = node(env);
+
+        assertEquals(List.of(line("orders", "orders-in", "127.0.0.1:9093", "127.0.0.1:9093", PEER)),
+                refused(moved, listening(pkg("shop"), "orders", port(9093))).problems(), "the configured bind and port are compared");
+        deploy(moved, listening(pkg("billing"), "invoices", on("0.0.0.0", 8083)));
+        assertEquals(Map.of("billing/invoices", FLOW_RUNNING), flows(moved), "the default port is free once the peer link listens elsewhere");
+        assertEquals(List.of(), consumersOf(doors, "shop"), "no consumer was built: " + doors.events());
+    }
+
+    @Test
     void anEphemeralPortIsNeverCompared() throws Exception {
         Map<String, String> env = env("node-0");
         env.put("RAIL8_ADMIN_PORT", "0");
@@ -415,7 +437,7 @@ class DeploymentsListenerTest {
         DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"));
         Deployments first = node(env("node-a"), rows, bucket, new Doors());
         deploy(first, listening(listening(pkg("alpha"), "a1", port(8080)), "a2", port(8082)));
-        String omega = deploy(first, listening(pkg("omega"), "w", port(8083))).pkg().archiveSha256();
+        String omega = deploy(first, listening(pkg("omega"), "w", port(8084))).pkg().archiveSha256();
         Doors restoring = new Doors();
         restoring.failStartOf("alpha/a1", "the door is stuck");
         DeploymentsRestoreTest.Fetches fetches = new DeploymentsRestoreTest.Fetches(bucket);
@@ -429,7 +451,7 @@ class DeploymentsListenerTest {
                 refused(restored, listening(pkg("delta"), "d", port(8082))).problems(), "the restored flow that runs holds its port");
         assertEquals(List.of(line("e", "e-in", "127.0.0.1:8080", "127.0.0.1:8080", flowOf("alpha/a1", "a1-in"))),
                 refused(restored, listening(pkg("epsilon"), "e", port(8080))).problems(), "a1, whose consumer is tried again, holds its port");
-        deploy(restored, listening(pkg("gamma"), "g3", port(8083)));
+        deploy(restored, listening(pkg("gamma"), "g3", port(8084)));
 
         assertEquals(DeployedPackage.State.RUNNING, packages(restored).get("gamma"), "omega (a FAILED package) holds no port");
         assertTrue(restoring.door("gamma/g3").started(), restoring.events().toString());
