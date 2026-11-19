@@ -49,9 +49,12 @@ if [ "$*" = "run e2e -- tree-20128" ]; then
 fi
 exit 0
 EOF
+# step 3 starts the node with docker compose and waits for its /health: both stubbed, docker records where it ran
+printf '#!/usr/bin/env bash\necho "$PWD $*" >> "%s/docker-calls"\n' "$tmp" > "$tmp/bin/docker"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/bin/curl"
 mkdir -p "$ui"
 echo '{}' > "$ui/package.json"
-chmod +x "$tmp/mvnw" "$tmp/scripts/pit-summary.sh" "$tmp/bin/nproc" "$tmp/bin/java" "$tmp/bin/npm"
+chmod +x "$tmp/mvnw" "$tmp/scripts/pit-summary.sh" "$tmp/bin/nproc" "$tmp/bin/java" "$tmp/bin/npm" "$tmp/bin/docker" "$tmp/bin/curl"
 
 B=dev.rail8.mapping.bench
 M=claude-cloud-4vcpu
@@ -64,7 +67,7 @@ row="orders/small/latency	$M	100	us/op"
 # gate [<label>] [<nproc>]: the gate's output; the bench.tsv row, the calls and the logs reset first
 gate() {
   printf '%s\n%s\n' "$row" "$treerow" > "$tmp/ratchet/bench.tsv"
-  rm -rf "$tmp/jmh-calls" "$tmp/tree-calls" "$tmp/.logs" "$ui/.logs"
+  rm -rf "$tmp/jmh-calls" "$tmp/tree-calls" "$tmp/docker-calls" "$tmp/.logs" "$ui/.logs"
   (cd "$tmp" && MACHINE_LABEL=${1:-} NPROC=${2:-4} PATH="$tmp/bin:$PATH" scripts/gate-spec.sh 1 2>&1)
 }
 calls() { if [ -f "$tmp/jmh-calls" ]; then wc -l < "$tmp/jmh-calls"; else echo 0; fi; }
@@ -79,6 +82,8 @@ check "no label: measured" "$(lines "$out" 'VERIFIED_PASS  5 jmh  (.logs/1-jmh.l
 check "no label: judgement NOT_RUN" "$(echo "$out" | grep -c '^NOT_RUN  *5 bench judgement')" 1
 check "no label: bench.tsv untouched" "$(cat "$tmp/ratchet/bench.tsv")" "$(printf '%s\n%s' "$row" "$treerow")"
 check "no label: no RESULTS.md" "$(test -e "$tmp/bench/RESULTS.md" && echo written || echo none)" none
+check "stack: the node started at the repository's root" "$(cat "$tmp/docker-calls")" "$scratch compose up -d --build"
+check "stack: the node answered" "$(lines "$out" 'VERIFIED_PASS  3 stack node  (.logs/1-stack-node.log)')" 1
 out=$(gate other-label)
 check "other label: judgement NOT_RUN" "$(echo "$out" | grep -c '^NOT_RUN  *5 bench judgement')" 1
 

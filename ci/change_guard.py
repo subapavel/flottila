@@ -42,7 +42,7 @@ CLEANED = ("platform/api/src/main/", "platform/core/src/main/", "platform/runtim
            "mapping/engine/runtime/src/main/", "mapping/engine/serializer/src/main/",
            "mapping/engine/structure/src/main/", "mapping/engine/structure-import/src/main/",
            "mapping/engine/udf/src/main/", "mapping/engine/udf-api/src/main/", "mapping/engine/xdm/src/main/",
-           "mapping/engine/xslt-export/src/main/", "mapping/service/src/main/",
+           "mapping/engine/xslt-export/src/main/",
            # the mapping studio's sources except src/mapping/generated, whose comments come from the contract's schemas
            "ui/src/mapping/api/", "ui/src/mapping/list/", "ui/src/mapping/model/", "ui/src/mapping/studio/",
            "jq/jq-core/src/main/", "jq/query-core/src/main/", "jq/jq-cli/src/main/", "jq/oracle/src/main/",

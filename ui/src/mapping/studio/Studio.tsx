@@ -11,7 +11,7 @@ import { lastTabKey, openingTab, StudioFrame, type CloseGuard } from './StudioFr
 export interface StudioProps {
   /** The mapping's id: its workspace path without the file suffix. */
   mappingId: string;
-  /** The port to the mapping service. */
+  /** The port to the studio's API. */
   api: ApiClient;
   /** The port for viewer preferences. */
   browserState: BrowserStateStore;
@@ -19,7 +19,7 @@ export interface StudioProps {
   openOn?: StudioTab;
   /** Opens the mapping in edit mode, as Create does; otherwise it opens in view mode. */
   startEditing?: boolean;
-  /** Told after each save the service accepted. */
+  /** Told after each save the API accepted. */
   onSaved?: () => void;
   /** Given the question to ask before the mapping's tab closes while it has unsaved changes, and null when it has none. */
   guardClose?: (guard: CloseGuard | null) => void;

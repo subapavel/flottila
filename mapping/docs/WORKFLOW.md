@@ -47,7 +47,8 @@ most one gate that builds `service` at a time.
    (`module killed/generated score% floor N% ok|DROP`) and the corpus and differential case counts (#67); above 10 minutes it narrows to the modules class-C tickets
    touched;
 2. in `../ui`: `npm ci`, every step of ticket-gate row 4, `npm run build`;
-3. the stack: `../mvnw -B -pl service -am package -DskipTests`, then `npm run e2e:stack` in `../ui`;
+3. the stack: `../mvnw -B -f ../pom.xml -pl :rail8-node -am package -DskipTests`, the quickstart's node started from it
+   by `docker compose up -d --build` at the repository's root, then `npm run e2e:stack` in `../ui`;
 4. `java scripts/ratchet.java regen --all`: every report must be present, a drop fails, the
    verifier alone commits `ratchet/` to the integration branch;
 5. the JMH scenarios (ADR-0021):
