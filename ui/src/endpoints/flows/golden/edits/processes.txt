@@ -85,3 +85,23 @@
 @@ line 38
 +      - type: validate
 +        required: true()
+
+=== rename the first process
+{"op":"move","from":["processes","enrich"],"path":["processes","renamed"]}
+{"op":"replace","path":["steps",0,"process"],"value":"renamed"}
+{"op":"replace","path":["steps",3,"process"],"value":"renamed"}
+@@ line 11
+-    process: enrich
++    process: renamed
+@@ line 28
+-    process: enrich
++    process: renamed
+@@ line 33
+-  enrich:
++  renamed:
+
+=== add a rule to the first route
+{"op":"add","path":["steps",1,"routes",2],"value":{"when":"true()","set":"other"}}
+@@ line 19
++      - when: true()
++        set: other

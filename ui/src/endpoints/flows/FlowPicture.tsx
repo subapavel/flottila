@@ -17,6 +17,10 @@ import {
   ExpandableSection,
   Flex,
   FlexItem,
+  Form,
+  FormGroup,
+  FormSelect,
+  FormSelectOption,
   HelperText,
   HelperTextItem,
   Label,
@@ -34,6 +38,7 @@ import {
   Spinner,
   Stack,
   StackItem,
+  TextInput,
   Title,
 } from '@patternfly/react-core';
 import { CheckCircleIcon, EditIcon, SaveIcon, SyncAltIcon, UndoIcon } from '@patternfly/react-icons';
@@ -46,7 +51,7 @@ import { edit, EditRefused, follow, placeOf, type Op } from './edit';
 import { FlowCanvas } from './FlowCanvas';
 import { readFlow } from './flowYaml';
 import { FlowPanel, type PanelEdit } from './FlowPanel';
-import { addStep, deleteStep, moveStep } from './ops';
+import { addProcess, addStep, callable, callOf, callsOf, deleteProcess, deleteStep, moveStep, moveToList, renameProcess, stepListsOf } from './ops';
 import { BUILT_IN } from './steps';
 import type { FlowNode, FlowProblem, Path, ServedSteps } from './types';
 import { pointer, view } from './view';
@@ -62,6 +67,8 @@ export interface FlowPictureProps {
   endpointForm: (path: string) => ReactNode;
   openEndpoint: (path: string) => void;
   openFlow: (path: string) => void;
+  /** Creates the endpoint file at this path with this text, and fails when it exists. */
+  createEndpoint: (path: string, text: string) => Promise<unknown>;
   /** Given the question to ask before the tab closes while it has unsaved changes, and null when it has none. */
   guardClose?: (guard: CloseGuard | null) => void;
 }
@@ -87,15 +94,18 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
  * flow's own when none is. A file that cannot be drawn shows its text with its problems.
  *
  * It opens read-only; Edit, when the file may be edited and the flow is drawn, then Undo, Cancel, Check and Save. While
- * it is edited, the button on an edge adds a step there, the drawer moves and deletes the step chosen and changes its
- * fields, and the canvas, while it has the focus, takes Delete, the up and down arrows and Ctrl+Z (Cmd+Z) for the same.
+ * it is edited, the button on an edge adds a step there, or a call of another flow; the drawer moves the step chosen
+ * within its list or to another, deletes it and changes its fields, renames and deletes the process of the lane chosen,
+ * adds a process and changes the flow's own settings; and the canvas, while it has the focus, takes Delete, the up and
+ * down arrows and Ctrl+Z (Cmd+Z). A call of a flow whose address no `direct` out endpoint of the package names creates
+ * that endpoint file first, as a save of its own that Cancel leaves in place.
  * Each change is a new text from `edit`; undo goes back through the last 100. The selection follows its step through
  * every change, and is kept through an undo while its path is in the view. The problems are found again after each
  * change and never block Save, which a field holding text that cannot become a value does. Save sends the text with the
  * version it read; a file changed on disk since opens a dialog. Cancel, or closing the tab, with unsaved changes asks
  * first, and the page asks before it unloads.
  */
-export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, guardClose }: FlowPictureProps) {
+export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, createEndpoint, guardClose }: FlowPictureProps) {
   const [result, setResult] = useState<Result>({ kind: 'reading' });
   const [asked, setAsked] = useState(0);
   const [selected, setSelected] = useState<Path | null>(null);
@@ -108,6 +118,10 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, g
   const [refused, setRefused] = useState<string | null>(null);
   const [check, setCheck] = useState<FlowProblem[] | null>(null);
   const [adding, setAdding] = useState<Path | null>(null);
+  // the endpoint file a call of a flow is creating, and why that failed
+  const [calling, setCalling] = useState<string | null>(null);
+  const [callFailure, setCallFailure] = useState<string | null>(null);
+  const [newProcess, setNewProcess] = useState<{ name: string; type: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveFailure, setSaveFailure] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
@@ -185,11 +199,17 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, g
   const calls = node === null ? undefined : picture.nodes.find((n) => n.id === `${node.id}#calls`);
   const canEdit = file.editable && picture.readable && picture.readOnly === undefined;
 
-  /** Applies `ops` to the working copy; a change of the field `key` right after another of it is undone with it. */
-  const change = (ops: Op[], key: string | null = null): boolean => {
-    if (work === null || ops.length === 0) return false;
+  /**
+   * Applies `ops`, or the operations `ops` builds, to the working copy; a change of the field `key` right after another
+   * of it is undone with it.
+   */
+  const change = (build: Op[] | (() => Op[]), key: string | null = null): boolean => {
+    if (work === null) return false;
     let next: string;
+    let ops: Op[];
     try {
+      ops = typeof build === 'function' ? build() : build;
+      if (ops.length === 0) return false;
       next = edit(work.text, ...ops);
     } catch (failed) {
       if (!(failed instanceof EditRefused)) throw failed;
@@ -235,6 +255,44 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, g
     setAdding(null);
     if (at !== null && change(addStep(picture, at, type))) setSelected(at);
   };
+  // a call of the flow `called` at `adding`: its endpoint file is created first when the package has none, and the
+  // context read again so that the picture knows it
+  const addCall = async (called: { id: string; address?: string }) => {
+    const at = adding;
+    if (at === null) return;
+    const call = callOf(file.context, path, called);
+    if (call.create !== undefined) {
+      setCalling(call.create.path);
+      setCallFailure(null);
+      try {
+        await createEndpoint(call.create.path, call.create.text);
+        const fresh = await api.read(path);
+        setResult({ ...result, stored: { ...result.stored, file: { ...result.stored.file, context: fresh.file.context } } });
+      } catch (error) {
+        setCallFailure(`${call.create.path} was not created: ${messageOf(error)}`);
+        return;
+      } finally {
+        setCalling(null);
+      }
+    }
+    setAdding(null);
+    if (change(addStep(picture, at, 'to', { endpoint: call.endpoint }))) setSelected(at);
+  };
+  const flowsCalled = callable(file.context, path);
+  const lane = node !== null && node.kind === 'lane' ? node : null;
+  const lists = step === null ? [] : stepListsOf(picture).filter((l) => pointer(l) !== pointer(step.path.slice(0, -1)));
+  const createProcess = () => {
+    if (newProcess === null) return;
+    const name = newProcess.name;
+    if (change(() => addProcess(picture, value, name, newProcess.type))) {
+      setNewProcess(null);
+      setSelected(['processes', name, 'steps']);
+    }
+  };
+
+  // the types a step can be added of: the built-in ones, then those the node serves
+  const served = Array.isArray(result.steps) ? result.steps.map((s) => s.type).filter((t) => !Object.hasOwn(BUILT_IN, t)) : [];
+  const addable = [...Object.keys(BUILT_IN).map((type) => ({ type, from: 'Built in' })), ...[...served].sort().map((type) => ({ type, from: 'Served by the node' }))];
 
   const markInvalid = (key: string, bad: boolean) =>
     setInvalid((set) => {
@@ -246,7 +304,26 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, g
     });
 
   const panelEdit: PanelEdit | undefined =
-    work === null ? undefined : { change, invalid: markInvalid, move, remove, up: index > 0, down: index >= 0 && index < length - 1, generation };
+    work === null
+      ? undefined
+      : {
+          change,
+          invalid: markInvalid,
+          move,
+          remove,
+          up: index > 0,
+          down: index >= 0 && index < length - 1,
+          lists: lists.map((l) => ({ path: l, label: l.length === 1 ? 'the flow’s steps' : `process ${String(l[1])}` })),
+          moveTo: (list) => {
+            if (step !== null) change(moveToList(picture, step.path, list));
+          },
+          renameProcess: (from, to) => {
+            if (change(() => renameProcess(picture, value, from, to))) setSelected(['processes', to, 'steps']);
+          },
+          deleteProcess: (name) => change(deleteProcess(value, name)),
+          addProcess: () => setNewProcess({ name: '', type: addable[0]?.type ?? 'to' }),
+          generation,
+        };
 
   /** The canvas's keys, while it has the focus and the flow is edited: never those typed into a field. */
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -298,10 +375,6 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, g
     leaveEditing();
     refresh();
   };
-
-  // the types a step can be added of: the built-in ones, then those the node serves
-  const served = Array.isArray(result.steps) ? result.steps.map((s) => s.type).filter((t) => !Object.hasOwn(BUILT_IN, t)) : [];
-  const addable = [...Object.keys(BUILT_IN).map((type) => ({ type, from: 'Built in' })), ...[...served].sort().map((type) => ({ type, from: 'Served by the node' }))];
 
   const header = (
     <Stack hasGutter>
@@ -457,8 +530,10 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, g
       <DrawerPanelBody>
         <FlowPanel
           flow={value}
+          {...(picture.settings === undefined ? {} : { settings: picture.settings })}
           node={node}
           {...(calls === undefined ? {} : { calls })}
+          {...(lane === null ? {} : { laneCalls: callsOf(picture, lane.label) })}
           problems={picture.problems}
           endpointForm={endpointForm}
           openEndpoint={openEndpoint}
@@ -495,21 +570,101 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, g
           </Drawer>
         </StackItem>
       </Stack>
-      <Modal variant="small" isOpen={adding !== null} onClose={() => setAdding(null)} aria-labelledby={`${ids}-add`}>
+      <Modal
+        variant="small"
+        isOpen={adding !== null}
+        onClose={() => {
+          if (calling === null) {
+            setAdding(null);
+            setCallFailure(null);
+          }
+        }}
+        aria-labelledby={`${ids}-add`}
+      >
         <ModalHeader title="Add a step" labelId={`${ids}-add`} description={adding === null ? undefined : `At ${placeOf(adding)}`} />
         <ModalBody>
-          <Menu isPlain aria-label="Step types" onSelect={(_, type) => add(String(type))}>
-            <MenuContent>
-              <MenuList>
-                {addable.map(({ type, from }) => (
-                  <MenuItem key={type} itemId={type} description={from}>
-                    {type}
-                  </MenuItem>
-                ))}
-              </MenuList>
-            </MenuContent>
-          </Menu>
+          <Stack hasGutter>
+            <StackItem>
+              <Menu isPlain aria-label="Step types" onSelect={(_, type) => add(String(type))}>
+                <MenuContent>
+                  <MenuList>
+                    {addable.map(({ type, from }) => (
+                      <MenuItem key={type} itemId={type} description={from} isDisabled={calling !== null}>
+                        {type}
+                      </MenuItem>
+                    ))}
+                  </MenuList>
+                </MenuContent>
+              </Menu>
+            </StackItem>
+            {flowsCalled.length > 0 && (
+              <StackItem>
+                <Title headingLevel="h3">Call a flow</Title>
+                <Menu
+                  isPlain
+                  aria-label="Flows to call"
+                  onSelect={(_, id) => {
+                    const called = flowsCalled.find((f) => f.path === id);
+                    if (called !== undefined) void addCall(called);
+                  }}
+                >
+                  <MenuContent>
+                    <MenuList>
+                      {flowsCalled.map((f) => (
+                        <MenuItem key={f.path} itemId={f.path} description={`Serves ${f.address ?? ''}`} isDisabled={calling !== null}>
+                          {f.id}
+                        </MenuItem>
+                      ))}
+                    </MenuList>
+                  </MenuContent>
+                </Menu>
+              </StackItem>
+            )}
+            {calling !== null && (
+              <StackItem>
+                <Spinner size="md" aria-label={`Creating ${calling}`} /> Creating the endpoint {calling}
+              </StackItem>
+            )}
+            {callFailure !== null && (
+              <StackItem>
+                <Alert variant="danger" isInline title="The call was not added">
+                  {callFailure}
+                </Alert>
+              </StackItem>
+            )}
+          </Stack>
         </ModalBody>
+      </Modal>
+      <Modal variant="small" isOpen={newProcess !== null} onClose={() => setNewProcess(null)} aria-labelledby={`${ids}-process`}>
+        <ModalHeader title="Add a process" labelId={`${ids}-process`} description="A process holds at least one step: choose its first." />
+        <ModalBody>
+          <Form
+            id={`${ids}-process-form`}
+            onSubmit={(event) => {
+              event.preventDefault();
+              createProcess();
+            }}
+          >
+            <FormGroup label="Name" isRequired fieldId={`${ids}-process-name`}>
+              <TextInput id={`${ids}-process-name`} isRequired value={newProcess?.name ?? ''} onChange={(_, name) => setNewProcess((p) => (p === null ? p : { ...p, name }))} />
+            </FormGroup>
+            <FormGroup label="First step" fieldId={`${ids}-process-type`}>
+              <FormSelect id={`${ids}-process-type`} value={newProcess?.type ?? ''} onChange={(_, type) => setNewProcess((p) => (p === null ? p : { ...p, type }))}>
+                {addable.map(({ type }) => (
+                  <FormSelectOption key={type} value={type} label={type} />
+                ))}
+              </FormSelect>
+            </FormGroup>
+          </Form>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="primary" type="submit" form={`${ids}-process-form`} isDisabled={newProcess?.name === ''}>
+            Add
+          </Button>
+          <Button variant="link" onClick={() => setNewProcess(null)}>
+            Cancel
+          </Button>
+        </ModalFooter>
       </Modal>
       <DiscardDialog isOpen={discarding !== null} name={typeof value.id === 'string' ? value.id : path} then={discarding?.then ?? ''} onDiscard={discard} onKeepEditing={() => setDiscarding(null)} />
       <Modal variant="small" isOpen={conflict} onClose={() => setConflict(false)} aria-labelledby={`${ids}-conflict`}>

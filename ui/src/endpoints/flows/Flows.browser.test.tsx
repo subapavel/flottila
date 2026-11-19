@@ -46,6 +46,7 @@ const context: FlowFile['context'] = {
   flows: [
     { path: 'demo/flows/invoice.yaml', id: 'invoice', mode: 'sync' },
     { path: 'demo/flows/order.yaml', id: 'order', mode: 'at-least-once', address: '/orders' },
+    { path: 'demo/flows/payment.yaml', id: 'payment', mode: 'sync', address: '/payments' },
   ],
   partial: false,
 };
@@ -62,7 +63,8 @@ steps:
 
 /**
  * A fake of the server over a working folder holding `texts`, by path, each file at version "v1". A save with the
- * file's version writes it as the next one; any other version is refused with 412.
+ * file's version writes it as the next one, and one with no version writes a new file; any other version, or no
+ * version for a file that exists, is refused with 412.
  */
 function fakeFlows(texts: Record<string, string> = { 'demo/flows/invoice.yaml': invoice, 'demo/flows/order.yaml': order }, overrides: Partial<FlowsApi> = {}): FlowsApi {
   const files = { ...texts };
@@ -82,8 +84,9 @@ function fakeFlows(texts: Record<string, string> = { 'demo/flows/invoice.yaml': 
       file: { path, text: files[path] ?? 'kind: flow\nid: [unclosed\n', editable: true, context },
       etag: etag(path),
     })),
-    save: vi.fn(async (path: string, text: string, version: string) => {
-      if (version !== etag(path)) throw new FlowsError(412, 'the file changed since it was read; nothing was saved');
+    save: vi.fn(async (path: string, text: string, version: string | null) => {
+      if (version === null && files[path] !== undefined) throw new FlowsError(412, 'the file exists already; nothing was written');
+      if (version !== null && version !== etag(path)) throw new FlowsError(412, 'the file changed since it was read; nothing was saved');
       files[path] = text;
       versions.set(path, (versions.get(path) ?? 1) + 1);
       return { file: { path, text, editable: true, context }, etag: etag(path) };
@@ -109,6 +112,7 @@ function fakeEndpoints(): EndpointsApi {
     list: vi.fn(async () => ({ configured: true, editable: true, truncated: false, items: [] })),
     read: vi.fn(async () => ({ file: httpIn, etag: '"1"' })),
     save: vi.fn(),
+    create: vi.fn(async (path: string) => ({ file: { ...httpIn, path }, etag: '"1"' })),
     components: vi.fn(async (): Promise<ComponentSettings[]> => [
       {
         scheme: 'http',
@@ -166,7 +170,8 @@ describe('Flows', () => {
     }
     await expect.element(text("domestic · when /Invoice/Currency = 'CZK'")).toBeVisible();
     await expect.element(page.getByRole('heading', { name: 'Flow invoice' })).toBeVisible();
-    await expect.element(text('Validate an invoice and send it on.')).toBeVisible();
+    await expect.element(page.getByRole('textbox', { name: 'description' })).toHaveValue('Validate an invoice and send it on.');
+    await expect.element(page.getByRole('textbox', { name: 'delivery.mode' })).toHaveValue('sync');
   });
 
   test("shows a step's settings when its node is chosen, and its name on the Step tab", async () => {
@@ -416,5 +421,164 @@ describe('Editing a flow', () => {
     await expect.element(page.getByText('Read-only', { exact: true })).toBeVisible();
     await expect.element(text('The editor shows this flow read-only: steps is written on one line ([ … ]).')).toBeVisible();
     expect(button('Edit').elements()).toHaveLength(0);
+  });
+});
+
+const processes = `schemaVersion: 1
+kind: flow
+id: invoice
+version: 0.1.0
+from: { endpoint: http-in }
+delivery: { mode: sync }
+limits: { maxBodyBytes: 1048576 }
+steps:
+  - type: process
+    process: enrich
+  - type: to
+    endpoint: partner-domestic
+processes:
+  enrich:
+    steps:
+      - type: filter
+        when: "true()"
+`;
+
+const lastSave = (flows: FlowsApi) => vi.mocked(flows.save).mock.lastCall?.[1] ?? '';
+
+describe('Editing the rest of a flow', () => {
+  test("adds, changes, moves and removes the rows of a list field, and renames a map field's key in place", async () => {
+    const flows = fakeFlows();
+    await open(flows);
+    await button('Edit').click();
+    await nodeOf('route').click();
+    await expect.element(button('Remove row 1')).toBeDisabled();
+    await button('Add a row').click();
+    await page.getByRole('textbox', { name: 'when of row 2' }).fill('true()');
+    await page.getByRole('textbox', { name: 'set of row 2' }).fill('euro');
+    await button('Move row 2 up').click();
+    await button('Save').click();
+    expect(lastSave(flows)).toContain(`    routes:\n      - when: true()\n        set: euro\n      - when: "/Invoice/Currency = 'CZK'"\n        set: domestic\n`);
+    await button('Remove row 1').click();
+    await nodeOf('partner').click();
+    const key = page.getByRole('textbox', { name: 'Value foreign' });
+    await key.fill('domestic');
+    await expect.element(text('is taken')).toBeVisible();
+    await expect.element(button('Save')).toBeDisabled();
+    await key.fill('abroad');
+    await userEvent.keyboard('{Enter}');
+    await button('Save').click();
+    expect(lastSave(flows)).toBe(invoice.replace('      foreign: partner-foreign\n', '      abroad: partner-foreign\n'));
+  });
+
+  test("changes the flow's own settings in their form", async () => {
+    const flows = fakeFlows();
+    await open(flows);
+    await button('Edit').click();
+    await page.getByRole('textbox', { name: 'description' }).fill('Send an invoice on.');
+    await page.getByRole('combobox', { name: 'delivery.mode' }).selectOptions('at-least-once');
+    await button('Save').click();
+    expect(lastSave(flows)).toBe(invoice.replace('Validate an invoice and send it on.', 'Send an invoice on.').replace('{ mode: sync }', '{ mode: at-least-once }'));
+  });
+
+  test('adds a process with its first step, renames it and every call of it, moves a step into it, and deletes it once no step calls it', async () => {
+    const flows = fakeFlows({ 'demo/flows/invoice.yaml': processes });
+    await open(flows);
+    await button('Edit').click();
+    await button('Add a process').click();
+    await page.getByRole('textbox', { name: 'Name' }).fill('audit');
+    await page.getByRole('combobox', { name: 'First step' }).selectOptions('validate');
+    await page.getByRole('dialog').getByRole('button', { name: 'Add', exact: true }).click();
+    await expect.element(canvas().getByText('process audit')).toBeVisible();
+    await canvas().getByText('process enrich').click();
+    await expect.element(text('the message history keeps enrich')).toBeVisible();
+    await expect.element(button('Delete process')).toBeDisabled();
+    await page.getByRole('textbox', { name: 'Name' }).fill('lookup');
+    await button('Rename').click();
+    await expect.element(canvas().getByText('process lookup')).toBeVisible();
+    await nodeOf('to').click();
+    await page.getByRole('combobox', { name: 'Move to the end of' }).selectOptions('process audit');
+    await button('Save').click();
+    expect(lastSave(flows)).toBe(`${processes.replace('  - type: process\n    process: enrich\n  - type: to\n    endpoint: partner-domestic\n', '  - type: process\n    process: lookup\n').replace('  enrich:\n', '  lookup:\n')}  audit:
+    steps:
+      - type: validate
+      - type: to
+        endpoint: partner-domestic
+`);
+    await canvas().getByText('process audit').click();
+    await button('Delete process').click();
+    await expect.element(canvas().getByText('process audit')).not.toBeInTheDocument();
+  });
+
+  test('refuses a process rename that gives a call without a name the name of another step of its list', async () => {
+    await open(fakeFlows({ 'demo/flows/invoice.yaml': processes.replace('  - type: to\n', '  - type: to\n    name: partner\n') }));
+    await button('Edit').click();
+    await canvas().getByText('process enrich').click();
+    await page.getByRole('textbox', { name: 'Name' }).fill('partner');
+    await button('Rename').click();
+    await expect.element(text('steps[0] has no name and would be named partner, the name of steps[1] in its list')).toBeVisible();
+  });
+
+  test('calls another flow through the direct endpoint of its address, created first when the package has none', async () => {
+    const flows = fakeFlows();
+    const endpoints = fakeEndpoints();
+    await open(flows, endpoints);
+    await button('Edit').click();
+    await button('Add a step at steps[4]').click();
+    await page.getByRole('menuitem', { name: /^order/ }).click();
+    await expect.element(page.getByRole('heading', { name: 'to', level: 2 })).toBeVisible();
+    expect(endpoints.create).not.toHaveBeenCalled();
+    await button('Add a step at steps[5]').click();
+    await page.getByRole('menuitem', { name: /^payment/ }).click();
+    await expect.element(page.getByRole('heading', { name: 'to-2', level: 2 })).toBeVisible();
+    expect(endpoints.create).toHaveBeenCalledWith(
+      'demo/endpoints/call-payment.yaml',
+      'schemaVersion: 1\nkind: endpoint\nid: call-payment\nscheme: direct\ndirection: out\nconfig:\n  address: /payments\n',
+    );
+    await button('Save').click();
+    expect(lastSave(flows)).toBe(`${invoice}  - type: to\n    endpoint: order-call\n  - type: to\n    name: to-2\n    endpoint: call-payment\n`);
+  });
+
+  test('a call whose endpoint cannot be created is not added, and says why', async () => {
+    const endpoints = { ...fakeEndpoints(), create: vi.fn(async () => Promise.reject(new Error('the file exists already; nothing was written'))) };
+    await open(fakeFlows(), endpoints);
+    await button('Edit').click();
+    await button('Add a step at steps[4]').click();
+    await page.getByRole('menuitem', { name: /^payment/ }).click();
+    await expect.element(text('demo/endpoints/call-payment.yaml was not created: the file exists already')).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+    await expect.element(button('Save')).toBeDisabled();
+  });
+
+  test('New flow writes a file that does not exist yet and opens it; one over an existing file says it exists', async () => {
+    const flows = fakeFlows();
+    render(flows);
+    await button('New flow').click();
+    await page.getByRole('textbox', { name: 'Id' }).fill('order');
+    await page.getByRole('textbox', { name: 'Arrives at' }).fill('http-in');
+    await page.getByRole('textbox', { name: 'Sends to' }).fill('partner-domestic');
+    await expect.element(page.getByRole('textbox', { name: 'File' })).toHaveValue('demo/flows/order.yaml');
+    await button('Create').click();
+    await expect.element(text('demo/flows/order.yaml exists already; nothing was written.')).toBeVisible();
+    await page.getByRole('textbox', { name: 'Id' }).fill('payment');
+    await button('Create').click();
+    expect(flows.save).toHaveBeenLastCalledWith(
+      'demo/flows/payment.yaml',
+      `schemaVersion: 1
+kind: flow
+id: payment
+version: 0.1.0
+from:
+  endpoint: http-in
+delivery:
+  mode: sync
+limits:
+  maxBodyBytes: 1048576
+steps:
+  - type: to
+    endpoint: partner-domestic
+`,
+      null,
+    );
+    await expect.element(page.getByRole('heading', { name: 'payment', level: 1 })).toBeVisible();
   });
 });

@@ -79,15 +79,19 @@ pages only), the same walk of the folder, the same limits (1,000 files, 16 folde
 | `GET /files/flows` | `{configured, editable, truncated, items}`: each file of `kind: flow` as `{path, id}`, or `{path, problem}` when it cannot be read |
 | `GET /files/flows/<path>` | `{path, text, editable, context}` with the file's `ETag`; the context holds `endpoints` and `flows` |
 | `PUT /files/flows/<path>` `{text}` with `If-Match` | writes the text and answers as `GET` |
-| `PUT /files/flows/<path>` `{text}` with `If-None-Match: *` | creates the file (from the stage "the rest") |
+| `PUT /files/flows/<path>` `{text}` with `If-None-Match: *` | creates the file and answers as `GET`, with 201 |
+| `PUT /files/endpoints/<path>` `{text}` with `If-None-Match: *` | creates the endpoint file and answers as its `GET`, with 201 |
 
 The refusals:
 
 | Status | When |
 | --- | --- |
 | 403 | read-only mode, or a request from elsewhere |
-| 404 | no such flow file |
+| 400 | a path that is no `.yaml` or `.yml` file in the working folder, or both `If-Match` and `If-None-Match` |
+| 404 | no such flow file, or, on a create, no such folder |
 | 412 | the file changed since it was read, or, on a create, it exists |
+| 422 | on a create, a text that is not a file of its kind |
+| 428 | a save with neither `If-Match` nor `If-None-Match: *` |
 | 413 | the text is over 1 MiB |
 | 422 | the text is no YAML, or no flow |
 | 428 | neither precondition is sent |

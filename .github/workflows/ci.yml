@@ -295,7 +295,7 @@ jobs:
           echo "$counted"
           echo "$counted" | grep -Eq '"completed":[1-9]' && echo "$counted" | grep -q '"failed":0' \
             || { echo "::error::the invoice is not counted as completed through the UI's /admin: $counted"; exit 1; }
-      - name: The demo flows are drawn from their files and the node's step types, and saved, through the UI's server
+      - name: The demo flows are drawn from their files and the node's step types, saved and created, through the UI's server
         run: |
           set -euo pipefail
           flows=$(curl -sf -H 'Sec-Fetch-Site: same-origin' localhost:5173/files/flows || true)
@@ -320,6 +320,19 @@ jobs:
           [ "$stale" = 412 ] || { echo "::error::a save of invoice-sync with a stale version answered $stale, not 412"; exit 1; }
           cmp -s examples/demo/flows/invoice-sync.yaml ~/rail8-workspace/demo/flows/invoice-sync.yaml \
             || { echo "::error::the saves changed ~/rail8-workspace/demo/flows/invoice-sync.yaml"; exit 1; }
+          # New flow, and the endpoint a call of a flow creates: a file that does not exist is written once, never over itself
+          create() { curl -s -o /dev/null -w '%{http_code}' -X PUT -H 'Sec-Fetch-Site: same-origin' -H 'Content-Type: application/json' -H 'If-None-Match: *' --data-binary "$2" "localhost:5173/files/$1"; }
+          newFlow=$(jq -n '{text: "schemaVersion: 1\nkind: flow\nid: audit\nversion: 0.1.0\nfrom:\n  endpoint: http-in\ndelivery:\n  mode: sync\nlimits:\n  maxBodyBytes: 1048576\nsteps:\n  - type: to\n    endpoint: partner-domestic\n"}')
+          newEndpoint=$(jq -n '{text: "schemaVersion: 1\nkind: endpoint\nid: call-audit\nscheme: direct\ndirection: out\nconfig:\n  address: /audit\n"}')
+          for file in flows/demo/flows/audit.yaml endpoints/demo/endpoints/call-audit.yaml; do
+            body=$newFlow; [ "${file%%/*}" = endpoints ] && body=$newEndpoint
+            first=$(create "$file" "$body"); again=$(create "$file" "$body")
+            [ "$first" = 201 ] && [ "$again" = 412 ] \
+              || { echo "::error::creating $file through the UI's server answered $first, then $again, not 201 and 412"; exit 1; }
+          done
+          grep -q '^id: audit$' ~/rail8-workspace/demo/flows/audit.yaml && grep -q '^id: call-audit$' ~/rail8-workspace/demo/endpoints/call-audit.yaml \
+            || { echo "::error::the files created are not in ~/rail8-workspace/demo"; exit 1; }
+          rm ~/rail8-workspace/demo/flows/audit.yaml ~/rail8-workspace/demo/endpoints/call-audit.yaml
       - name: Logs on failure
         if: failure()
         run: |

@@ -23,6 +23,16 @@ describe('httpEndpointsApi', () => {
     });
   });
 
+  test('creates a file from its text with If-None-Match: *', async () => {
+    const send = vi.fn(async () => json(201, file, { etag: '"sha256-3"' }));
+    expect((await httpEndpointsApi(send).create('demo/b.yaml', 'kind: endpoint\n')).etag).toBe('"sha256-3"');
+    expect(send).toHaveBeenCalledWith('/files/endpoints/demo/b.yaml', {
+      method: 'PUT',
+      headers: { accept: 'application/json', 'content-type': 'application/json', 'if-none-match': '*' },
+      body: '{"text":"kind: endpoint\\n"}',
+    });
+  });
+
   test("lists the node's components from the admin API", async () => {
     const items = [{ scheme: 'http', settings: { format: 1, described: false, tabs: [], fields: [], rules: [] } }];
     const send = vi.fn(async () => json(200, { items }));

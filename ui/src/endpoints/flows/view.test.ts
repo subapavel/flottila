@@ -188,19 +188,19 @@ describe('view of a file it cannot draw', () => {
 
   it(`draws no flow of more than ${MAX_NODES} nodes`, () => {
     const steps = Array.from({ length: MAX_NODES }, (_, i) => ({ type: 'xsd', name: `s${i}`, schema: 'flows/invoice.xsd' }));
-    const drawn = view(stringify({ schemaVersion: 1, kind: 'flow', id: 'big', from: { endpoint: 'http-in' }, steps }), demo);
+    const drawn = view(stringify({ schemaVersion: 1, kind: 'flow', id: 'big', version: '0.1.0', from: { endpoint: 'http-in' }, delivery: { mode: 'sync' }, limits: { maxBodyBytes: 1024 }, steps }), demo);
     expect(drawn).toMatchObject({ readable: false, nodes: [], problems: [{ path: [], message: `the flow would be drawn with ${MAX_NODES + 2} nodes, more than the ${MAX_NODES} the editor draws` }] });
   });
 
   it('draws a file of another schemaVersion, with the problem', () => {
-    const drawn = view('schemaVersion: 2\nkind: flow\nid: x\nfrom: { endpoint: http-in }\nsteps:\n  - type: to\n    endpoint: partner-domestic\n', demo);
+    const drawn = view('schemaVersion: 2\nkind: flow\nid: x\nversion: 0.1.0\nfrom: { endpoint: http-in }\ndelivery: { mode: sync }\nlimits: { maxBodyBytes: 1 }\nsteps:\n  - type: to\n    endpoint: partner-domestic\n', demo);
     expect(drawn.readable).toBe(true);
     expect(drawn.problems).toEqual([{ path: ['schemaVersion'], message: 'schemaVersion is 2, not 1: the editor shows this flow read-only' }]);
     expect(drawn.readOnly).toBe('schemaVersion is 2, not 1');
   });
 
   it('draws a step that is no mapping in its place, locked', () => {
-    const drawn = view('schemaVersion: 1\nkind: flow\nid: x\nfrom: { endpoint: http-in }\nsteps:\n  - just text\n', demo);
+    const drawn = view('schemaVersion: 1\nkind: flow\nid: x\nversion: 0.1.0\nfrom: { endpoint: http-in }\ndelivery: { mode: sync }\nlimits: { maxBodyBytes: 1 }\nsteps:\n  - just text\n', demo);
     expect(drawn.problems).toEqual([{ path: ['steps', 0], message: 'a step is a mapping with a text type' }]);
     expect(drawn.nodes.find((n) => n.id === '/steps/0')).toMatchObject({ label: 'step 1', locked: expect.stringContaining('no mapping') });
   });
@@ -218,7 +218,7 @@ describe('the rules of names and processes, shared with the node', () => {
   };
 
   it.each(cases)('$name', ({ steps, processes, problems }) => {
-    const text = stringify({ schemaVersion: 1, kind: 'flow', id: 'cases', version: '0.1.0', from: { endpoint: 'in' }, steps, ...(processes === undefined ? {} : { processes }) });
+    const text = stringify({ schemaVersion: 1, kind: 'flow', id: 'cases', version: '0.1.0', from: { endpoint: 'in' }, delivery: { mode: 'sync' }, limits: { maxBodyBytes: 1024 }, steps, ...(processes === undefined ? {} : { processes }) });
     const order = (p: { path: readonly (string | number)[] }) => pointer(p.path);
     const found = view(text, context).problems;
     expect([...found].sort((a, b) => order(a).localeCompare(order(b)))).toEqual([...problems].sort((a, b) => order(a).localeCompare(order(b))));
@@ -240,6 +240,8 @@ kind: flow
 id: branching
 version: 0.1.0
 from: { endpoint: http-in }
+delivery: { mode: sync }
+limits: { maxBodyBytes: 1048576 }
 steps:
   - type: choose
     when:

@@ -193,6 +193,38 @@ describe('endpointFiles', () => {
     expect((await call(`${base}/files/endpoints/demo/flows/missing.yaml`)).status).toBe(404);
   });
 
+  describe('a create', () => {
+    const call2 = `schemaVersion: 1\nkind: endpoint\nid: call-orders\nscheme: direct\ndirection: out\nconfig:\n  address: /orders\n`;
+    const create = (base: string, path: string, text: unknown = call2, headers: Record<string, string> = { ...page, 'content-type': 'application/json', 'if-none-match': '*' }) =>
+      call(`${base}/files/endpoints/${path}`, 'PUT', headers, JSON.stringify({ text }));
+
+    it('writes a new endpoint file from its text and answers as GET, with its ETag', async () => {
+      const base = await serve();
+      const answer = await create(base, 'demo/endpoints/call-orders.yaml');
+      expect(answer.status).toBe(201);
+      expect(answer.etag).toBe(etagOf(call2));
+      expect(answer.body).toMatchObject({ path: 'demo/endpoints/call-orders.yaml', id: 'call-orders', scheme: 'direct', direction: 'out', config: { address: '/orders' } });
+      expect(await readFile(join(root, 'demo', 'endpoints', 'call-orders.yaml'), 'utf8')).toBe(call2);
+      expect((await readdir(join(root, 'demo', 'endpoints'))).filter((n) => n.endsWith('.tmp'))).toEqual([]);
+    });
+
+    it('refuses a file that exists, a text that is no endpoint, and what a save refuses', async () => {
+      await symlink(outside, join(root, 'demo', 'away'));
+      expect((await create(await serve({ editable: false }), 'demo/endpoints/call-orders.yaml')).status).toBe(403);
+      const base = await serve();
+      expect((await create(base, 'demo/endpoints/http-in.yaml')).status).toBe(412);
+      expect((await create(base, 'demo/endpoints/linked.yaml')).status).toBe(412);
+      expect((await create(base, 'demo/away/call-orders.yaml')).status).toBe(403);
+      expect((await create(base, 'demo/endpoints/call-orders.test.yaml')).status).toBe(400);
+      expect((await create(base, 'demo/endpoints/call-orders.yaml', 'schemaVersion: 1\nkind: flow\nid: f\n')).status).toBe(422);
+      expect((await create(base, 'demo/endpoints/call-orders.yaml', 'kind: endpoint\nid: x\n')).status).toBe(422);
+      expect((await create(base, 'demo/endpoints/call-orders.yaml', [1])).status).toBe(400);
+      expect(await readFile(join(root, 'demo', 'endpoints', 'http-in.yaml'), 'utf8')).toBe(httpIn);
+      expect(await readdir(outside)).toEqual(['secret.yaml']);
+      expect(await readdir(join(root, 'demo', 'endpoints'))).not.toContain('call-orders.yaml');
+    });
+  });
+
   it("answers only the UI's own pages", async () => {
     const base = await serve();
     expect((await call(`${base}/files/endpoints`, 'GET', {})).status).toBe(403);

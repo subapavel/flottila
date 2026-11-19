@@ -45,3 +45,7 @@ refused: steps holds a list written on one line ([ … ]), which the editor does
 {"op":"add","path":["processes","enrich","steps",1],"value":{"type":"validate","required":"true()"}}
 @@ line 13
 +      - { type: validate, required: true() }
+
+=== rename the first process
+{"op":"move","from":["processes","enrich"],"path":["processes","renamed"]}
+refused: processes.enrich.steps[1] holds a mapping written over several lines in braces, which the editor does not change

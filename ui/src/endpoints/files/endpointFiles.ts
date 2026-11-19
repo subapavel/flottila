@@ -2,7 +2,7 @@ import { readFile, realpath } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { foreign } from '../../../server/adminProxy.ts';
 import { EndpointFileError, readEndpoint, writeConfig, type EndpointDocument } from './endpointYaml.ts';
-import { etagOf, jsonBody, locate, Refusal, replaceFile, send, sendFailure, walk } from './workingFolder.ts';
+import { createFile, etagOf, jsonBody, locate, MAX_FILE_BYTES, Refusal, replaceFile, send, sendFailure, walk } from './workingFolder.ts';
 
 export { etagOf, MAX_FILE_BYTES, MAX_FILES } from './workingFolder.ts';
 
@@ -70,6 +70,10 @@ function endpointOf(text: string, path: string, editable: boolean): EndpointFile
  * - `PUT /files/endpoints/<path>` with `If-Match` and `{"config": {...}}`: writes the file's `config` as
  *   {@link writeConfig} does, to a temporary file renamed over it, and answers 200 as GET does; 403 when not editable,
  *   428 without `If-Match`, 412 when the file changed since that tag, 422 when the edit is refused.
+ * - `PUT /files/endpoints/<path>` with `If-None-Match: *` and `{"text": "..."}`: creates the endpoint file, in a folder
+ *   of the working folder that exists, with the text, which must read as an endpoint file, and answers 201 as GET
+ *   does; 403 when not editable, 412 when a file of that name exists, 404 when its folder does not, 422 when the text is
+ *   no endpoint file, 400 when both preconditions are sent.
  *
  * Saves are made one at a time. Every other path goes to `next`.
  */
@@ -91,9 +95,27 @@ export function endpointFiles(options: EndpointFilesOptions) {
     return { file: endpointOf(bytes.toString('utf8'), path, options.editable), etag: etagOf(bytes) };
   };
 
+  const create = async (req: IncomingMessage, path: string) => {
+    const sent = await jsonBody(req);
+    if (typeof sent !== 'object' || sent === null || !('text' in sent) || typeof sent.text !== 'string') throw new Refusal(400, 'a create sends {"text": "..."}');
+    const text = sent.text;
+    if (Buffer.byteLength(text, 'utf8') > MAX_FILE_BYTES) throw new Refusal(413, 'the text is over 1 MiB');
+    let file: EndpointFile;
+    try {
+      file = endpointOf(text, path, options.editable);
+    } catch (error) {
+      throw error instanceof Refusal && error.status === 404 ? new Refusal(422, 'the text is not an endpoint file') : error;
+    }
+    await createFile(await rootOf(), path, isYaml, 'endpoint file', text);
+    return { file, etag: etagOf(text), created: true };
+  };
+
   const save = async (req: IncomingMessage, path: string) => {
     if (!options.editable) throw new Refusal(403, 'this server shows endpoint files read-only');
     const ifMatch = req.headers['if-match'];
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch !== undefined && ifMatch !== undefined) throw new Refusal(400, 'a save sends If-Match or If-None-Match, not both');
+    if (ifNoneMatch === '*') return create(req, path);
     if (ifMatch === undefined) throw new Refusal(428, 'a save names the version it changes in If-Match');
     const sent = await jsonBody(req);
     if (typeof sent !== 'object' || sent === null || !('config' in sent)) throw new Refusal(400, 'a save sends {"config": {...}}');
@@ -112,7 +134,7 @@ export function endpointFiles(options: EndpointFilesOptions) {
       throw error;
     }
     await replaceFile(file, written);
-    return { file: endpointOf(written, path, options.editable), etag: etagOf(written) };
+    return { file: endpointOf(written, path, options.editable), etag: etagOf(written), created: false };
   };
 
   return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
@@ -135,8 +157,8 @@ export function endpointFiles(options: EndpointFilesOptions) {
       } else if (path !== '' && req.method === 'PUT') {
         const done = saves.then(() => save(req, path));
         saves = done.catch(() => undefined);
-        const { file, etag } = await done;
-        send(res, 200, file, etag);
+        const { file, etag, created } = await done;
+        send(res, created ? 201 : 200, file, etag);
       } else send(res, 405, { error: 'the working folder takes GET, and PUT of one file' });
     };
     answer().catch((error: unknown) => sendFailure(res, error));

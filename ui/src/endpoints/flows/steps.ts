@@ -96,6 +96,35 @@ export const BUILT_IN: Readonly<Record<string, StepType>> = {
   },
 };
 
+const duration = { pattern: '\\d+(ms|s|m|h)' };
+
+/**
+ * The flow's own settings, every top-level key of a flow file but `schemaVersion`, `kind`, `steps` and `processes`, a
+ * key inside a key dotted (`delivery.mode`). The choices of `from.endpoint` are the in endpoints of the package.
+ */
+export const FLOW_FIELDS: StepField[] = [
+  field('id', 'text', 'The flow’s id, unique in its package.', { required: true, pattern: '[a-z][a-z0-9-]*' }),
+  field('version', 'text', 'The flow’s version, as major.minor.patch.', { required: true, pattern: '\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?' }),
+  field('description', 'text', 'What the flow does.'),
+  field('from.endpoint', 'choice', 'The in endpoint the flow listens on.', { required: true, choices: [], reference: 'endpoint' }),
+  field('delivery.mode', 'choice', 'How a message is delivered: answered at once, saved first, or taken once.', { required: true, choices: ['sync', 'at-least-once', 'at-most-once'] }),
+  field('delivery.timeout', 'text', 'The time each run of a message has, such as 30s.', duration),
+  field('delivery.saveTimeout', 'text', 'at-least-once: the time the durable save has, such as 5s.', duration),
+  field('delivery.queue', 'choice', 'at-least-once: the work queue behind the durable save.', { choices: ['postgres', 'kafka'] }),
+  field('delivery.retries', 'raw', 'at-least-once: the retries of a failed message, as count, interval, multiplier and maxInterval.'),
+  field('recording.level', 'choice', 'What the flow records of each message.', { choices: ['all', 'ends', 'errors', 'off'] }),
+  field('recording.payload', 'choice', 'Whether the flow keeps the payloads it records.', { choices: ['keep', 'metadata-only'] }),
+  field('limits.maxBodyBytes', 'integer', 'The largest body the flow takes, in bytes.', { required: true, min: 1 }),
+  field('limits.maxInFlight', 'integer', 'The most messages of the flow in flight at once.', { min: 1 }),
+  field('limits.maxInFlightBytes', 'integer', 'The most bytes of the flow in flight at once.', { min: 1 }),
+  field('partitionBy', 'text', 'at-least-once: the key whose messages run one at a time, in the order they came.', { pattern: KEY_NAME }),
+  field('forwardHeaders', 'raw', 'The headers of an arrival that reach the endpoints the flow sends to, as a list.'),
+  field('retry', 'raw', 'The retry of steps marked retryable, as attempts, initial, max and multiplier.'),
+];
+
+/** The top-level keys of a flow file that are not among its own settings. */
+export const FLOW_PARTS = new Set(['schemaVersion', 'kind', 'steps', 'processes']);
+
 /** The fields of the "Step" tab: a process call takes only the name. */
 export function stepTabFields(type: string | undefined, defaultName: string): StepField[] {
   const name = field('name', 'text', `The step's name in a message's history; without one it is ${defaultName}.`, { pattern: STEP_NAME });
@@ -180,13 +209,17 @@ function judge(field: StepField, value: unknown, at: Path): FlowProblem[] {
   return problem === null ? [] : [{ path: at, message: problem }];
 }
 
-/** What is wrong with `values` for `fields`, each at its path below `at`: a value that does not fit, or a required one left out. */
+/**
+ * What is wrong with `values` for `fields`, each at its path below `at`, a dotted name a key inside a key: a value that
+ * does not fit, or a required one left out.
+ */
 export function checkFields(fields: readonly StepField[], values: Record<string, unknown>, at: Path): FlowProblem[] {
   const problems: FlowProblem[] = [];
   for (const f of fields) {
-    const value = values[f.name];
-    if (present(value)) problems.push(...judge(f, value, [...at, f.name]));
-    else if (f.required) problems.push({ path: [...at, f.name], message: 'is required' });
+    const keys = f.name.split('.');
+    const value = keys.reduce<unknown>((v, k) => (isRecord(v) ? v[k] : undefined), values);
+    if (present(value)) problems.push(...judge(f, value, [...at, ...keys]));
+    else if (f.required) problems.push({ path: [...at, ...keys], message: 'is required' });
   }
   return problems;
 }

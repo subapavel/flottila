@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { link, lstat, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { basename, dirname, join, relative, sep } from 'node:path';
 
@@ -68,16 +68,7 @@ export function etagOf(bytes: Buffer | string): string {
  * when it leads out of the folder, and 413 when it is over {@link MAX_FILE_BYTES}.
  */
 export async function locate(root: string, path: string, takes: (name: string) => boolean, what: string): Promise<string> {
-  const segments = path.split('/').map((s) => {
-    try {
-      return decodeURIComponent(s);
-    } catch {
-      throw new Refusal(400, 'the path is not well encoded');
-    }
-  });
-  if (segments.some((s) => s === '' || s === '.' || s === '..' || /[/\\\0]/.test(s)) || !takes(segments.at(-1)!)) {
-    throw new Refusal(400, `the path names no ${what} of the working folder`);
-  }
+  const segments = segmentsOf(path, takes, what);
   let real: string;
   try {
     real = await realpath(join(root, ...segments));
@@ -89,6 +80,55 @@ export async function locate(root: string, path: string, takes: (name: string) =
   if (!info.isFile()) throw new Refusal(404, `no file ${segments.join('/')} in the working folder`);
   if (info.size > MAX_FILE_BYTES) throw new Refusal(413, 'the file is over 1 MiB');
   return real;
+}
+
+/**
+ * Creates the file at `path` (relative, with `/`, each segment percent-encoded) under the real folder `root`, whose name
+ * `takes`, holding `text`, and answers its real path. It is written whole to a temporary file beside it and linked to its
+ * name, so it never replaces a file. Refused with 400 when the path is malformed, names no such file or a place the walk
+ * passes over (a hidden or skipped folder or file, or one too deep), 404 when its folder does not exist, 403 when the
+ * folder leads out of the working folder, and 412 when a file, or a link, of that name exists.
+ */
+export async function createFile(root: string, path: string, takes: (name: string) => boolean, what: string, text: string): Promise<string> {
+  const segments = segmentsOf(path, takes, what);
+  const folders = segments.slice(0, -1);
+  if (folders.length > MAX_DEPTH || segments.some((s) => s.startsWith('.') || SKIPPED.has(s))) throw new Refusal(400, `the path names no ${what} of the working folder`);
+  let folder: string;
+  try {
+    folder = await realpath(join(root, ...folders));
+  } catch {
+    throw new Refusal(404, `no folder ${folders.join('/')} in the working folder`);
+  }
+  if (folder !== root && !folder.startsWith(root + sep)) throw new Refusal(403, 'the path leaves the working folder');
+  if (!(await stat(folder)).isDirectory()) throw new Refusal(404, `no folder ${folders.join('/')} in the working folder`);
+  const file = join(folder, segments.at(-1)!);
+  const exists = new Refusal(412, 'the file exists already; nothing was written');
+  if (await lstat(file).then(() => true, () => false)) throw exists;
+  const temporary = join(folder, `.${segments.at(-1)!}.${randomUUID()}.tmp`);
+  try {
+    await writeFile(temporary, text, { flag: 'wx' });
+    await link(temporary, file).catch((error: unknown) => {
+      throw (error as NodeJS.ErrnoException).code === 'EEXIST' ? exists : error;
+    });
+  } finally {
+    await rm(temporary, { force: true });
+  }
+  return file;
+}
+
+/** The decoded segments of `path`, refused with 400 when it is malformed or its last segment is no name `takes`. */
+function segmentsOf(path: string, takes: (name: string) => boolean, what: string): string[] {
+  const segments = path.split('/').map((s) => {
+    try {
+      return decodeURIComponent(s);
+    } catch {
+      throw new Refusal(400, 'the path is not well encoded');
+    }
+  });
+  if (segments.some((s) => s === '' || s === '.' || s === '..' || /[/\\\0]/.test(s)) || !takes(segments.at(-1)!)) {
+    throw new Refusal(400, `the path names no ${what} of the working folder`);
+  }
+  return segments;
 }
 
 /**
