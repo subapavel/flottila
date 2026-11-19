@@ -125,13 +125,8 @@ class ResolverTest {
           ".a |= .b",
           ".a |= 1 | .b += 2 | .d *= 2 | .e /= 1 | .g //= 3 | .h = 4",
           ".f %= 1 | .c -= 1",
-          // Unwrapped at #71: getpath/1 is an unbuilt native of spec 3 (ADR-0042) and |= is _modify's; jq-ref 1.8.2,
-          // observed 2026-11-13 with -nc: {"a":1}, rc 0.
+          // |= is _modify's, still unbuilt; jq-ref 1.8.2, observed 2026-11-13 with -nc: {"a":1}, rc 0.
           "getpath([\"a\"]) |= 1",
-          // The key is the string "e" from getpath/1, still unbuilt, so it stubs;
-          // jq-ref 1.8.2, observed 2026-11-13 with -nc:
-          // {"if":1,"and":2,"a":3,"b":4,"k":5,"x1":6,"e":7,"__loc__":{"file":"<top-level>","line":1},"c":null}.
-          "{if: 1, and: 2, a: 3, \"b\": 4, @base64 \"k\": 5, \"x\\(1)\": 6, ({\"x\":\"e\"}|getpath([\"x\"])): 7, $__loc__, c}",
           "1 as $v | $$$$v",
           "module {a:1}; .",
           "import \"nosuch\" as n; .",
@@ -199,6 +194,18 @@ class ResolverTest {
           assertThatExceptionOfType(JqCompileException.class).as("resolve of %s", e.getKey()).isThrownBy(() -> ir(e.getKey())).actual();
       assertThat(error.blocks()).as("blocks of %s", e.getKey()).containsExactly(e.getValue());
     }
+  }
+
+  /**
+   * Every form of object key in one construction, the computed one the string "e" from getpath/1. jq-ref 1.8.2,
+   * observed 2026-11-13 with -nc.
+   */
+  @Test
+  void everyObjectKeyFormRunsAsJqRefRunsIt() {
+    assertThat(results("{if: 1, and: 2, a: 3, \"b\": 4, @base64 \"k\": 5, \"x\\(1)\": 6, ({\"x\":\"e\"}|getpath([\"x\"])): 7, $__loc__, c}"))
+        .as("every object key form")
+        .containsExactly(
+            "{\"if\":1,\"and\":2,\"a\":3,\"b\":4,\"k\":5,\"x1\":6,\"e\":7,\"__loc__\":{\"file\":\"<top-level>\",\"line\":1},\"c\":null}");
   }
 
   /**

@@ -14,7 +14,8 @@ import org.junit.jupiter.api.Test;
  * {@code keys_unsorted} an object's key strings, {@code to_entries} its input's keys and members (#85),
  * {@code flatten} its input's members, and #73's sort and its kin
  * their input's members (min and max one of them), and {@code trim}, {@code ltrim} and {@code rtrim} a string with
- * nothing to trim. The rest build their result afresh or give no container or string.
+ * nothing to trim, {@code getpath} a value inside its input, {@code setpath} its input's members and its value
+ * argument, and {@code delpaths} its input, whole or its members. The rest build their result afresh or give no container or string.
  */
 class NativeKeepsArgsTest {
   @Test
@@ -26,7 +27,7 @@ class NativeKeepsArgsTest {
         new String[] {
           "TOSTRING", "LAST", "KEYS", "KEYS_UNSORTED", "TO_ENTRIES", "FLATTEN", "FLATTEN_DEPTH", "SORT", "SORT_BY", "GROUP_BY",
           "UNIQUE", "UNIQUE_BY", "MIN", "MAX", "MIN_BY", "MAX_BY", "TRIM",
-          "LTRIM", "RTRIM", "FORMAT"
+          "LTRIM", "RTRIM", "FORMAT", "GETPATH", "SETPATH", "DELPATHS"
         }) {
       expected.put(keeps, true);
     }
