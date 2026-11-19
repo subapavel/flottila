@@ -37,7 +37,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -1616,6 +1619,230 @@ class EngineFacadeTest {
     } finally {
       assertThat(Thread.interrupted()).as("the interrupt is kept").isTrue();
     }
+  }
+
+  // --- a bounded test run: its output, its tracer's reports and its thread
+
+  /** One {@code Item} per Order, and its {@code Info/Sku} from the Order's Line Skus. */
+  private static final byte[] ITEMS =
+      ordersToParents(
+          """
+          {"/Parents/Item": {"id": "t1", "result": "a1",
+             "boxes": {"a1": {"kind": "source", "field": "/Orders/Order",
+                              "context": "/Orders"}}},
+           "/Parents/Item/Info/Sku": {"id": "t2", "result": "a2",
+             "boxes": {"a2": {"kind": "source", "field": "/Orders/Order/Line/Sku",
+                              "context": "/Orders/Order"}}}}
+          """);
+
+  /** {@code orders} Orders of one Line each: the Sku's field reports once per Item. */
+  private static byte[] orders(int orders) {
+    return utf8(
+        "<Orders>" + "<Order><Line><Sku>s</Sku></Line></Order>".repeat(orders) + "</Orders>");
+  }
+
+  @Test
+  void aBoundedTestRunWithinItsBoundsGivesTheOutputOfARun() throws Exception {
+    EngineFacade facade = new EngineFacade();
+    CompiledMapping mapping =
+        compiled(facade.compile(FIELD_LINK, skeleton(), CompileOptions.TEST_RUN));
+    byte[] input = utf8("<src:Order xmlns:src=\"" + NS + "\"><OrderId>4711</OrderId></src:Order>");
+    byte[] run = facade.run(mapping, input);
+
+    TestRunResult result =
+        facade.testRun(mapping, input, Duration.ofSeconds(10), TRACE_LIMIT, run.length);
+
+    assertThat(result)
+        .isInstanceOfSatisfying(
+            TestRunResult.Output.class, output -> assertThat(output.output()).isEqualTo(run));
+  }
+
+  @Test
+  void aBoundedTestRunWhoseOutputPassesItsBoundIsTheRuntimeErrorRail8OutputTooLarge()
+      throws Exception {
+    EngineFacade facade = new EngineFacade();
+    CompiledMapping mapping =
+        compiled(facade.compile(FIELD_LINK, skeleton(), CompileOptions.TEST_RUN));
+    byte[] input = utf8("<src:Order xmlns:src=\"" + NS + "\"><OrderId>4711</OrderId></src:Order>");
+    long bound = facade.run(mapping, input).length - 1L;
+
+    TestRunResult result =
+        facade.testRun(mapping, input, Duration.ofSeconds(10), TRACE_LIMIT, bound);
+
+    assertThat(result)
+        .isInstanceOfSatisfying(
+            TestRunResult.RuntimeError.class,
+            error -> {
+              assertThat(error.code()).isEqualTo("rail8:OUTPUT-TOO-LARGE");
+              assertThat(error.message())
+                  .isEqualTo("the test run's output is larger than " + bound + " bytes");
+              assertThat(error.authoringId()).isEmpty();
+            });
+  }
+
+  /**
+   * A bounded test run's tracer keeps at most 100 reports per unit of the trace limit: with the
+   * limit 1, a run of 200 Items stops, while the limit 10 traces it whole, as an unbounded test run
+   * does with the limit 1.
+   */
+  @Test
+  void aBoundedTestRunPastItsReportsIsTheRuntimeErrorRail8TraceTooLarge() throws Exception {
+    EngineFacade facade = new EngineFacade();
+    CompiledMapping mapping =
+        compiled(facade.compile(ITEMS, observations(), CompileOptions.TEST_RUN));
+    byte[] input = orders(200);
+    // witnesses: a larger trace limit, or no bound, runs it
+    assertThat(facade.testRun(mapping, input, Duration.ofSeconds(10), 10, Long.MAX_VALUE))
+        .isInstanceOf(TestRunResult.Output.class);
+    assertThat(facade.testRun(mapping, input, Duration.ofSeconds(10), 1))
+        .isInstanceOf(TestRunResult.Output.class);
+
+    TestRunResult result =
+        facade.testRun(mapping, input, Duration.ofSeconds(10), 1, Long.MAX_VALUE);
+
+    assertThat(result)
+        .isInstanceOfSatisfying(
+            TestRunResult.RuntimeError.class,
+            error -> {
+              assertThat(error.code()).isEqualTo("rail8:TRACE-TOO-LARGE");
+              assertThat(error.message())
+                  .isEqualTo("the test run's trace has more than 100 reports");
+              assertThat(error.authoringId()).isEmpty();
+              assertThat(error.trace().entries()).isNotEmpty();
+            });
+  }
+
+  /**
+   * A clock that holds the run's thread when the run reads it as it starts, deaf to interrupts,
+   * until it is released; then it gives the epoch, with the interrupts it ignored kept.
+   */
+  private static final class HeldClock extends Clock {
+
+    private final CountDownLatch read = new CountDownLatch(1);
+    private final CountDownLatch released = new CountDownLatch(1);
+    private final AtomicReference<Thread> reader = new AtomicReference<>();
+
+    @Override
+    public Instant instant() {
+      reader.set(Thread.currentThread());
+      read.countDown();
+      boolean interrupted = false;
+      while (true) {
+        try {
+          released.await();
+          break;
+        } catch (InterruptedException e) {
+          interrupted = true;
+        }
+      }
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
+      return Instant.EPOCH;
+    }
+
+    @Override
+    public ZoneId getZone() {
+      return ZoneOffset.UTC;
+    }
+
+    @Override
+    public Clock withZone(ZoneId zone) {
+      throw new UnsupportedOperationException();
+    }
+  }
+
+  /** Whether {@code thread} waits inside {@code Thread.join}. */
+  private static boolean joining(Thread thread) {
+    return Stream.of(thread.getStackTrace())
+        .anyMatch(
+            f ->
+                f.getClassName().equals(Thread.class.getName())
+                    && f.getMethodName().equals("join"));
+  }
+
+  /**
+   * What a test run on a thread of its own gave or threw, and whether that thread was interrupted
+   * once it returned.
+   */
+  private record Outcome(Object value, boolean interrupted) {}
+
+  /**
+   * A bounded test run whose deadline gives up as {@code giveUp} does once its run's thread holds
+   * in its clock, run on a thread of its own: it has not returned while that thread holds, and once
+   * the clock lets it go, it returns with that thread ended.
+   */
+  private static Outcome giveUpWhileTheRunHolds(Callable<byte[]> giveUp) throws Exception {
+    CompiledMapping mapping =
+        compiled(new EngineFacade().compile(FIELD_LINK, skeleton(), CompileOptions.TEST_RUN));
+    byte[] input = utf8("<src:Order xmlns:src=\"" + NS + "\"><OrderId>4711</OrderId></src:Order>");
+    HeldClock clock = new HeldClock();
+    EngineFacade facade =
+        new EngineFacade(
+            (run, timeout, tracer) -> {
+              clock.read.await();
+              try {
+                return giveUp.call();
+              } catch (InterruptedException | TimeoutException e) {
+                throw e;
+              } catch (Exception e) {
+                throw new AssertionError(e);
+              }
+            },
+            clock);
+    AtomicReference<Outcome> outcome = new AtomicReference<>();
+    Thread caller =
+        Thread.ofPlatform()
+            .start(
+                () -> {
+                  Object value;
+                  try {
+                    value =
+                        facade.testRun(
+                            mapping, input, Duration.ofSeconds(30), TRACE_LIMIT, Long.MAX_VALUE);
+                  } catch (RuntimeException | MalformedInputException e) {
+                    value = e;
+                  }
+                  outcome.set(new Outcome(value, Thread.currentThread().isInterrupted()));
+                });
+    try {
+      while (caller.isAlive() && !joining(caller)) {
+        Thread.onSpinWait();
+      }
+      assertThat(caller.isAlive()).as("the test run is awaited while its thread holds").isTrue();
+    } finally {
+      clock.released.countDown();
+    }
+    caller.join();
+    assertThat(clock.reader.get().isAlive()).as("the run's thread is alive").isFalse();
+    return outcome.get();
+  }
+
+  @Test
+  void aBoundedTestRunPastItsTimeoutReturnsOnceItsRunsThreadHasEnded() throws Exception {
+    Outcome outcome =
+        giveUpWhileTheRunHolds(
+            () -> {
+              throw new TimeoutException();
+            });
+
+    assertThat(outcome.value())
+        .isInstanceOfSatisfying(
+            TestRunResult.RuntimeError.class,
+            error -> assertThat(error.code()).isEqualTo("rail8:TIMEOUT"));
+    assertThat(outcome.interrupted()).as("the caller is interrupted").isFalse();
+  }
+
+  @Test
+  void anInterruptedCallerOfABoundedTestRunReturnsOnceItsRunsThreadHasEnded() throws Exception {
+    Outcome outcome =
+        giveUpWhileTheRunHolds(
+            () -> {
+              throw new InterruptedException();
+            });
+
+    assertThat(outcome.value()).isInstanceOf(CancellationException.class);
+    assertThat(outcome.interrupted()).as("the interrupt is kept").isTrue();
   }
 
   // --- useOneAsMany's error conditions (#56): observed on PO 7.50 and CPI (F-48, obs-useoneasmany)
