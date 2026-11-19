@@ -105,6 +105,9 @@ licence text ships in the jq-core jar under META-INF/.
   (src/builtin.c) (#149)
 - jq-core/src/main/java/dev/rail8/jq/internal/op/Regex.java, translated from jq 1.8.2's
   f_match and f_match_name_iter (src/builtin.c) (#150)
+- jq-core/src/main/java/dev/rail8/jq/internal/op/Dates.java, translated from jq 1.8.2's
+  tm2jv, jv2tm, set_tm_wday, set_tm_yday, f_strptime, f_mktime, f_gmtime, f_localtime,
+  f_strftime, f_strflocaltime and f_now (src/builtin.c) (#151)
 
 jq's man.test and manonig.test are generated from the examples of the jq manual
 (https://jqlang.org), Creative Commons Attribution 3.0 Unported

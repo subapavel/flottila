@@ -20,8 +20,8 @@ import org.joni.constants.SyntaxProperties;
 import org.joni.exception.JOniException;
 
 /**
- * A Workspace's compiled regular expressions, kept across its runs in its run state, and the time one search of a run
- * may take. A pattern compiles with {@link #SYNTAX} over UTF-8 and the options its modifiers give.
+ * A Workspace's compiled regular expressions, kept across its runs in its run state by its {@link Kept}, and the
+ * time one search of a run may take. A pattern compiles with {@link #SYNTAX} over UTF-8 and the options its modifiers give.
  *
  * <p>The cache holds up to {@link #ENTRIES} patterns of up to {@link #LONGEST} bytes each, the least recently used out
  * first; a longer pattern compiles at each lookup. An entry is keyed by a copy of the pattern's bytes and the options,
@@ -83,23 +83,18 @@ public final class Patterns {
   /** What the latest lookup gave. */
   private Compiled lastCompiled;
 
-  /** The Patterns of {@code state}: the one it keeps, or a new one it keeps from now on. */
+  /** The Patterns of {@code state}: those of the {@link Kept} it keeps, or of a new one it keeps from now on. */
   static Patterns of(RunState state) {
-    if (state.kept() instanceof Patterns patterns) {
-      return patterns;
-    }
-    Patterns patterns = new Patterns();
-    state.keep(patterns);
-    return patterns;
+    return Kept.of(state).patterns();
   }
 
   /** A run begins: each of its searches may take at most {@code matchTimeNanos}. */
-  public void begin(long matchTimeNanos) {
+  void begin(long matchTimeNanos) {
     matchTime = matchTimeNanos;
   }
 
   /** The run ends: the pattern value of its latest lookup is no longer held. */
-  public void end() {
+  void end() {
     lastPattern = null;
     lastCompiled = null;
   }

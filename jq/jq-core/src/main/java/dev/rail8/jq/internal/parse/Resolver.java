@@ -6,6 +6,7 @@ import dev.rail8.jq.internal.op.Arithmetic;
 import dev.rail8.jq.internal.op.Basics;
 import dev.rail8.jq.internal.op.BuildObject;
 import dev.rail8.jq.internal.op.Builtins;
+import dev.rail8.jq.internal.op.Dates;
 import dev.rail8.jq.internal.op.Empty;
 import dev.rail8.jq.internal.op.Field;
 import dev.rail8.jq.internal.op.Flatten;
@@ -684,6 +685,13 @@ public final class Resolver {
       case TOBOOLEAN -> new Intrinsic(at, Basics.TOBOOLEAN, List.of());
       case FORMAT -> withArgument(c, Formats.FORMAT);
       case MATCH -> withArguments(c, Regex.MATCH);
+      case STRPTIME -> withArgument(c, Dates.STRPTIME);
+      case STRFTIME -> withArgument(c, Dates.STRFTIME);
+      case STRFLOCALTIME -> withArgument(c, Dates.STRFLOCALTIME);
+      case MKTIME -> new Intrinsic(at, Dates.MKTIME, List.of());
+      case GMTIME -> new Intrinsic(at, Dates.GMTIME, List.of());
+      case LOCALTIME -> new Intrinsic(at, Dates.LOCALTIME, List.of());
+      case NOW -> new Intrinsic(at, Dates.NOW, List.of());
     };
   }
 

@@ -3,13 +3,13 @@ package dev.rail8.jq;
 import dev.rail8.jq.internal.json.JsonReader;
 import dev.rail8.jq.internal.json.Printer;
 import dev.rail8.jq.internal.json.TapeLimits;
-import dev.rail8.jq.internal.op.Patterns;
+import dev.rail8.jq.internal.op.Kept;
 import dev.rail8.jq.query.run.RunState;
 import java.lang.foreign.MemorySegment;
 
 /**
  * The reusable state of one running evaluation at a time: the reader and its reused tape, the writer's print
- * buffer, the run state and the regular expressions its runs compiled.
+ * buffer, the run state, the regular expressions its runs compiled and the clock and zone of the running run.
  */
 public final class Workspace {
   private final JsonReader reader = new JsonReader(TapeLimits.ADR_0002);
@@ -23,11 +23,11 @@ public final class Workspace {
   /** The writer's printer and its 64 KiB buffer, shared by every sink over this Workspace; its proofs charge state. */
   final Printer printer = new Printer(state);
 
-  /** The compiled regular expressions of this Workspace's runs, which the run state keeps across them. */
-  final Patterns patterns = new Patterns();
+  /** What the run state keeps across this Workspace's runs: their compiled regular expressions, the running run's host. */
+  final Kept kept = new Kept();
 
   Workspace() {
-    state.keep(patterns);
+    state.keep(kept);
   }
 
   /**

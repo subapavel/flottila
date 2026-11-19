@@ -116,6 +116,14 @@ dev.rail8.jq.Workspace | public dev.rail8.jq.JsonDoc dev.rail8.jq.Workspace.read
 
 dev.rail8.jq.host.Host | public final class dev.rail8.jq.host.Host
 dev.rail8.jq.host.Host | public static dev.rail8.jq.host.Host dev.rail8.jq.host.Host.sandboxed()
+dev.rail8.jq.host.Host | public static dev.rail8.jq.host.Host$Builder dev.rail8.jq.host.Host.builder()
+dev.rail8.jq.host.Host | public java.time.InstantSource dev.rail8.jq.host.Host.clock()
+dev.rail8.jq.host.Host | public java.time.ZoneId dev.rail8.jq.host.Host.zone()
+
+dev.rail8.jq.host.Host$Builder | public static final class dev.rail8.jq.host.Host$Builder
+dev.rail8.jq.host.Host$Builder | public dev.rail8.jq.host.Host$Builder dev.rail8.jq.host.Host$Builder.clock(java.time.InstantSource)
+dev.rail8.jq.host.Host$Builder | public dev.rail8.jq.host.Host$Builder dev.rail8.jq.host.Host$Builder.zone(java.time.ZoneId)
+dev.rail8.jq.host.Host$Builder | public dev.rail8.jq.host.Host dev.rail8.jq.host.Host$Builder.build()
 
 dev.rail8.jq.value.JqArray | public abstract int dev.rail8.jq.value.JqArray.length()
 dev.rail8.jq.value.JqArray | public abstract dev.rail8.jq.value.JqValue dev.rail8.jq.value.JqArray.get(int)

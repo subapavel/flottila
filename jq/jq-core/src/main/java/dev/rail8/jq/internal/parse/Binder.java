@@ -165,6 +165,13 @@ final class Binder {
     TOBOOLEAN("toboolean", 0, false),
     FORMAT("format", 1, true),
     MATCH("_match_impl", 3, false),
+    STRPTIME("strptime", 1, false),
+    STRFTIME("strftime", 1, false),
+    STRFLOCALTIME("strflocaltime", 1, false),
+    MKTIME("mktime", 0, false),
+    GMTIME("gmtime", 0, false),
+    LOCALTIME("localtime", 0, false),
+    NOW("now", 0, false),
     ;
 
     private final String signature;

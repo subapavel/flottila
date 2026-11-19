@@ -35,7 +35,8 @@ class NativeKeepsArgsTest {
           "EMPTY", "ERROR", "NOT", "RANGE", "LENGTH", "TYPE", "TOJSON", "TONUMBER", "HAS", "NAN", "INFINITE", "ISNAN",
           "ISINFINITE", "ISNORMAL", "HAVE_DECNUM", "HAVE_LITERAL_NUMBERS", "STARTSWITH",
           "ENDSWITH", "UTF8BYTELENGTH", "EXPLODE", "IMPLODE", "SPLIT", "STRINDICES", "CONTAINS",
-          "BSEARCH", "BUILTINS", "FROMJSON", "TOBOOLEAN", "MATCH"
+          "BSEARCH", "BUILTINS", "FROMJSON", "TOBOOLEAN", "MATCH", "STRPTIME", "STRFTIME", "STRFLOCALTIME", "MKTIME",
+          "GMTIME", "LOCALTIME", "NOW"
         }) {
       expected.put(fresh, false);
     }

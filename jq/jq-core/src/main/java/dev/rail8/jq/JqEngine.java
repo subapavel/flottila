@@ -12,7 +12,7 @@ import java.util.TreeSet;
 
 /**
  * Compiles filters. Immutable and thread-safe; it keeps no filter. It carries its limits, which every run of its
- * filters takes as its budgets, its host, which no run reads, and its compile mode.
+ * filters takes as its budgets, its host, whose clock and zone every run reads, and its compile mode.
  */
 public final class JqEngine {
   private final Limits limits;
@@ -55,7 +55,7 @@ public final class JqEngine {
     // The declared names, sorted, take the parameter slots, so a slot does not depend on the order of the set.
     List<String> names = List.copyOf(new TreeSet<>(variables));
     Resolver.Resolved resolved = Resolver.resolved(Parser.parse(text), names);
-    return new JqFilter(Compiler.compile(resolved.program(), names.size(), compileMode), resolved, limits, names);
+    return new JqFilter(Compiler.compile(resolved.program(), names.size(), compileMode), resolved, limits, host, names);
   }
 
   /** A new Workspace, for one running evaluation at a time. */
