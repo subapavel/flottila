@@ -19,11 +19,13 @@
     <plugins>
       <plugin>
         <!-- `java -jar target/rail8-node-<v>.jar` starts a node: the jar holds only a manifest, which names Main and a lib/
-             class path that copy-dependencies below fills; no shading. -SNAPSHOT names, as copy-dependencies writes them. -->
+             class path that copy-dependencies below fills; no shading. -SNAPSHOT names, as copy-dependencies writes them. The jar is
+             written at every build: its only content, the manifest, changes when a dependency does, which the plugin would not see. -->
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <configuration>
           <skipIfEmpty>false</skipIfEmpty>
+          <forceCreation>true</forceCreation>
           <archive>
             <manifest>
               <mainClass>dev.rail8.runtime.Main</mainClass>

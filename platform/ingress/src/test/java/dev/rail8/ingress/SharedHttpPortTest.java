@@ -145,6 +145,17 @@ class SharedHttpPortTest {
     }
 
     @Test
+    void aHandlerThatThrowsAfterItWroteTheHeadGetsItsRequestReset() {
+        listen(Set.of());
+        port.mount(in("half", "/half"), req -> {
+            req.response().setChunked(true).write("started");
+            throw new IllegalStateException("bug");
+        }).await();
+        assertTrue(call(HttpMethod.POST, "/http/half").startsWith("failed "), "no second status after the head: the request is reset");
+        assertEquals("404 no endpoint at /http/other", call(HttpMethod.POST, "/http/other"), "and the port serves on");
+    }
+
+    @Test
     void onePathHasOneMountUntilItCloses() {
         listen(Set.of());
         HttpIngress.Mount first = port.mount(in("a", "/orders"), req -> answer(req, "a")).await();

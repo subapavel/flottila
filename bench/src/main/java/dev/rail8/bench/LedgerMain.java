@@ -201,7 +201,7 @@ public final class LedgerMain {
                 "RAIL8_PG_DATABASE", o.db(), "RAIL8_PG_USER", o.user(), "RAIL8_PG_PASSWORD", o.password()));
         env.put("RAIL8_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY);   // one key for both nodes: they share journal_keys (D-106)
         env.put("RAIL8_PEER_PORT", "0");   // the peer link on any free port: two nodes, or two runs, on one host
-        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
+        env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too, until the run picks the one both nodes take
         if (o.s3().isEmpty()) {
             env.put("RAIL8_ARCHIVE_DIR", archives.toString());
         } else {
@@ -253,6 +253,7 @@ public final class LedgerMain {
         Partner partner = new Partner(o.killAfter() / 2);
         HttpServer echo = vertx.createHttpServer().requestHandler(partner).listen(0, "127.0.0.1").await();
         int in = NodeBenchMain.freePort();
+        env1.put("RAIL8_HTTP_PORT", String.valueOf(in));   // node 1's HTTP port, the one node 2 takes over
         Buffer body = NodeBenchMain.invoice(0);
         Sending sending = new Sending(vertx, o.messages(), body, in, ACK_TIMEOUT_MS);
         JsonObject json = new JsonObject();
@@ -263,7 +264,7 @@ public final class LedgerMain {
             HttpClientAgent client = client(vertx);
             NodeBenchMain.Harness h = new NodeBenchMain.Harness(bench(o), vertx, pool, client, body, in, echo.actualPort());
             awaitServing(vertx, h, node1, admin1, START, log);
-            h.deploy(admin1, NodeBenchMain.benchPackage(bench(o), in, echo.actualPort()));
+            h.deploy(admin1, NodeBenchMain.benchPackage(bench(o), echo.actualPort()));
             CompletableFuture<Void> reached = new CompletableFuture<>();
             CompletableFuture<Void> load = CompletableFuture.runAsync(() -> sending.load(client, o.killAfter(), reached, SEND),
                     task -> Thread.ofVirtual().name("ledger-load-1").start(task));
@@ -285,6 +286,7 @@ public final class LedgerMain {
         SaxonXml xml = new SaxonXml();
         Map<String, String> env2 = nodeEnv(o, NODE_1, Files.createDirectories(run.resolve(NODE_2)), run.resolve("archives"), 0);
         env2.put("RAIL8_JOURNAL_DIR", NodeConfig.from(env1).journal().dir().toString());   // node 1's journal: its LOCK died with it
+        env2.put("RAIL8_HTTP_PORT", String.valueOf(in));   // node 1's HTTP port: its senders send on to node 2
         Node node2 = Node.start(NodeConfig.from(env2), vertx,
                 ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())), xml.steps(), xml.languages());
         try {
@@ -366,12 +368,12 @@ public final class LedgerMain {
     }
 
     /**
-     * POSTs {@code body} to 127.0.0.1:{@code port}/in; the {@code x-message-id} of a 202, else null (another status, or a
+     * POSTs {@code body} to 127.0.0.1:{@code port}{@value NodeBenchMain#IN_PATH}; the {@code x-message-id} of a 202, else null (another status, or a
      * request that failed — node 1 killed under it, or no connection or no answer within {@code timeoutMs}).
      */
     static String ack(HttpClientAgent client, int port, Buffer body, long timeoutMs) {
         try {
-            return client.request(new RequestOptions().setMethod(HttpMethod.POST).setHost("127.0.0.1").setPort(port).setURI("/in")
+            return client.request(new RequestOptions().setMethod(HttpMethod.POST).setHost("127.0.0.1").setPort(port).setURI(NodeBenchMain.IN_PATH)
                     .setTimeout(timeoutMs)).compose(req -> {
                 req.response().onSuccess(HttpClientResponse::pause);   // FIX-21: the body cannot end before it is attached
                 return req.putHeader("content-type", "application/xml").send(body);

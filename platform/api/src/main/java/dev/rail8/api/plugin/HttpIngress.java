@@ -83,8 +83,8 @@ public interface HttpIngress {
 
         /**
          * Unmounts: from the call on no request reaches the handler, and the path is free for a new mount at once. Completes
-         * once every request already handed to the handler has ended its response; the node resets those still open at its stop
-         * deadline. Calling it again returns the same future. It never fails.
+         * once every request already handed to the handler has ended its response or lost its connection; the node resets those
+         * still open at its stop deadline. Calling it again returns the same future. It never fails.
          */
         Future<Void> close();
     }
