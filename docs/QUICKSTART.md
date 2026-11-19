@@ -100,7 +100,8 @@ curl -H "$auth" localhost:8081/admin/messages/<id>/steps/5/body       # the payl
 A foreign invoice takes the other route: `sed -e 's/4711/4712/' -e 's/CZK/EUR/' examples/demo/fixtures/sample-invoice.xml | curl -X POST --data-binary @- -H 'Content-Type: application/xml' localhost:8080/in`.
 
 The `demo/order-jq` flow turns a JSON order with a jq filter: it keeps the order's id and customer as `orderId` and
-`customer`, adds up the items into `total`, and sends the result to the partner.
+`customer`, adds up the items into `total`, and calls the flow `demo/order-partner` with the result, which sends it to the
+partner.
 
 ```sh
 curl -X POST --data-binary @examples/demo/fixtures/sample-order.json -H 'Content-Type: application/json' localhost:8083/order

@@ -1,4 +1,5 @@
-# Picks a few fields of a JSON order with a jq filter, renames them and sends the result to the partner.
+# Picks a few fields of a JSON order with a jq filter, renames them and calls the flow order-partner with the result, which
+# sends it to the partner: the partner's reply is the answer.
 schemaVersion: 1
 kind: flow
 id: order-jq
@@ -19,4 +20,4 @@ steps:
     filter: '{orderId: .order.id, customer: .order.customer, total: (.items | map(.price * .qty) | add)}'
   - type: to
     name: partner
-    endpoint: partner-domestic
+    endpoint: order-partner-call

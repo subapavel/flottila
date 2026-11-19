@@ -1,0 +1,35 @@
+# The chain runs for real: what check and archive send, archive's failed row and retries count for order's cases.
+schemaVersion: 1
+kind: test
+flow: order
+mocks:
+  partner: { reply: fixtures/ack.xml }
+  archive: { delay: 50ms }
+cases:
+  - name: the chain
+    send: fixtures/order.xml
+    expect:
+      status: 200
+      steps: 4
+      keys: { orderId: "42" }
+      sent:
+        call-check: { count: 1, contains: "<Id>42</Id>" }
+        partner: { count: 1, contains: "<Id>42</Id>" }
+        call-archive: { count: 1, contains: "Ack" }
+        archive: { count: 1, contains: "Ack" }
+      dlq: 0
+  - name: archive down
+    send: fixtures/order.xml
+    mocks:
+      archive: { fail: 503 }
+    expect: { status: 200, dlq: 1, retries: 7 }
+  - name: check mocked
+    send: fixtures/order.xml
+    mocks:
+      call-check: { reply: fixtures/ack.xml }
+    expect:
+      status: 200
+      sent:
+        call-check: { count: 1 }
+        partner: { count: 0 }
+        archive: { count: 1 }

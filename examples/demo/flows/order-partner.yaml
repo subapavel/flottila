@@ -1,0 +1,19 @@
+# Called by order-jq: sends what it was given to the partner and answers with the partner's reply.
+schemaVersion: 1
+kind: flow
+id: order-partner
+version: 0.1.0
+description: Send a picked order to the partner and answer with its reply.
+from:
+  endpoint: order-partner-in
+delivery:
+  mode: sync
+recording:
+  level: all
+  payload: keep
+limits:
+  maxBodyBytes: 1048576
+steps:
+  - type: to
+    name: partner
+    endpoint: partner-domestic
