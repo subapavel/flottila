@@ -137,7 +137,7 @@ class NodeBenchMainTest {
 
     /** The {@code limits.maxInFlight} of {@code flows/bench.yaml} in the package the run PUTs. */
     static int flowLimit(NodeBenchMain.Options o) throws IOException {
-        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(NodeBenchMain.benchPackage(o, 1, 2)))) {
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(NodeBenchMain.benchPackage(o, 2)))) {
             for (ZipEntry e = zip.getNextEntry(); e != null; e = zip.getNextEntry()) {
                 if (e.getName().equals("flows/bench.yaml")) {
                     return new JsonObject(new String(zip.readAllBytes(), StandardCharsets.UTF_8)).getJsonObject("limits").getInteger("maxInFlight");

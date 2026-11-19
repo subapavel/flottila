@@ -432,7 +432,7 @@ public final class NodeBenchMain {
         AtomicLong receipts = new AtomicLong();
         HttpServer echo = echo(vertx, receipts);
         HttpClientAgent client = client(vertx, o);
-        NodeConfig config = nodeConfig(o, data, echo.actualPort());
+        NodeConfig config = nodeConfig(o, data, echo.actualPort(), in);
         Harness h = new Harness(o, vertx, pool, client, body, in, echo.actualPort(), config.journal().dir());
         SaxonXml xml = new SaxonXml();
         JsonObject measured;
@@ -440,9 +440,9 @@ public final class NodeBenchMain {
                 xml.languages());
         try {
             int admin = node.adminPort();
-            h.deploy(admin, benchPackage(o, in, echo.actualPort()));
+            h.deploy(admin, benchPackage(o, echo.actualPort()));
             long failuresAtStart = h.snapshotWriteFailures(admin);
-            int warmupFailed = h.load(in, "/in", o.warmup()).failed();
+            int warmupFailed = h.load(in, IN_PATH, o.warmup()).failed();
             int warmedUp = o.warmup() - warmupFailed;
             h.settle(warmedUp, failuresAtStart, DRAIN, h.probe(admin));
             measured = (o.open() == null ? h.measure(warmedUp, admin, receipts::get) : h.open(warmedUp, admin, receipts))
@@ -565,15 +565,15 @@ public final class NodeBenchMain {
     }
 
     /**
-     * The node's configuration; the echo's target ({@code http://127.0.0.1:<echo>}, D-099) may have as many calls in flight as the
+     * The node's configuration, its HTTP port on 127.0.0.1:{@code in}; the echo's target ({@code http://127.0.0.1:<echo>}, D-099) may have as many calls in flight as the
      * run can send at once, so its limit (16 by default) never caps the load the run asks for: {@code --concurrency} for sync (a
      * client's next request follows its reply), the flow's {@code maxInFlight} for at-least-once (its worker runs at most that many
      * items).
      */
-    private static NodeConfig nodeConfig(Options o, Path data, int echo) {
+    private static NodeConfig nodeConfig(Options o, Path data, int echo, int in) {
         return NodeConfig.from(Map.ofEntries(Map.entry("RAIL8_ENV", "dev"), Map.entry("RAIL8_NODE_ID", "node-bench"),
                 Map.entry("RAIL8_JOURNAL_KEY", JOURNAL_KEY),
-                Map.entry("RAIL8_ADMIN_PORT", "0"), Map.entry("RAIL8_PEER_PORT", "0"), Map.entry("RAIL8_HTTP_PORT", "0"),
+                Map.entry("RAIL8_ADMIN_PORT", "0"), Map.entry("RAIL8_PEER_PORT", "0"), Map.entry("RAIL8_HTTP_PORT", String.valueOf(in)),
                 Map.entry("RAIL8_DATA_DIR", data.toString()),
                 Map.entry("RAIL8_PG_HOST", o.host()),
                 Map.entry("RAIL8_PG_PORT", String.valueOf(o.port())), Map.entry("RAIL8_PG_DATABASE", o.db()), Map.entry("RAIL8_PG_USER", o.user()),
@@ -594,14 +594,14 @@ public final class NodeBenchMain {
     }
 
     /**
-     * The bench package as a zip: the in endpoint on 127.0.0.1:{@code in}, the partner at the echo, and the flow {@code bench}
+     * The bench package as a zip: the in endpoint at {@value #IN_PATH} on the node's HTTP port, the partner at the echo, and the flow {@code bench}
      * — sync for the sync scenario, at-most-once for at-most-once, else at-least-once — with the run's recording level and payload and its steps.
      */
-    static byte[] benchPackage(Options o, int in, int echo) throws IOException {
+    static byte[] benchPackage(Options o, int echo) throws IOException {
         Map<String, byte[]> files = new TreeMap<>();
         files.put("package.yaml", yaml(doc("package").put("name", "bench").put("version", "0.1.0")));
         files.put("endpoints/in.yaml", yaml(doc("endpoint").put("id", "in").put("scheme", "http").put("direction", "in")
-                .put("config", new JsonObject().put("host", "127.0.0.1").put("port", in).put("path", "/in"))));
+                .put("config", new JsonObject().put("address", "/in"))));
         files.put("endpoints/partner.yaml", yaml(doc("endpoint").put("id", "partner").put("scheme", "http").put("direction", "out")
                 .put("config", new JsonObject().put("url", "http://127.0.0.1:" + echo + "/echo").put("maxBodyBytes", MAX_BODY_BYTES)
                         .put("poolSize", o.concurrency()))));
@@ -650,6 +650,9 @@ public final class NodeBenchMain {
      * with its data directory.
      */
     static final String JOURNAL_KEY = journalKey();
+
+    /** Where the bench's in endpoint takes requests on the node's HTTP port: the http adapter's prefix, then its address. */
+    static final String IN_PATH = "/http/in";
 
     private static String journalKey() {
         byte[] key = new byte[32];
@@ -773,7 +776,7 @@ public final class NodeBenchMain {
             long base = receipts.get();
             JsonObject open;
             try (DbSampler.PgSource db = DbSampler.PgSource.open(vertx, connectOptions(o))) {
-                open = openLoop(in, "/in", accepted(), () -> receipts.get() - base, () -> nodeCpu(cpu(admin)), db);
+                open = openLoop(in, IN_PATH, accepted(), () -> receipts.get() - base, () -> nodeCpu(cpu(admin)), db);
             }
             return new JsonObject().put("open", settleOpen(open, recorded + open.getLong("acceptedTotal"), failuresAtStart, DRAIN,
                     probe(admin, SETTLE_PAUSE), () -> receipts.get() - base));
@@ -849,7 +852,7 @@ public final class NodeBenchMain {
             long failuresAtStart = snapshotWriteFailures(admin);
             Snapshot before = snapshot();
             Cost cost = Cost.start();
-            Window w = load(in, "/in", o.messages(), accepted());
+            Window w = load(in, IN_PATH, o.messages(), accepted());
             JsonObject spent = cost.perMessage(o.messages());
             settle(recorded + o.messages() - w.failed(), failuresAtStart, DRAIN, probe(admin));
             Snapshot after = snapshot();
@@ -869,7 +872,7 @@ public final class NodeBenchMain {
             Cost cost = Cost.start();
             long receivedBefore = receipts.getAsLong();
             long started = System.nanoTime();
-            Window answered = load(in, "/in", o.messages(), accepted());
+            Window answered = load(in, IN_PATH, o.messages(), accepted());
             long lastAnswer = System.nanoTime();
             settle(recorded + o.messages() - answered.failed(), failuresAtStart, DRAIN, probe(admin));
             long landed = System.nanoTime();
@@ -894,7 +897,7 @@ public final class NodeBenchMain {
             Snapshot before = snapshot();
             Cost cost = Cost.start();
             long started = System.nanoTime();
-            Window queued = load(in, "/in", o.messages(), accepted());
+            Window queued = load(in, IN_PATH, o.messages(), accepted());
             long answered = System.nanoTime();
             settle(recorded + o.messages() - queued.failed(), failuresAtStart, DRAIN, probe(admin));
             long drained = System.nanoTime();

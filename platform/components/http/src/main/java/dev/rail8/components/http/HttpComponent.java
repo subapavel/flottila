@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 /**
- * The {@code http} component over the Vert.x server and client: the one place that opens an HTTP socket.
+ * The {@code http} component: its consumers take requests on the node's HTTP port, its producers send over the Vert.x client.
  *
  * <p><b>Consumer</b> (endpoint options {@code address}, {@code flow}, {@code maxBodyBytes}): it takes requests on the node's HTTP
  * port ({@link HttpIngress}) under the prefix {@value #PREFIX}, at {@code /http} followed by its {@code address}, such as

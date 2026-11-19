@@ -184,11 +184,11 @@ public final class StreamHeapMain {
         int admin = NodeBenchMain.freePort();
         Path log = o.out().resolveSibling(o.out().getFileName() + ".node.log");
         JsonObject json = new JsonObject();
-        Process node = startNode(command(o.xmx()), nodeEnv(o, Files.createDirectories(run.resolve("node")), admin), log);
+        Process node = startNode(command(o.xmx()), nodeEnv(o, Files.createDirectories(run.resolve("node")), admin, in), log);
         try {
             NodeBenchMain.Harness h = new NodeBenchMain.Harness(bench(o), vertx, null, client, Buffer.buffer(), in, echo.actualPort());
             LedgerMain.awaitServing(vertx, h, node, admin, START, log);
-            h.deploy(admin, streamPackage(size, in, echo.actualPort()));
+            h.deploy(admin, streamPackage(size, echo.actualPort()));
             PrintStream asks = new PrintStream(node.getOutputStream(), true, StandardCharsets.UTF_8);
             BufferedReader answers = node.inputReader(StandardCharsets.UTF_8);
             send(client, in, WARMUP_BYTES);
@@ -221,15 +221,15 @@ public final class StreamHeapMain {
     }
 
     /**
-     * The node's environment: env dev, the run's database, admin on 127.0.0.1:{@code admin}, its data directory, the run's journal key,
-     * the peer link on any free port.
+     * The node's environment: env dev, the run's database, admin on 127.0.0.1:{@code admin}, its HTTP port on 127.0.0.1:{@code http}
+     * (0: any free port), its data directory, the run's journal key, the peer link on any free port.
      */
-    static Map<String, String> nodeEnv(Options o, Path data, int admin) {
+    static Map<String, String> nodeEnv(Options o, Path data, int admin, int http) {
         return Map.ofEntries(Map.entry("RAIL8_ENV", "dev"), Map.entry("RAIL8_NODE_ID", "stream-heap-node"),
                 Map.entry("RAIL8_ADMIN_PORT", String.valueOf(admin)), Map.entry("RAIL8_DATA_DIR", data.toString()),
                 Map.entry("RAIL8_PG_HOST", o.host()), Map.entry("RAIL8_PG_PORT", String.valueOf(o.port())), Map.entry("RAIL8_PG_DATABASE", o.db()),
                 Map.entry("RAIL8_PG_USER", o.user()), Map.entry("RAIL8_PG_PASSWORD", o.password()),
-                Map.entry("RAIL8_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY), Map.entry("RAIL8_PEER_PORT", "0"), Map.entry("RAIL8_HTTP_PORT", "0"));
+                Map.entry("RAIL8_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY), Map.entry("RAIL8_PEER_PORT", "0"), Map.entry("RAIL8_HTTP_PORT", String.valueOf(http)));
     }
 
     /**
@@ -259,15 +259,15 @@ public final class StreamHeapMain {
     }
 
     /**
-     * The package: the in endpoint on 127.0.0.1:{@code in}, the partner at the echo, and the sync flow {@code stream-heap},
+     * The package: the in endpoint at {@value NodeBenchMain#IN_PATH} on the node's HTTP port, the partner at the echo, and the sync flow {@code stream-heap},
      * every step recorded with its payload, {@code [stream-copy copy, to partner]}; the flow's and the partner's max body
      * {@code maxBodyBytes}.
      */
-    static byte[] streamPackage(long maxBodyBytes, int in, int echo) throws IOException {
+    static byte[] streamPackage(long maxBodyBytes, int echo) throws IOException {
         Map<String, byte[]> files = new TreeMap<>();
         files.put("package.yaml", NodeBenchMain.yaml(NodeBenchMain.doc("package").put("name", "bench").put("version", "0.1.0")));
         files.put("endpoints/in.yaml", NodeBenchMain.yaml(NodeBenchMain.doc("endpoint").put("id", "in").put("scheme", "http").put("direction", "in")
-                .put("config", new JsonObject().put("host", "127.0.0.1").put("port", in).put("path", "/in"))));
+                .put("config", new JsonObject().put("address", "/in"))));
         files.put("endpoints/partner.yaml", NodeBenchMain.yaml(NodeBenchMain.doc("endpoint").put("id", "partner").put("scheme", "http")
                 .put("direction", "out").put("config", new JsonObject().put("url", "http://127.0.0.1:" + echo + "/echo")
                         .put("maxBodyBytes", maxBodyBytes).put("poolSize", 1))));
@@ -314,12 +314,12 @@ public final class StreamHeapMain {
     record Reply(int status, long bytes) {}
 
     /**
-     * POSTs a {@code size}-byte {@link GeneratedReadStream} body to 127.0.0.1:{@code port}/in and drains the reply, counting
+     * POSTs a {@code size}-byte {@link GeneratedReadStream} body to 127.0.0.1:{@code port}{@value NodeBenchMain#IN_PATH} and drains the reply, counting
      * its bytes; status -1 and 0 bytes when the request failed (a refused or cut connection).
      */
     static Reply send(HttpClientAgent client, int port, long size) {
         try {
-            return client.request(new RequestOptions().setMethod(HttpMethod.POST).setHost("127.0.0.1").setPort(port).setURI("/in")).compose(req -> {
+            return client.request(new RequestOptions().setMethod(HttpMethod.POST).setHost("127.0.0.1").setPort(port).setURI(NodeBenchMain.IN_PATH)).compose(req -> {
                 req.response().onSuccess(HttpClientResponse::pause);   // FIX-21: the body cannot end before it is attached
                 return req.putHeader("content-type", "application/octet-stream").putHeader("content-length", String.valueOf(size))
                         .send(new GeneratedReadStream(size, CHUNK));

@@ -1094,7 +1094,7 @@ class NodeIT {
     /**
      * PUT demo and a library {@code lib}, an invoice through demo's in endpoint reaches the partner; DELETE demo answers 200
      * {name, version, flowsRemoved}, deletes its row in Postgres and its directories, and its endpoint no longer runs an invoice
-     * (refused or 404, the partner sees nothing more); its flow answers as unknown; a second DELETE is 404. The node restarted on
+     * (404 on the node's HTTP port, the partner sees nothing more); its flow answers as unknown; a second DELETE is 404. The node restarted on
      * its data directory and database restores lib, not demo.
      */
     @Test
@@ -1122,7 +1122,7 @@ class NodeIT {
             HttpResponse<String> cpu = get(node.adminPort(), "/admin/flows/demo%2Finvoice-sync/cpu");
             assertEquals(404, cpu.statusCode(), "demo's flow answers as an unknown flow: " + cpu.body());
             int after = postInvoice(node.httpPort());
-            assertTrue(after == -1 || after == 404, "demo's in endpoint no longer runs an invoice (refused or 404): " + after);
+            assertEquals(404, after, "demo's in endpoint no longer runs an invoice: the node's HTTP port answers its path 404");
             assertEquals(1, partnerSaw.size(), "the partner saw nothing more: " + partnerSaw);
             Path demoDir = data.resolve("packages").resolve("demo");
             if (Files.exists(demoDir)) {
@@ -1140,7 +1140,7 @@ class NodeIT {
             assertEquals("RUNNING", itemOf(listed(node.adminPort(), "packages", "name"), "lib", "restored").getString("state"), "witness: the restore ran");
             assertEquals(Set.of(), listed(node.adminPort(), "flows", "id").keySet(), "no flow runs");
             int restarted = postInvoice(node.httpPort());
-            assertTrue(restarted == -1 || restarted == 404, "demo's in endpoint does not run after the restart: " + restarted);
+            assertEquals(404, restarted, "demo's in endpoint does not run after the restart: its path is 404");
             assertEquals(1, partnerSaw.size(), "the partner saw nothing more: " + partnerSaw);
             assertEquals(List.of("lib"), recordedPackages());
         } finally {
