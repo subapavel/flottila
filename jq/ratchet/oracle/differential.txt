@@ -910,6 +910,10 @@ dates/roundtrip	16010d5cd1f9	interpreter
 dates/strflocaltime-far	c6a7d1cb04b4	interpreter
 dates/strflocaltime-far-south	50792fca1fff	interpreter
 dates/strflocaltime-gap	20629cbbc32f	interpreter
+dates/strflocaltime-gap-day	3138327a126d	interpreter
+dates/strflocaltime-gap-first-change	8ea1635d1e80	interpreter
+dates/strflocaltime-gap-standard	7c5c3fbc16f9	interpreter
+dates/strflocaltime-gap-standard-seconds	5d8db42536d2	interpreter
 dates/strflocaltime-lmt	c95c5851b648	interpreter
 dates/strflocaltime-lord-howe	bd6569e341fe	interpreter
 dates/strflocaltime-overlap	1a50a27ad066	interpreter
@@ -917,6 +921,8 @@ dates/strflocaltime-tokyo	6c62d8f81c45	interpreter
 dates/strflocaltime-zones	e3ca011e59d0	interpreter
 dates/strftime-conversions	93a36be254d5	interpreter
 dates/strftime-dst-asked	9fddd75c26f1	interpreter
+dates/strftime-dst-search	a0921c544e11	interpreter
+dates/strftime-dst-search-apia	5c1e413789b6	interpreter
 dates/strftime-empty	7a1a4b9440af	interpreter
 dates/strftime-errors	1fbab20a563a	interpreter
 dates/strftime-flags	5763959246a7	interpreter
@@ -927,7 +933,11 @@ dates/strftime-normalise	5e087150c41e	interpreter
 dates/strftime-nul	f718a87dc4ae	interpreter
 dates/strftime-numbers	377b7097dc80	interpreter
 dates/strftime-offset	4eb8d9a97649	interpreter
+dates/strftime-s-gap-standard	3d515e80e620	interpreter
 dates/strftime-s-tokyo	3be05ba086e4	interpreter
+dates/strftime-unconverted	fa49daaba91b	interpreter
+dates/strftime-unconverted-new-york	c3507db45090	interpreter
+dates/strftime-unconverted-sydney	9336789924f1	interpreter
 dates/strftime-unknown	fc67aace6fa9	interpreter
 dates/strftime-weeks	99015e36771b	interpreter
 dates/strftime-years	140104a58eaf	interpreter
