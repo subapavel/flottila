@@ -310,10 +310,10 @@ class ComposeStackTest {
 
     private static final Path ROOT_FILE = Path.of("..", "..", "docker-compose.yml").toAbsolutePath().normalize();
 
-    /** Both stacks with the ports the node published before the holder (deploy: 8080, 8082, 8081; root quickstart: 8080, 8081). */
+    /** Both stacks with the ports the node published before the holder (deploy: 8080, 8082, 8081; root quickstart: 8080, 8083, 8081). */
     private static final Map<Path, List<String>> NODE_PORTS = Map.of(
             FILE, List.of("127.0.0.1:8080:8080", "127.0.0.1:8082:8082", "127.0.0.1:8081:8081"),
-            ROOT_FILE, List.of("127.0.0.1:8080:8080", "127.0.0.1:8081:8081"));
+            ROOT_FILE, List.of("127.0.0.1:8080:8080", "127.0.0.1:8083:8083", "127.0.0.1:8081:8081"));
 
     private static JsonNode serviceIn(Path file, String name) throws IOException {
         assertTrue(Files.isRegularFile(file), file + " must exist");
