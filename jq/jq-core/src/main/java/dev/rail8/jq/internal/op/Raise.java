@@ -11,7 +11,7 @@ import dev.rail8.jq.query.run.RunState;
  */
 public final class Raise implements Fn0 {
   /** {@code error}. */
-  public static final Operation OP = new Operation("error", new Raise());
+  public static final Operation OP = new Operation("error", new Raise(), Declared.FRESH);
 
   private Raise() {}
 

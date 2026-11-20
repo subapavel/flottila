@@ -73,7 +73,10 @@ class NativeTableTest {
     assertThat(NativeTable.signatures()).as("NativeTable.signatures()").containsExactlyInAnyOrderElementsOf(expected);
   }
 
-  /** F-31 and ADR-0044: the only prelude definitions the table also has are flatten/0, flatten/1, inputs/0, to_entries/0. */
+  /**
+   * The only prelude definitions the table also has are flatten/0, flatten/1, inputs/0, to_entries/0, _modify/2 and
+   * _assign/2.
+   */
   @Test
   void theOverlapWithThePreludeIsExactlyTheReplacedSet() {
     Set<String> overlap = new HashSet<>(NativeTable.signatures());

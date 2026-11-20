@@ -270,7 +270,7 @@ class PathVerifierTest {
       args.add(c());
     }
     try {
-      verify(new Intrinsic(AT, new Operation("op", form.form(), new Facts(rule)), args));
+      verify(new Intrinsic(AT, new Operation("op", form.form(), new Facts(rule, true)), args));
       return true;
     } catch (IllegalStateException e) {
       assertThat(e).as("the refusal of %s on %s", rule, form.name()).hasMessageContaining("path rule");

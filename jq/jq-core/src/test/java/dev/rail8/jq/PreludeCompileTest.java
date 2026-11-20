@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
  * Every prelude definition, called as {@code name(.;…)}, compiles or is a Stub exactly as {@link PreludeSignatures#STUBS}
  * pins it at #110 (ADR-0042: a live prelude body is bound, checked and lowered; an unbuilt native is a Stub; since its
  * #110 amendment a recursive group lifts to a function). Through the exported API: a resolver that stubs every prelude
- * call fails the 88 that compile, one that still stubs a recursive group fails the ten of {@link
+ * call fails the 103 that compile, one that still stubs a recursive group fails the fourteen of {@link
  * PreludeSignatures#LIFTED}, and one that lowers an unbuilt native fails the Stubs. The Stub text is never asserted,
  * only its prefix (GLOSSARY "Stub").
  */
@@ -35,14 +35,14 @@ class PreludeCompileTest {
   }
 
   /**
-   * The pinned list itself: 18 Stubs among the 106 definitions, so 88 calls must compile. The ten recursive definitions
-   * that lift a function are definitions and no Stub.
+   * The pinned list itself: 3 Stubs among the 106 definitions, so 103 calls must compile. The fourteen recursive
+   * definitions that lift a function are definitions and no Stub.
    */
   @Test
   void thePinnedStubsAreDefinitions() {
     assertThat(DEFINITIONS).as("builtin.jq's definitions").hasSize(106).containsAll(STUBS).containsAll(LIFTED);
-    assertThat(STUBS).as("the pinned Stubs").hasSize(18).doesNotContainAnyElementsOf(LIFTED);
-    assertThat(LIFTED).as("the recursive definitions that lift a function").hasSize(10);
+    assertThat(STUBS).as("the pinned Stubs").hasSize(3).doesNotContainAnyElementsOf(LIFTED);
+    assertThat(LIFTED).as("the recursive definitions that lift a function").hasSize(14);
   }
 
   /** "compiles", "stub", or the class and message of any other compile error. */

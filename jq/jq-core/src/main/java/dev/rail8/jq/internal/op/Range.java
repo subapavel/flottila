@@ -49,7 +49,7 @@ import dev.rail8.jq.value.JqNumber;
  */
 public final class Range implements Many {
   /** {@code range(start; end)}. */
-  public static final Operation OP = new Operation("range", new Range());
+  public static final Operation OP = new Operation("range", new Range(), Declared.FRESH);
 
   /** The cursor of the first value, the start: a NaN's bits that {@link Double#doubleToLongBits} never gives. */
   private static final long START = -2;

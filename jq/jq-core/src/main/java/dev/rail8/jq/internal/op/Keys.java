@@ -59,16 +59,16 @@ import java.lang.foreign.MemorySegment;
  */
 public final class Keys {
   /** {@code has(k)}, its argument the key. */
-  public static final Operation HAS = new Operation("has", (Fn1) (state, in, key) -> has(state, (JqValue) in, (JqValue) key));
+  public static final Operation HAS = new Operation("has", (Fn1) (state, in, key) -> has(state, (JqValue) in, (JqValue) key), Declared.FRESH);
 
   /** {@code keys}. */
-  public static final Operation KEYS = new Operation("keys", (Fn0) (state, in) -> keys(state, (JqValue) in, true));
+  public static final Operation KEYS = new Operation("keys", (Fn0) (state, in) -> keys(state, (JqValue) in, true), Declared.KEEPS);
 
   /** {@code keys_unsorted}. */
-  public static final Operation KEYS_UNSORTED = new Operation("keys_unsorted", (Fn0) (state, in) -> keys(state, (JqValue) in, false));
+  public static final Operation KEYS_UNSORTED = new Operation("keys_unsorted", (Fn0) (state, in) -> keys(state, (JqValue) in, false), Declared.KEEPS);
 
   /** {@code to_entries}. */
-  public static final Operation TO_ENTRIES = new Operation("to_entries", (Fn0) (state, in) -> entries(state, (JqValue) in));
+  public static final Operation TO_ENTRIES = new Operation("to_entries", (Fn0) (state, in) -> entries(state, (JqValue) in), Declared.KEEPS);
 
   /** The shape of each object {@code to_entries} builds, as builtin.jq's {@code {key: $k, value: .[$k]}} has it. */
   private static final JqString[] ENTRY = {BuiltString.of("key"), BuiltString.of("value")};

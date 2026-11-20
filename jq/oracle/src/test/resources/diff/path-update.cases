@@ -1,0 +1,526 @@
+# Differential cases (ADR-0020) of #292: path/1 and the update operators. path(f) runs f's path variant and emits
+# each result's path as jq's array; |= and _modify(p; u), = and _assign(p; $v), the arithmetic updates and //= edit
+# the input at each path of their left side, with jq's messages and its depth limits ("Path too deep" from 10 000
+# keys on |=, past 10 000 on =). A user's _modify or _assign wins. Format:
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in path-update.rec, written by
+# scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+case path-update/path-of-slice
+arg -c
+filter [path(.[1:2])]
+stdin [1,2,3]\n
+end
+
+case path-update/path-of-optional-iterate
+arg -c
+filter [path(.[]?)]
+stdin {"a":1,"b":2}\n
+end
+
+case path-update/path-of-chain
+arg -c
+filter [path(.a[0].b)]
+stdin null\n
+end
+
+case path-update/path-of-each-step-kind
+arg -c
+filter [path(.a, .b?, ."c", .[0], .["d"], .[1:], .[.a // "e"])]
+stdin null\n
+end
+
+case path-update/untracked-field
+arg -c
+filter try path(1|.a) catch .
+stdin null\n
+end
+
+case path-update/untracked-optional-field
+arg -c
+filter try path(1|.a?) catch .
+stdin null\n
+end
+
+case path-update/untracked-index
+arg -c
+filter try path(1|.[0]) catch .
+stdin null\n
+end
+
+case path-update/untracked-slice
+arg -c
+filter try path(1|.[1:2]) catch .
+stdin null\n
+end
+
+case path-update/untracked-iterate
+arg -c
+filter try path(1|.[]) catch .
+stdin null\n
+end
+
+case path-update/untracked-result
+arg -c
+filter try path(1) catch .
+stdin null\n
+end
+
+case path-update/untracked-loc
+arg -c
+filter try ($__loc__ |= 1) catch .
+stdin null\n
+end
+
+case path-update/untracked-tostring
+arg -c
+filter try path(getpath(["a"]) | tostring) catch .
+stdin null\n
+end
+
+case path-update/untracked-last
+arg -c
+filter try [path(.a | last(.[]))] catch .
+stdin {"a":[1,2]}\n
+end
+
+case path-update/untracked-catch
+arg -c
+filter try [path(try error("x") catch .)] catch .
+stdin null\n
+end
+
+case path-update/path-of-getpath
+arg -c
+filter [path(getpath(["a","b"]))]
+stdin null\n
+end
+
+case path-update/path-through-getpath
+arg -c
+filter [path(.a | getpath(["b","c"]) | .d)]
+stdin null\n
+end
+
+case path-update/path-through-slice
+arg -c
+filter [path(.a | .[1:] | .[0])]
+stdin {"a":[1,2]}\n
+end
+
+case path-update/path-of-nested-iterate
+arg -c
+filter [path(.[] | .[])]
+stdin [[1,2],[3]]\n
+end
+
+case path-update/path-of-comma-under-pipe
+arg -c
+filter [path(.a | .b, .c)]
+stdin {"a":{"b":2}}\n
+end
+
+case path-update/path-of-first
+arg -c
+filter [path(.a | first(.[]))]
+stdin {"a":[1,2]}\n
+end
+
+case path-update/path-of-select
+arg -c
+filter [path(.a[] | select(. > 1))]
+stdin {"a":[1,2]}\n
+end
+
+case path-update/path-of-if
+arg -c
+filter [path(if .a then .b else .c end)]
+stdin null\n
+end
+
+case path-update/path-of-alternative-right
+arg -c
+filter [path(.a // .b)]
+stdin null\n
+end
+
+case path-update/path-of-alternative-left
+arg -c
+filter [path(.a // .b)]
+stdin {"a":1}\n
+end
+
+case path-update/path-of-arrays-filter
+arg -c
+filter [path(.[] | arrays | .[0])]
+stdin [1,[2]]\n
+end
+
+case path-update/path-of-recurse-on-null
+arg -c
+filter [path(..)]
+stdin null\n
+end
+
+case path-update/path-of-recurse
+arg -c
+filter [path(..)]
+stdin [[1]]\n
+end
+
+case path-update/paths
+arg -c
+filter [paths]
+stdin {"a":[1,{"b":2}]}\n
+end
+
+case path-update/paths-of-filter
+arg -c
+filter [paths(type == "number")]
+stdin {"a":[1,{"b":2}]}\n
+end
+
+case path-update/path-of-bind-body
+arg -c
+filter [path(.a as $x | .)]
+stdin {"a":1}\n
+end
+
+case path-update/path-pattern-step-untracked
+arg -c
+filter try [path(.a as [$x] | .b)] catch .
+stdin {"a":[1],"b":0}\n
+end
+
+case path-update/path-bound-value-step
+arg -c
+filter .a as $v | [path(($v|.[0]) as $x | .b)]
+stdin {"a":[1],"b":0}\n
+end
+
+case path-update/path-reduce-source-untracked
+arg -c
+filter try path(reduce ([1]|.[]) as $x (0;1) | empty) catch .
+stdin null\n
+end
+
+case path-update/path-foreach-source-untracked
+arg -c
+filter try path(foreach ([1]|.[]) as $x (0;1) | empty) catch .
+stdin null\n
+end
+
+case path-update/path-bind-value-in-value-mode
+arg -c
+filter [path(([1]|.[]) as $x | .)]
+stdin null\n
+end
+
+case path-update/path-foreach-item
+arg -c
+filter [path(foreach .[] as $x (0; 1; $x | .[0]))]
+stdin [[1,2],[3]]\n
+end
+
+case path-update/modify-each
+arg -c
+filter .[] |= .+1
+stdin [1,2]\n
+end
+
+case path-update/modify-deletes
+arg -c
+filter (.[0], .[1]) |= empty
+stdin [1,2,3]\n
+end
+
+case path-update/modify-deletes-nested
+arg -c
+filter (.a,.a.b) |= empty
+stdin {"a":{"b":1}}\n
+end
+
+case path-update/modify-deletes-key
+arg -c
+filter .a |= empty
+stdin {"a":1}\n
+end
+
+case path-update/modify-first-result
+arg -c
+filter .[0] |= (., 9)
+stdin [3]\n
+end
+
+case path-update/modify-no-path
+arg -c
+filter (1|empty) |= 1
+stdin 5\n
+end
+
+case path-update/modify-builds-null
+arg -c
+filter .a.b |= 1
+stdin null\n
+end
+
+case path-update/modify-index-error
+arg -c
+filter try (.a |= 1) catch .
+stdin 1\n
+end
+
+case path-update/modify-lhs-error-after-delete
+arg -c
+filter try ((.[0], .a) |= empty) catch .
+stdin [1]\n
+end
+
+case path-update/modify-slice-not-array
+arg -c
+filter try (.[1:2] |= 5) catch .
+stdin null\n
+end
+
+case path-update/modify-string-slice
+arg -c
+filter try (.[0:1] |= "x") catch .
+stdin "abc"\n
+end
+
+case path-update/modify-slice
+arg -c
+filter .[1:3] |= map(. * 10)
+stdin [1,2,3,4,5]\n
+end
+
+case path-update/modify-each-nested
+arg -c
+filter .a[].b |= . * 10
+stdin {"a":[{"b":1},{"b":2}]}\n
+end
+
+case path-update/modify-same-path-twice
+arg -c
+filter (.a, .a) |= . + 1
+stdin {"a":1}\n
+end
+
+case path-update/modify-map
+arg -c
+filter .a |= map(. * 2)
+stdin {"a":[3,4]}\n
+end
+
+case path-update/modify-altbind
+arg -c
+filter (.a as [$x] ?// $x | if ($x|type)=="string" then .b else .c end) |= 1
+stdin {"a":["b"],"b":0,"c":0}\n
+end
+
+case path-update/modify-by-name
+arg -c
+filter _modify(.a;1), _assign(.b;2)
+stdin {}\n
+end
+
+case path-update/user-modify-wins
+arg -c
+filter def _modify(p;u): 42; .a += 1
+stdin {}\n
+end
+
+case path-update/user-assign-wins
+arg -c
+filter def _assign(p;v): 43; .a = 1
+stdin {}\n
+end
+
+case path-update/assign-each-value
+arg -c
+filter .a = (1,2)
+stdin {}\n
+end
+
+case path-update/assign-two-paths
+arg -c
+filter (.a,.b) = (1,2)
+stdin {}\n
+end
+
+case path-update/assign-slice
+arg -c
+filter .[1:3] = ["x"]
+stdin [1,2,3,4]\n
+end
+
+case path-update/assign-pads
+arg -c
+filter .[2] = 1
+stdin [0]\n
+end
+
+case path-update/assign-negative-index
+arg -c
+filter try (.[-5] = 1) catch .
+stdin null\n
+end
+
+case path-update/assign-reads-input
+arg -c
+filter .a = .
+stdin {"a":1}\n
+end
+
+case path-update/assign-nested
+arg -c
+filter .a.b.c = 1 | .a.b.d = 2
+stdin {}\n
+end
+
+case path-update/assign-of-variable
+arg -c
+filter .a as $x | .b = $x
+stdin {"a":1}\n
+end
+
+case path-update/assign-computed-keys
+arg -c
+filter .[("a","b")] = 1
+stdin {}\n
+end
+
+case path-update/assign-slice-empty
+arg -c
+filter .a[1:] = []
+stdin {"a":[1,2,3]}\n
+end
+
+case path-update/alternative-update
+arg -c
+filter .a //= 3
+stdin {"a":null}\n
+end
+
+case path-update/add-update-each-value
+arg -c
+filter .a += (1,2)
+stdin {"a":1}\n
+end
+
+case path-update/arithmetic-updates
+arg -c
+filter .a -= 2, .a *= 2, .a /= 2, .a %= 2
+stdin {"a":7}\n
+end
+
+case path-update/add-update-builds
+arg -c
+filter .b.c += 1
+stdin {"a":1}\n
+end
+
+case path-update/add-update-twice
+arg -c
+filter .a += 1 | .a += 1
+stdin {"a":0}\n
+end
+
+case path-update/map-values
+arg -c
+filter map_values(. + 1)
+stdin {"a":3,"b":4}\n
+end
+
+case path-update/del
+arg -c
+filter del(.a)
+stdin {"a":1,"b":2}\n
+end
+
+case path-update/del-indices
+arg -c
+filter del(.[0,2])
+stdin [1,2,3]\n
+end
+
+case path-update/with-entries
+arg -c
+filter with_entries(.value += 1)
+stdin {"a":1}\n
+end
+
+case path-update/reduce-of-updates
+arg -c
+filter reduce ("a","b") as $k (.; .[$k] |= . + 1)
+stdin {"a":1}\n
+end
+
+case path-update/pick
+arg -c
+filter pick(.a.b.c)
+stdin {"a":{"b":{"c":1}}}\n
+end
+
+case path-update/walk
+arg -c
+filter walk(if type == "number" then . + 1 else . end)
+stdin [1,[2,3]]\n
+end
+
+case path-update/assign-into-limit
+arg -c
+filter [limit(3; repeat(1))] | .[1] = 5
+stdin null\n
+end
+
+case path-update/modify-depth-9999
+arg -c
+filter getpath([range(9999)|0]) |= 1 | getpath([range(9998)|0])
+stdin null\n
+end
+
+case path-update/modify-depth-10000
+arg -c
+filter try (getpath([range(10000)|0]) |= 1) catch .
+stdin null\n
+end
+
+case path-update/modify-delete-depth-10000
+arg -c
+filter getpath([range(10000)|0]) |= empty
+stdin null\n
+end
+
+case path-update/modify-depth-10001
+arg -c
+filter try (getpath([range(10001)|0]) |= empty) catch .
+stdin null\n
+end
+
+case path-update/assign-depth-10000
+arg -c
+filter getpath([range(10000)|0]) = 1 | getpath([range(9999)|0])
+stdin null\n
+end
+
+case path-update/assign-depth-10001
+arg -c
+filter try (getpath([range(10001)|0]) = 1) catch .
+stdin null\n
+end
+
+case path-update/path-depth-10001
+arg -c
+filter try path(getpath([range(10001)|0])) catch .
+stdin null\n
+end
+
+case path-update/deviation-altbind-edit
+arg -c
+filter (.a as $x ?// $y | if $x then (.b, .d) else .c end) |= (if . == 0 then error("e") else 7 end)
+stdin {"a":[1],"b":3,"c":5,"d":0}\n
+deviation edit-kept
+engine-rc 0
+engine-stdout {"a":[1],"b":7,"c":7,"d":0}\n
+engine-stderr
+end

@@ -72,7 +72,7 @@ import org.joni.exception.TimeoutException;
 public final class Regex {
   /** {@code _match_impl(re; mode; testmode)}. */
   public static final Operation MATCH =
-      new Operation("_match_impl", (FnN) (state, in, args) -> match(state, (JqValue) in, (JqValue) args[0], (JqValue) args[1], (JqValue) args[2]));
+      new Operation("_match_impl", (FnN) (state, in, args) -> match(state, (JqValue) in, (JqValue) args[0], (JqValue) args[1], (JqValue) args[2]), Declared.FRESH);
 
   /** jq's error text for a search that ran out of its time, Oniguruma's for its retry limit. */
   static final String RETRY_LIMIT = "Regex failure: retry-limit-in-match over";

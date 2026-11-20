@@ -16,7 +16,7 @@ import dev.rail8.jq.value.JqValue;
  */
 public final class ObjectKey implements Fn1 {
   /** The check of one computed key, its argument. */
-  public static final Operation CHECK = new Operation("object key", new ObjectKey());
+  public static final Operation CHECK = new Operation("object key", new ObjectKey(), Declared.KEEPS);
 
   private ObjectKey() {}
 

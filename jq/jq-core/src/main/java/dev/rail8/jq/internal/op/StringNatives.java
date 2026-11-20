@@ -54,37 +54,37 @@ import java.util.Arrays;
 public final class StringNatives {
   /** {@code startswith(s)}. */
   public static final Operation STARTSWITH =
-      new Operation("startswith", (Fn1) (state, in, s) -> startswith(state, (JqValue) in, (JqValue) s));
+      new Operation("startswith", (Fn1) (state, in, s) -> startswith(state, (JqValue) in, (JqValue) s), Declared.FRESH);
 
   /** {@code endswith(s)}. */
   public static final Operation ENDSWITH =
-      new Operation("endswith", (Fn1) (state, in, s) -> endswith(state, (JqValue) in, (JqValue) s));
+      new Operation("endswith", (Fn1) (state, in, s) -> endswith(state, (JqValue) in, (JqValue) s), Declared.FRESH);
 
   /** {@code utf8bytelength}. */
   public static final Operation UTF8BYTELENGTH =
-      new Operation("utf8bytelength", (Fn0) (state, in) -> utf8bytelength(state, (JqValue) in));
+      new Operation("utf8bytelength", (Fn0) (state, in) -> utf8bytelength(state, (JqValue) in), Declared.FRESH);
 
   /** {@code trim}. */
-  public static final Operation TRIM = new Operation("trim", (Fn0) (state, in) -> trim(state, (JqValue) in, true, true));
+  public static final Operation TRIM = new Operation("trim", (Fn0) (state, in) -> trim(state, (JqValue) in, true, true), Declared.KEEPS);
 
   /** {@code ltrim}. */
-  public static final Operation LTRIM = new Operation("ltrim", (Fn0) (state, in) -> trim(state, (JqValue) in, true, false));
+  public static final Operation LTRIM = new Operation("ltrim", (Fn0) (state, in) -> trim(state, (JqValue) in, true, false), Declared.KEEPS);
 
   /** {@code rtrim}. */
-  public static final Operation RTRIM = new Operation("rtrim", (Fn0) (state, in) -> trim(state, (JqValue) in, false, true));
+  public static final Operation RTRIM = new Operation("rtrim", (Fn0) (state, in) -> trim(state, (JqValue) in, false, true), Declared.KEEPS);
 
   /** {@code explode}. */
-  public static final Operation EXPLODE = new Operation("explode", (Fn0) (state, in) -> explode(state, (JqValue) in));
+  public static final Operation EXPLODE = new Operation("explode", (Fn0) (state, in) -> explode(state, (JqValue) in), Declared.FRESH);
 
   /** {@code implode}. */
-  public static final Operation IMPLODE = new Operation("implode", (Fn0) (state, in) -> implode(state, (JqValue) in));
+  public static final Operation IMPLODE = new Operation("implode", (Fn0) (state, in) -> implode(state, (JqValue) in), Declared.FRESH);
 
   /** {@code split(s)}, one argument: the separator. */
-  public static final Operation SPLIT = new Operation("split", (Fn1) (state, in, s) -> split(state, (JqValue) in, (JqValue) s));
+  public static final Operation SPLIT = new Operation("split", (Fn1) (state, in, s) -> split(state, (JqValue) in, (JqValue) s), Declared.FRESH);
 
   /** {@code _strindices(s)}. */
   public static final Operation STRINDICES =
-      new Operation("_strindices", (Fn1) (state, in, s) -> strindices(state, (JqValue) in, (JqValue) s));
+      new Operation("_strindices", (Fn1) (state, in, s) -> strindices(state, (JqValue) in, (JqValue) s), Declared.FRESH);
 
   /** U+FFFD, what {@code implode} writes for a number that is no Unicode scalar value. */
   private static final int REPLACEMENT = 0xFFFD;

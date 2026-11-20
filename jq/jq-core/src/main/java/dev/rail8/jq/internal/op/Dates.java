@@ -58,29 +58,29 @@ import java.lang.foreign.MemorySegment;
  */
 public final class Dates {
   /** {@code now}. */
-  public static final Operation NOW = new Operation("now", (Fn0) (state, in) -> new DoubleNumber(Kept.of(state).time().now()));
+  public static final Operation NOW = new Operation("now", (Fn0) (state, in) -> new DoubleNumber(Kept.of(state).time().now()), Declared.FRESH);
 
   /** {@code mktime}. */
-  public static final Operation MKTIME = new Operation("mktime", (Fn0) (state, in) -> mktime(state, (JqValue) in));
+  public static final Operation MKTIME = new Operation("mktime", (Fn0) (state, in) -> mktime(state, (JqValue) in), Declared.FRESH);
 
   /** {@code gmtime}. */
-  public static final Operation GMTIME = new Operation("gmtime", (Fn0) (state, in) -> gmtime(state, (JqValue) in, false));
+  public static final Operation GMTIME = new Operation("gmtime", (Fn0) (state, in) -> gmtime(state, (JqValue) in, false), Declared.FRESH);
 
   /** {@code localtime}. */
   public static final Operation LOCALTIME =
-      new Operation("localtime", (Fn0) (state, in) -> gmtime(state, (JqValue) in, true));
+      new Operation("localtime", (Fn0) (state, in) -> gmtime(state, (JqValue) in, true), Declared.FRESH);
 
   /** {@code strftime(fmt)}. */
   public static final Operation STRFTIME =
-      new Operation("strftime", (Fn1) (state, in, f) -> strftime(state, (JqValue) in, (JqValue) f, false));
+      new Operation("strftime", (Fn1) (state, in, f) -> strftime(state, (JqValue) in, (JqValue) f, false), Declared.FRESH);
 
   /** {@code strflocaltime(fmt)}. */
   public static final Operation STRFLOCALTIME =
-      new Operation("strflocaltime", (Fn1) (state, in, f) -> strftime(state, (JqValue) in, (JqValue) f, true));
+      new Operation("strflocaltime", (Fn1) (state, in, f) -> strftime(state, (JqValue) in, (JqValue) f, true), Declared.FRESH);
 
   /** {@code strptime(fmt)}. */
   public static final Operation STRPTIME =
-      new Operation("strptime", (Fn1) (state, in, f) -> strptime(state, (JqValue) in, (JqValue) f));
+      new Operation("strptime", (Fn1) (state, in, f) -> strptime(state, (JqValue) in, (JqValue) f), Declared.FRESH);
 
   /** The fields of a broken-down time. */
   private static final int FIELDS = 8;

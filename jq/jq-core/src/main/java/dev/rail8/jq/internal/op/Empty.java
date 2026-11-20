@@ -8,7 +8,7 @@ import dev.rail8.jq.query.run.RunState;
 /** jq's {@code empty}: no result, whatever the input. */
 public final class Empty implements Fn0 {
   /** {@code empty}. */
-  public static final Operation OP = new Operation("empty", new Empty());
+  public static final Operation OP = new Operation("empty", new Empty(), Declared.FRESH);
 
   private Empty() {}
 

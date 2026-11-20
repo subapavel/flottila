@@ -30,11 +30,17 @@ import dev.rail8.jq.internal.json.ErrorDump;
 import dev.rail8.jq.internal.json.Printer;
 import dev.rail8.jq.internal.value.ArrayView;
 import dev.rail8.jq.internal.value.BuiltArray;
+import dev.rail8.jq.internal.value.BuiltObject;
 import dev.rail8.jq.internal.value.BuiltString;
 import dev.rail8.jq.internal.value.Numbers;
 import dev.rail8.jq.query.ir.Operation;
+import dev.rail8.jq.query.ir.PathRule;
 import dev.rail8.jq.query.run.CallForm;
+import dev.rail8.jq.query.run.Charges;
+import dev.rail8.jq.query.run.FilterException;
 import dev.rail8.jq.query.run.Fn2;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathStep;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.value.JqArray;
 import dev.rail8.jq.value.JqBool;
@@ -51,14 +57,17 @@ import java.lang.foreign.MemorySegment;
  * array its elements {@code [a, b)} as a {@link BuiltArray}, on a string its code points {@code [a, b)}, each bound
  * clamped as jq's {@code parse_slice} does; on any other kind jq's error, which shows the key. A bound that is neither
  * null nor a number is jq's error on an array or a string. The quiet variant {@code .[a:b]?} drops either error. A
- * missing bound is a Const null.
+ * missing bound is a Const null. In a path variant it adds that key to the path, a new object of the bounds as given.
  */
-public final class Slice implements Fn2 {
+public final class Slice implements Fn2, PathStep {
   /** {@code .[a:b]}. */
-  public static final Operation PLAIN = new Operation(".[a:b]", new Slice(false));
+  public static final Operation PLAIN = new Operation(".[a:b]", new Slice(false), Declared.step(PathRule.SLICE));
 
   /** {@code .[a:b]?}. */
-  public static final Operation QUIET = new Operation(".[a:b]?", new Slice(true));
+  public static final Operation QUIET = new Operation(".[a:b]?", new Slice(true), Declared.step(PathRule.SLICE));
+
+  /** The keys of a slice's path key, in jq's order. */
+  private static final JqString[] KEY = {BuiltString.of("start"), BuiltString.of("end")};
 
   /** What a bound's dump keeps at most: one byte more than {@link ErrorDump} shows whole. */
   private static final int HEAD = 30;
@@ -84,6 +93,22 @@ public final class Slice implements Fn2 {
       case JqNumber _ -> cannotSlice(state, t, from, to);
       case JqObject _ -> cannotSlice(state, t, from, to);
     };
+  }
+
+  /** jq's error for slicing {@code in}, an input not found in a path variant's input, from {@code a} to {@code b}. */
+  @Override
+  public FilterException untracked(RunState state, Object in, Object a, Object b) {
+    return NavigationErrors.invalidAccess(state, shown(state, (JqValue) a, (JqValue) b), (JqValue) in);
+  }
+
+  /**
+   * {@code at} with the slice's key {@code {"start": a, "end": b}} added, a built object of the bounds as given, which
+   * charges a container and its two entries.
+   */
+  @Override
+  public Path extend(RunState state, Path at, Object in, Object a, Object b) {
+    state.chargeBuilt(Charges.CONTAINER + 2 * Charges.ENTRY);
+    return at.child(new BuiltObject(KEY, new Object[] {a, b}));
   }
 
   /** jq's error for {@code t}, which has no slices, or no result for {@code .[a:b]?}. */
