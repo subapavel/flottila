@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The kill -9 ledger's parts that need no database and no node (P1-10b): the nodes' environment, the
+ * The kill -9 ledger's parts that need no database and no node: the nodes' environment, the
  * partner that holds calls until node 1 is dead, what a send counts as an ACK, the bounded wait, the refusal of a node 1 that
  * exited or did not serve, and a run that fails before it connects.
  */

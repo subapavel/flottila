@@ -1,4 +1,4 @@
-# The gate stack (GATE checks 1-2, D-085): Postgres, Valkey and an SFTP server beside one Rail8 node,
+# The gate stack, the demo the platform is accepted on: Postgres, Valkey and an SFTP server beside one Rail8 node,
 # the demo's partner echo and a one-shot that deploys examples/demo as committed at the checkout's HEAD; a one-shot (sftp-keys) makes the SFTP host key first. A demo stack,
 # not production: the node runs RAIL8_ENV=dev so the manual deploy and the file:// package repository are allowed. Kafka is the optional event-broker add-on, off by default: start it with --profile kafka; ClickHouse (--profile history) is present, not wired.
 # Build the host jars first, from the repository's root: ./mvnw -B -ntp -q package -DskipTests -pl :rail8-node,:rail8-cli -am
