@@ -580,7 +580,7 @@ public final class NodeBenchMain {
     }
 
     /**
-     * The node's configuration, its HTTP port on 127.0.0.1:{@code in}, its package repositories under {@code repos}; the echo's target ({@code http://127.0.0.1:<echo>}, D-099) may have as many calls in flight as the
+     * The node's configuration, its HTTP port on 127.0.0.1:{@code in}, its package repositories under {@code repos}; the echo's target ({@code http://127.0.0.1:<echo>}) may have as many calls in flight as the
      * run can send at once, so its limit (16 by default) never caps the load the run asks for: {@code --concurrency} for sync (a
      * client's next request follows its reply), the flow's {@code maxInFlight} for at-least-once (its worker runs at most that many
      * items).
