@@ -1,6 +1,7 @@
 package dev.rail8.runtime.deploy;
 
 import dev.rail8.api.Ack;
+import dev.rail8.api.Envelope;
 import dev.rail8.api.Health;
 import dev.rail8.api.Headers;
 import dev.rail8.api.Runtime;
@@ -37,8 +38,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 
 import static dev.rail8.runtime.deploy.DeploymentsRedeployTest.reachedWhile;
+import static dev.rail8.runtime.deploy.DeploymentsUndeployTest.children;
 import static dev.rail8.runtime.deploy.DeploymentsTest.joinRefused;
 import static dev.rail8.runtime.deploy.DeploymentsTest.until;
 import static dev.rail8.runtime.deploy.DeploymentsTest.within;
@@ -54,7 +57,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * connection of its own per deploy). A deploy or an undeploy on one node holds the pool's lock, and a second one on the other node
  * is refused while it runs; a node behind the pool's generation installs what the records name before it plans its own deploy; the
  * other node installs and undeploys at its next tick ({@code follow}), and a package it could not install, its repository not
- * answering, at a later tick once it does. The ticks run as the node runs them, on its timer, or are called one at a time.
+ * answering, at a later tick once it does. An at-least-once flow the pool no longer runs stops taking messages on every node, and
+ * the items it left run on a drain of the node that accepted them, which ends at a tick once none is left. The ticks run as the node
+ * runs them, on its timer, or are called one at a time.
  */
 class DeploymentsPoolIT {
 
@@ -71,7 +76,6 @@ class DeploymentsPoolIT {
     final InMemoryMessageStore messages = new InMemoryMessageStore();
     final InMemoryDlq dlq = new InMemoryDlq();
     final List<Peer> peers = new ArrayList<>();
-    CountingQueue queue;
 
     @BeforeAll
     static void start() {
@@ -92,9 +96,8 @@ class DeploymentsPoolIT {
 
     @BeforeEach
     void wire() {
-        pool.query("truncate deployments").execute().await();
+        pool.query("truncate deployments, retiring").execute().await();
         repos = new GitRepos(tmp.resolve("repos"));
-        queue = new CountingQueue(rt.clock());
     }
 
     @AfterEach
@@ -103,10 +106,14 @@ class DeploymentsPoolIT {
         for (Peer p : peers) p.close();
     }
 
-    /** One node of the pool: its data directory {@code <tmp>/<id>}, its Doors, its Deployments over the pool's Postgres. */
+    /**
+     * One node of the pool: its data directory {@code <tmp>/<id>}, its Doors, its work queue (a node claims the items it accepted),
+     * its Deployments over the pool's Postgres.
+     */
     final class Peer {
         final String id;
         final Doors doors = new Doors();
+        final CountingQueue queue = new CountingQueue(rt.clock());
         final Deployments deployments;
 
         /** A node in dev reading the pool's repositories. */
@@ -184,6 +191,20 @@ class DeploymentsPoolIT {
         /** The doors of {@code flow} that started and were not stopped since. */
         List<Doors.Door> live(String flow) {
             return doors.doors().stream().filter(d -> d.flow().equals(flow) && d.started() && !d.stopped()).toList();
+        }
+
+        /** Delivers a message to the live door of {@code flow}, which accepts it into the work queue. */
+        Envelope accept(String flow) throws Exception {
+            List<Doors.Door> running = live(flow);
+            assertEquals(1, running.size(), id + ": one live door of " + flow + ": " + doors.events());
+            Envelope e = rt.ingress(flow, Headers.empty(), Buffer.buffer("<order/>"));
+            assertInstanceOf(Ack.Accepted.class, within(running.getFirst().deliver(e), "the answer of " + flow + " on " + id), "fixture: " + flow + " accepts");
+            return e;
+        }
+
+        /** What {@code packages/<name>/} of this node's data directory holds. */
+        List<String> packageDirs(String name) throws Exception {
+            return children(tmp.resolve(id).resolve("packages").resolve(name));
         }
 
         Ack send(String flow) throws Exception {
@@ -450,5 +471,55 @@ class DeploymentsPoolIT {
         List<String> recorded = List.of(pool.query("select at_least_once from deployments where package = 'shop'").execute().await().iterator().next()
                 .getArrayOfStrings(0));
         assertEquals(List.of("shop/keep"), recorded, "the at-least-once flow, not the sync one");
+    }
+
+    /**
+     * An undeploy on node a of a package with an at-least-once flow, while node a holds one of its messages at the partner and has
+     * the next queued: no door of the flow runs on node a from the answer, nor on node b from its next tick, and the pool marks the
+     * flow. The queued message runs on node a's drain once the held one is let go; the package's directory stays on node a while
+     * the drain runs, node b's goes at its tick, and node a's at the tick after the drain's last item.
+     */
+    @Test
+    void aRemovedFlowTakesNoNewMessageOnAnyNodeAndDrainsBeforeItStops() throws Exception {
+        Peer a = new Peer("node-a").restored();
+        Peer b = new Peer("node-b").restored();
+        PackageDraft shop = pkg("shop", "1.0.0", "a").endpoint("keep-in", "in", new JsonObject().put("path", "/keep"))
+                .flow("keep", "1.0.0", "at-least-once", "keep-in", 1024, PackageDraft.toPartner());
+        shop.flowDoc("keep").getJsonObject("limits").put("maxInFlight", 1);
+        a.deploy("shop", repos.commit(shop));
+        b.follow();
+        assertEquals(1, b.live("shop/keep").size(), "fixture: shop runs on node b too");
+        List<String> dirs = a.packageDirs("shop");
+        CountDownLatch release = a.doors.partner().holdNext(1);
+        Envelope queued;
+        try {
+            a.accept("shop/keep");
+            a.doors.partner().awaitSent(1);
+            queued = a.accept("shop/keep");
+            assertEquals(2, a.queue.size(), "fixture: the first runs held at the partner, the second waits behind it");
+
+            assertEquals("shop", a.undeploy("shop").name());
+
+            assertEquals(List.of(), a.live("shop/keep"), "no door of the flow runs on node a: " + a.doors.events());
+            List<String> marks = new ArrayList<>();
+            pool.query("select flow from retiring").execute().await().forEach(r -> marks.add(r.getString(0)));
+            assertEquals(List.of("shop/keep"), marks, "the pool marks the flow it retires");
+            b.follow();
+            assertEquals(List.of(), b.listed(), "node b undeploys shop at its next tick");
+            assertEquals(List.of(), b.live("shop/keep"), "and no door of the flow runs on node b: " + b.doors.events());
+            assertEquals(List.of(), b.packageDirs("shop"), "node b had no item of it: its drain ended at that tick and the directory went");
+            a.follow();
+            assertEquals(dirs, a.packageDirs("shop"), "node a's drain still has both items: shop's directory stays");
+        } finally {
+            release.countDown();
+        }
+        until(() -> a.queue.size() == 0, "the held message completes and the queued one runs on node a's drain: " + a.queue.rows());
+        assertTrue(a.doors.partner().sent().stream().anyMatch(e -> e.id().equals(queued.id())), "the queued message reached the partner");
+
+        a.follow();
+
+        assertEquals(List.of(), a.packageDirs("shop"), "the drain ended at node a's tick: shop's directory is pruned");
+        assertEquals(0L, pool.query("select count(*) from retiring").execute().await().iterator().next().getLong(0), "no mark is left");
+        assertEquals(Health.up(), a.deployments.health());
     }
 }
