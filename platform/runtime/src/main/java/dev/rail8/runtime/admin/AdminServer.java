@@ -28,6 +28,7 @@ import dev.rail8.runtime.deploy.DeployedPackage;
 import dev.rail8.runtime.deploy.Deployments;
 import dev.rail8.runtime.deploy.UndeployResult;
 import dev.rail8.runtime.pg.PgTx;
+import dev.rail8.runtime.plugin.Plugins;
 import dev.rail8.runtime.store.PgMessageList;
 import dev.rail8.runtime.store.StepLogJson;
 import io.vertx.core.Future;
@@ -58,6 +59,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -179,7 +181,10 @@ import java.util.stream.Collectors;
  *
  * <p>With {@link Modules}, each admin service a module brings is a route, {@code <method> /admin/modules/<plugin>/<path>}, that
  * runs the service's calls on virtual threads of their own, at most 4 of one plugin at once ({@link ModuleCalls}); its own
- * answers are problems ({@code application/problem+json}), not {@code {error}}.
+ * answers are problems ({@code application/problem+json}), not {@code {error}}. {@code GET /admin/modules} lists the node's
+ * modules, then its plugins, as they loaded: 200 {@code {items:[{kind, name, version|null, api, sha256|null, from, brings:
+ * {schemes, steps, languages, services:[{method, path}]}}]}}, each list of {@code brings} sorted, and {@code items} empty
+ * without modules.
  *
  * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
  * is 403 {@code {error}} before the token check and the route, token or no token: what a browser sends, never the CLI.
@@ -308,16 +313,19 @@ public final class AdminServer {
     }
 
     /**
-     * The services of the admin API that the node's modules bring, and the clock each call of one is given.
+     * The node's modules and plugins, the services of the admin API that its modules bring, and the clock each call of one is
+     * given.
      *
+     * @param listed   each module, then each plugin, with what it brings, as {@code GET /admin/modules} lists them
      * @param services each module's services, by the module's name
      * @param clock    the node's clock
      */
-    public record Modules(Map<String, List<AdminService>> services, Clock clock) {
-        /** No services. */
-        public static final Modules NONE = new Modules(Map.of(), Clock.systemUTC());
+    public record Modules(List<Plugins.Listed> listed, Map<String, List<AdminService>> services, Clock clock) {
+        /** No modules, no plugins and no services. */
+        public static final Modules NONE = new Modules(List.of(), Map.of(), Clock.systemUTC());
 
         public Modules {
+            listed = List.copyOf(listed);
             services = services.entrySet().stream().collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, e -> List.copyOf(e.getValue())));
             Objects.requireNonNull(clock, "clock");
         }
@@ -471,6 +479,7 @@ public final class AdminServer {
             router.route("/admin/*").handler(AdminServer::browserGuard);   // before the token check
             config.token().ifPresent(token -> router.route("/admin/*").handler(bearer(token)));
             new ModuleCalls(modules, context).mount(router);
+            router.get("/admin/modules").handler(offload(c -> listed(modules)));
             router.get("/admin/messages").handler(offload(AdminServer.this::search));
             router.get("/admin/message-counts").handler(offload(AdminServer.this::counts));
             router.get("/admin/messages/:id").handler(offload(AdminServer.this::timeline));
@@ -1029,6 +1038,25 @@ public final class AdminServer {
                 .put("httpPrefix", deployments.httpPrefix(scheme).orElse(null)).put("settings", new JsonObject(settings.toJson()))));
         return Json.of(200, new JsonObject().put("environment", deployments.environment()).put("httpOrigin", deployments.httpOrigin().orElse(null))
                 .put("items", items));
+    }
+
+    /**
+     * {@code GET /admin/modules}: each module, then each plugin, as it loaded, with what it brings; its services are those
+     * {@code modules} serves for it, sorted by path, then method.
+     */
+    private static Reply listed(Modules modules) {
+        JsonArray items = new JsonArray();
+        for (Plugins.Listed l : modules.listed()) {
+            JsonArray services = new JsonArray();
+            modules.services().getOrDefault(l.name(), List.of()).stream()
+                    .sorted(Comparator.comparing(AdminService::path).thenComparing(AdminService::method))
+                    .forEach(s -> services.add(new JsonObject().put("method", s.method()).put("path", s.path())));
+            JsonObject brings = new JsonObject().put("schemes", new JsonArray(l.schemes())).put("steps", new JsonArray(l.steps()))
+                    .put("languages", new JsonArray(l.languages())).put("services", services);
+            items.add(new JsonObject().put("kind", l.kind()).put("name", l.name()).put("version", l.version().orElse(null)).put("api", l.api())
+                    .put("sha256", l.sha256().orElse(null)).put("from", l.from()).put("brings", brings));
+        }
+        return Json.of(200, new JsonObject().put("items", items));
     }
 
     /**

@@ -275,6 +275,41 @@ class PluginsTest {
     }
 
     @Test
+    void eachModuleThenEachPluginIsListedWithWhatItBringsItsSchemesOnceEveryComponentIsBuilt() throws Exception {
+        Path modules = moduleJar("modules.jar", PluginFixtures.Acme.class, PluginFixtures.Serves.class);
+        Path settled = jar("settled.jar", PluginFixtures.Settled.class);
+        try (URLClassLoader classPath = classPath(modules); Plugins plugins = Plugins.load(classPath, Optional.of(dir), Map.of())) {
+            Optional<String> moduleDigest = Optional.of(HexFormat.of().formatHex(sha256(Files.readAllBytes(modules))));
+            Optional<String> pluginDigest = Optional.of(HexFormat.of().formatHex(sha256(Files.readAllBytes(settled))));
+            Plugins.Listed serves = new Plugins.Listed("module", "serves", Optional.of("2.0.1"), Plugin.API, moduleDigest, "modules.jar", List.of(),
+                    List.of(), List.of());
+            Plugins.Listed settledPlugin = new Plugins.Listed("plugin", "settled", Optional.of("1.2.0"), Plugin.API, pluginDigest, "settled.jar", List.of(),
+                    List.of("depth-5"), List.of());
+            List<Plugins.Listed> before = List.of(new Plugins.Listed("module", "acme", Optional.of("2.0.1"), Plugin.API, moduleDigest, "modules.jar",
+                    List.of(), List.of("sign"), List.of("upper")), serves, settledPlugin);
+            assertEquals(before, plugins.list(), "no scheme before the components are built");
+            plugins.components("acme", context());
+            assertEquals(before, plugins.list(), "nor once one module's alone are built");
+            plugins.components(context());
+            assertEquals(List.of(new Plugins.Listed("module", "acme", Optional.of("2.0.1"), Plugin.API, moduleDigest, "modules.jar", List.of("acme"),
+                    List.of("sign"), List.of("upper")), serves, settledPlugin), plugins.list(), "the schemes once every component is built");
+        }
+    }
+
+    @Test
+    void aModuleWithoutAVersionOrADigestIsListedWithoutThem() throws IOException {
+        Path services = Files.createDirectories(elsewhere.resolve("META-INF/services"));
+        Files.writeString(services.resolve(Plugin.class.getName()), PluginFixtures.Acme.class.getName() + "\n");
+        Path classes = Path.of(PluginFixtures.Acme.class.getProtectionDomain().getCodeSource().getLocation().getPath());
+        try (URLClassLoader classPath = new URLClassLoader(new URL[] {elsewhere.toUri().toURL()}, PluginsTest.class.getClassLoader());
+             Plugins plugins = Plugins.load(classPath, Optional.empty(), Map.of())) {
+            Plugins.Listed acme = plugins.list().stream().filter(l -> l.name().equals("acme")).findFirst().orElseThrow();
+            assertEquals(new Plugins.Listed("module", "acme", Optional.empty(), Plugin.API, Optional.empty(), classes.toString(), List.of(), List.of("sign"),
+                    List.of("upper")), acme);
+        }
+    }
+
+    @Test
     void aPluginNeitherTakesAModulesNameNorReplacesWhatItBrings() throws IOException {
         Path modules = moduleJar("acme.jar", PluginFixtures.Acme.class);
         jar("acme.jar", PluginFixtures.AcmeAgain.class);

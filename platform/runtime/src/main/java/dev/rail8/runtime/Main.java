@@ -106,7 +106,7 @@ public final class Main {
         plugins.describe().forEach(line -> LOG.log(System.Logger.Level.INFO, line));
         Vertx vertx = Vertx.vertx(new VertxOptions().setUseDaemonThread(false));
         try (ExecutorService starter = Executors.newVirtualThreadPerTaskExecutor()) {
-            Node node = starter.submit(() -> Node.start(config, vertx, plugins::components, plugins.steps(), plugins.languages(), services)).get();
+            Node node = starter.submit(() -> Node.start(config, vertx, plugins::components, plugins.steps(), plugins.languages(), services, plugins::list)).get();
             return new Started(0, Optional.of(node), Optional.of(vertx), Optional.of(plugins));
         } catch (ExecutionException | InterruptedException failed) {
             err.println("rail8: the node did not start: " + oneLine(failed));
