@@ -66,9 +66,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -303,8 +305,13 @@ public final class Node implements AutoCloseable {
             Runtime runtime = new Runtime(clock, timer, ids, blobs, hasher, byScheme);
             messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
             PgDlq dlq = new PgDlq(pool);
-            // claims what this journal holds, its claims indexed; unkeyed completions in batches
-            PgWorkQueue work = new PgWorkQueue(pool, opened.node(), blobs, timer);
+            // claims what this journal holds, its claims indexed; unkeyed completions in batches; admits new messages only for a flow
+            // the pool runs at-least-once, retires, or this node runs with no record yet
+            AtomicReference<Deployments> admitting = new AtomicReference<>();
+            PgWorkQueue work = new PgWorkQueue(pool, opened.node(), blobs, timer, () -> {
+                Deployments d = admitting.get();
+                return d == null ? Set.of() : d.unrecorded();
+            });
             closeWork = () -> work.close().await();
             PollerLeases leases;
             if (config.leases().valkey().isPresent()) {
@@ -331,6 +338,7 @@ public final class Node implements AutoCloseable {
                     intake, leases,
                     new Targets(config.targets().defaults(), config.targets().overrides(), timer), lease, workers, signals);   // the node's one Targets and fence
             deployments = restored;
+            admitting.set(restored);
             StepCpu cpu = new StepCpu(StepCpu.Limits.DEFAULT);
             // before the restore: the restored flows' steps are sampled from their first message on
             sampler = config.cpuSampling().map(period -> CpuSampler.start(period, cpu, clock, timer, CpuSampler.READ_EVERY));

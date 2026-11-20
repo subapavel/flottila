@@ -29,6 +29,7 @@ import dev.rail8.runtime.deploy.Deployments;
 import dev.rail8.runtime.deploy.UndeployResult;
 import dev.rail8.runtime.pg.PgTx;
 import dev.rail8.runtime.plugin.Plugins;
+import dev.rail8.runtime.queue.NotAdmittedException;
 import dev.rail8.runtime.store.PgMessageList;
 import dev.rail8.runtime.store.StepLogJson;
 import io.vertx.core.Future;
@@ -854,7 +855,8 @@ public final class AdminServer {
         try {
             act = failed.retry(id, flow, row.partitionKey().orElse(null), k, by).await();
         } catch (BlobNotFoundException | BodyLostException gone) {
-            return Json.of(409, error("message " + id + " is not restarted: its ingress body is no longer kept (" + gone.getMessage() + ")"));
+            return Json.of(409, error("message " + id + " is not restarted: its ingress body is no longer kept (" + gone.getMessage() + ")"));        } catch (NotAdmittedException retired) {
+            return Json.of(409, error("message " + id + " is not restarted: " + retired.getMessage()));
         }
         return switch (act) {
             case FailedMessages.Unsettled u -> Json.of(409, error("message " + id + " is not restarted: its work item " + u.seq()

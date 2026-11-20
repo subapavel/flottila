@@ -221,6 +221,11 @@ class DeploymentsPoolIT {
         public Future<Void> audit(String actor, String repository, JsonObject detail) {
             return records.audit(actor, repository, detail);
         }
+
+        @Override
+        public Future<Void> endMarks() {
+            return records.endMarks();
+        }
     }
 
     /** The pool's generation, read with plain SQL. */

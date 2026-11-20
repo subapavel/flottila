@@ -158,11 +158,13 @@ public final class PgFailedMessages implements FailedMessages {
     }
 
     /**
-     * The retry of a message without a work row: its new row at the tail of its key from the kept ref of {@code body}, then the
-     * DLQ row deleted and the act audited.
+     * The retry of a message without a work row: its flow admitted ({@link PgWorkQueue#admit}: a flow the pool no longer runs
+     * at-least-once fails {@link NotAdmittedException} and the transaction rolls back), its new row at the tail of its key from the
+     * kept ref of {@code body}, then the DLQ row deleted and the act audited.
      */
     private Future<Act> atTail(SqlConnection tx, String messageId, String flow, String partitionKey, int attempt, Actor by, BlobKey body) {
-        return tx.preparedQuery(AT_TAIL).execute(Tuple.of(messageId, flow, partitionKey, attempt, body.messageId(), body.step(), body.part())).compose(rows -> {
+        return queue.admit(tx, List.of(flow)).compose(admitted -> tx.preparedQuery(AT_TAIL)
+                .execute(Tuple.of(messageId, flow, partitionKey, attempt, body.messageId(), body.step(), body.part()))).compose(rows -> {
             Row r = rows.iterator().next();
             if (r.getLong(0) == 0) {
                 return Future.failedFuture(r.getBoolean(3) ? new BodyLostException(body) : new BlobNotFoundException(body));

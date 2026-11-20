@@ -146,6 +146,11 @@ final class Ledger implements DeploymentStore {
         return rows.audit(actor, repository, detail);
     }
 
+    @Override
+    public Future<Void> endMarks() {
+        return rows.endMarks();
+    }
+
     /** The lock of the wrapped store, its saves and deletes recorded, traced, and failed or held as told. */
     private final class Traced implements PoolLock {
         private final PoolLock lock;

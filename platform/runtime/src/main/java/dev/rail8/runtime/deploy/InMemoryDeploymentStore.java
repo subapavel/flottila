@@ -7,12 +7,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Predicate;
 
 /**
  * The {@link DeploymentStore} of a node without Postgres records (dev, tests): lost with the process. The {@code Deployments} that
- * share one such store are one pool: they share its records, its generation and its lock.
+ * share one such store are one pool: they share its records, its marks, its generation and its lock. Whether a retired flow has
+ * work rows left is the predicate it is built with; a store built without one ends every mark at the first {@link #endMarks}.
  */
 public final class InMemoryDeploymentStore implements DeploymentStore {
 
@@ -27,20 +31,43 @@ public final class InMemoryDeploymentStore implements DeploymentStore {
 
     /** By name: sorted as {@link String#compareTo} sorts. Guarded by {@code this}, with the generation and the lock's holder. */
     private final Map<String, DeploymentRecord> rows = new TreeMap<>();
+    private final Set<String> marked = new TreeSet<>();
     private long generation;
     private Held holder;
     private final List<Audited> audited = new CopyOnWriteArrayList<>();
+    private final Predicate<String> hasRows;
+
+    /** A store over no work queue: no retired flow has work rows left. */
+    public InMemoryDeploymentStore() {
+        this(flow -> false);
+    }
+
+    /** A store asking {@code hasRows} whether a retired flow, by its qualified id, still has work rows. */
+    public InMemoryDeploymentStore(Predicate<String> hasRows) {
+        this.hasRows = hasRows;
+    }
 
     @Override
     public synchronized Future<Snapshot> read() {
-        return Future.succeededFuture(new Snapshot(generation, new ArrayList<>(rows.values())));
+        return Future.succeededFuture(snapshot());
+    }
+
+    private Snapshot snapshot() {
+        return new Snapshot(generation, new ArrayList<>(rows.values()), new ArrayList<>(marked));
     }
 
     @Override
     public synchronized Future<Optional<PoolLock>> lock() {
         if (holder != null) return Future.succeededFuture(Optional.empty());
-        holder = new Held(new Snapshot(generation, new ArrayList<>(rows.values())));
+        holder = new Held(snapshot());
         return Future.succeededFuture(Optional.of(holder));
+    }
+
+    @Override
+    public synchronized Future<Void> endMarks() {
+        if (holder != null) return Future.succeededFuture();
+        if (marked.removeIf(flow -> !hasRows.test(flow))) generation++;
+        return Future.succeededFuture();
     }
 
     @Override
@@ -83,8 +110,10 @@ public final class InMemoryDeploymentStore implements DeploymentStore {
             synchronized (InMemoryDeploymentStore.this) {
                 if (holder != this) return Future.failedFuture(new IllegalStateException("the pool's lock is no longer held"));
                 if (generation != read) return Future.failedFuture(new IllegalStateException("the pool's generation moved from " + read + " to " + generation));
-                if (record == null) rows.remove(name);
-                else rows.put(name, record);
+                DeploymentRecord replaced = record == null ? rows.remove(name) : rows.put(name, record);
+                List<String> runs = record == null ? List.of() : record.atLeastOnce();
+                if (replaced != null) replaced.atLeastOnce().stream().filter(flow -> !runs.contains(flow)).forEach(marked::add);
+                runs.forEach(marked::remove);
                 read = ++generation;
                 return Future.succeededFuture(generation);
             }

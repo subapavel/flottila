@@ -375,7 +375,8 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * The rows turn over the members: their records' inserts, then each one's item and kept ref — a {@link #shared} body's kept ref
+     * The rows turn over the members, once their flows are admitted ({@link PgWorkQueue#admit}): their records' inserts, then each
+     * one's item and kept ref — a {@link #shared} body's kept ref
      * before its item, which copies it; a record forced for a flow keeping its input kept after its item — each sent before any
      * reply; then the abandoned check on each. Fails with the first failed statement's cause in that order, or with the first
      * member found abandoned.
@@ -387,6 +388,7 @@ public final class PgIntake implements Intake {
             if (m.partitionKey() != null) keys.add(Map.entry(m.flow(), m.partitionKey()));
             if (workers != null) workers.reserve(m.flow()).ifPresent(slot -> g.slots.put(m, slot));   // just before its insert
         }
+        replies.add(queue.admit(tx, g.members.stream().map(Member::flow).distinct().toList()));   // before the keys' locks, in one order
         replies.add(queue.lockKeys(tx, keys));   // the keys' locks before any keyed insert reads its key; none without a key
         replies.add(messages.insert(tx, g.members.stream().map(Member::ingress).toList()));
         for (Member m : g.members) {
