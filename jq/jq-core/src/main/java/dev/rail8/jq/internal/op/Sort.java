@@ -64,31 +64,31 @@ import dev.rail8.jq.value.JqValue;
  */
 public final class Sort {
   /** {@code sort}. */
-  public static final Operation SORT = new Operation("sort", (Fn0) (state, in) -> sort(state, array(state, in, "sorted"), false));
+  public static final Operation SORT = new Operation("sort", (Fn0) (state, in) -> sort(state, array(state, in, "sorted"), false), Declared.KEEPS);
 
   /** {@code _sort_by_impl(keys)}. */
-  public static final Operation SORT_BY = new Operation("_sort_by_impl", (Fn1) (state, in, keys) -> sortBy(state, in, keys, false));
+  public static final Operation SORT_BY = new Operation("_sort_by_impl", (Fn1) (state, in, keys) -> sortBy(state, in, keys, false), Declared.KEEPS);
 
   /** {@code _group_by_impl(keys)}. */
-  public static final Operation GROUP_BY = new Operation("_group_by_impl", (Fn1) Sort::groupBy);
+  public static final Operation GROUP_BY = new Operation("_group_by_impl", (Fn1) Sort::groupBy, Declared.KEEPS);
 
   /** {@code unique}. */
-  public static final Operation UNIQUE = new Operation("unique", (Fn0) (state, in) -> sort(state, array(state, in, "sorted"), true));
+  public static final Operation UNIQUE = new Operation("unique", (Fn0) (state, in) -> sort(state, array(state, in, "sorted"), true), Declared.KEEPS);
 
   /** {@code _unique_by_impl(keys)}. */
-  public static final Operation UNIQUE_BY = new Operation("_unique_by_impl", (Fn1) (state, in, keys) -> sortBy(state, in, keys, true));
+  public static final Operation UNIQUE_BY = new Operation("_unique_by_impl", (Fn1) (state, in, keys) -> sortBy(state, in, keys, true), Declared.KEEPS);
 
   /** {@code min}. */
-  public static final Operation MIN = new Operation("min", (Fn0) (state, in) -> extreme(state, (JqValue) in, (JqValue) in, true));
+  public static final Operation MIN = new Operation("min", (Fn0) (state, in) -> extreme(state, (JqValue) in, (JqValue) in, true), Declared.KEEPS);
 
   /** {@code max}. */
-  public static final Operation MAX = new Operation("max", (Fn0) (state, in) -> extreme(state, (JqValue) in, (JqValue) in, false));
+  public static final Operation MAX = new Operation("max", (Fn0) (state, in) -> extreme(state, (JqValue) in, (JqValue) in, false), Declared.KEEPS);
 
   /** {@code _min_by_impl(keys)}. */
-  public static final Operation MIN_BY = new Operation("_min_by_impl", (Fn1) (state, in, keys) -> extreme(state, (JqValue) in, (JqValue) keys, true));
+  public static final Operation MIN_BY = new Operation("_min_by_impl", (Fn1) (state, in, keys) -> extreme(state, (JqValue) in, (JqValue) keys, true), Declared.KEEPS);
 
   /** {@code _max_by_impl(keys)}. */
-  public static final Operation MAX_BY = new Operation("_max_by_impl", (Fn1) (state, in, keys) -> extreme(state, (JqValue) in, (JqValue) keys, false));
+  public static final Operation MAX_BY = new Operation("_max_by_impl", (Fn1) (state, in, keys) -> extreme(state, (JqValue) in, (JqValue) keys, false), Declared.KEEPS);
 
   private Sort() {}
 

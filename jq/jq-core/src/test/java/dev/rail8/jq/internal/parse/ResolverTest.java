@@ -37,6 +37,7 @@ import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Source;
+import dev.rail8.jq.query.ir.Tracking;
 import dev.rail8.jq.query.ir.Try;
 import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
@@ -72,7 +73,8 @@ class ResolverTest {
    * format strings, #68 {@code if}, {@code try}, {@code ?}, {@code error}, {@code label} and {@code break}, #69
    * {@code reduce} and {@code foreach}, #70 {@code def}) ended with {@code | ..}, here and in {@link #GRAMMAR}; #110
    * built {@code ..} (ADR-0042 amendment for #110), so those entries moved to {@link #PRECEDENCE_COMPILING} and
-   * {@link #GRAMMAR_COMPILING}, which compile. The two assignments stay Stubs until spec 3.
+   * {@link #GRAMMAR_COMPILING}, which compile. The two assignments stayed Stubs until {@code path/1} and the update
+   * operators were built, and lower to Updates since ({@link #theAssignmentsAndUpdateOperatorsLowerToUpdates}).
    */
   private static final List<String> PRECEDENCE = List.of(".a = null // 2", ".a = true or false");
 
@@ -124,11 +126,6 @@ class ResolverTest {
    */
   private static final List<String> GRAMMAR =
       List.of(
-          ".a |= .b",
-          ".a |= 1 | .b += 2 | .d *= 2 | .e /= 1 | .g //= 3 | .h = 4",
-          ".f %= 1 | .c -= 1",
-          // |= is _modify's, still unbuilt; jq-ref 1.8.2, observed 2026-11-13 with -nc: {"a":1}, rc 0.
-          "getpath([\"a\"]) |= 1",
           "1 as $v | $$$$v",
           "module {a:1}; .",
           "import \"nosuch\" as n; .",
@@ -242,14 +239,104 @@ class ResolverTest {
     return out;
   }
 
+  /**
+   * The GRAMMAR entries of the update operators, Stubs until {@code path/1} and the update operators were built (jq-ref
+   * 1.8.2 runs each, the GRAMMAR observation above).
+   */
+  private static final List<String> UPDATES =
+      List.of(".a |= .b", ".a |= 1 | .b += 2 | .d *= 2 | .e /= 1 | .g //= 3 | .h = 4", ".f %= 1 | .c -= 1", "getpath([\"a\"]) |= 1");
+
   @Test
   void everyUnloweredKindParsesAndResolvesToAStub() {
-    for (String text : PRECEDENCE) {
-      parsesToAStub(text);
-    }
     for (String text : GRAMMAR) {
       parsesToAStub(text);
     }
+  }
+
+  /**
+   * The two assignments of {@link #PRECEDENCE} and the {@link #UPDATES}: each lowers to its Update, {@code =} with a
+   * right side that is not atomic bound around it, an arithmetic update and {@code //=} with their right side bound
+   * around a MODIFY Update of {@code . op $v}; {@code =} binds tighter than {@code //} and looser than {@code or}. Each
+   * that jq-ref 1.8.2 runs on null gives its result (observed 2026-11-20 with -nc; the other two end in jq's
+   * "cannot be multiplied" and "cannot be divided (remainder)").
+   */
+  @Test
+  void theAssignmentsAndUpdateOperatorsLowerToUpdates() {
+    Map<String, String> shapes =
+        Map.of(
+            PRECEDENCE.get(0), "((.a[0,2) = null[5,9)) // 2[13,14))",
+            PRECEDENCE.get(1),
+                "((if true[5,9) then true[5,18) else (if false[13,18) then true[5,18) else false[5,18))) as $0 | (.a[0,2) = $0))",
+            UPDATES.get(0), "(.a[0,2) |= .b[6,8))",
+            UPDATES.get(1),
+                "((.a[0,2) |= 1[6,7)) | ((2[16,17) as $0 | (.b[10,12) |= _plus(.; $0)[10,17))) | ((2[26,27) as $1 | (.d[20,22) |="
+                    + " _multiply(.; $1)[20,27))) | ((1[36,37) as $2 | (.e[30,32) |= _divide(.; $2)[30,37))) | ((3[47,48) as $3 |"
+                    + " (.g[40,42) |= (.[40,48) // $3))) | (.h[51,53) = 4[56,57)))))))",
+            UPDATES.get(2), "((1[6,7) as $0 | (.f[0,2) |= _mod(.; $0)[0,7))) | (1[16,17) as $1 | (.c[10,12) |= _minus(.; $1)[10,17))))",
+            UPDATES.get(3), "(([\"a\"[9,12)][8,13) as $0 | getpath($0)[0,14)) |= 1[18,19))");
+    for (Map.Entry<String, String> e : shapes.entrySet()) {
+      assertThat(shape(ir(e.getKey()))).as("IR of %s", e.getKey()).isEqualTo(e.getValue());
+    }
+    assertThat(results(PRECEDENCE.get(0))).as("results of %s", PRECEDENCE.get(0)).containsExactly("{\"a\":null}");
+    assertThat(results(PRECEDENCE.get(1))).as("results of %s", PRECEDENCE.get(1)).containsExactly("{\"a\":true}");
+    assertThat(results(UPDATES.get(0))).as("results of %s", UPDATES.get(0)).containsExactly("{\"a\":null}");
+    assertThat(results(UPDATES.get(3))).as("results of %s", UPDATES.get(3)).containsExactly("{\"a\":1}");
+  }
+
+  /**
+   * The tracking of each bound value, in pre-order: a pattern's index steps and the source of a {@code reduce} or a
+   * {@code foreach} are PATH, so a path variant runs them in path mode and a step on a value with no path raises, as
+   * in jq; the source of {@code foreach … as $name} is ITEM, whose Var passes the item's path on; every other value is
+   * VALUE: the value of {@code E as p}, an object pattern's computed key, the right side an update binds. Past
+   * {@link Resolver#BIND_RUN} steps the value and the steps are one Binds, each value with its own.
+   */
+  @Test
+  void eachBoundValueCarriesItsTracking() {
+    Map<String, List<Tracking>> expected =
+        Map.ofEntries(
+            Map.entry(". as [$a] | $a", List.of(Tracking.VALUE, Tracking.PATH)),
+            Map.entry(". as {$a, b: [$c]} | $a", List.of(Tracking.VALUE, Tracking.PATH, Tracking.PATH, Tracking.PATH)),
+            Map.entry(". as {(.k): $v} | $v", List.of(Tracking.VALUE, Tracking.VALUE, Tracking.PATH)),
+            Map.entry(".[] as [$a] ?// $a | $a", List.of(Tracking.VALUE, Tracking.PATH)),
+            Map.entry("reduce .[] as $a (0; $a)", List.of(Tracking.PATH)),
+            Map.entry("reduce .[] as [$a] (0; $a)", List.of(Tracking.PATH, Tracking.PATH)),
+            Map.entry("reduce .[] as [$a] ?// $a (0; 1)", List.of(Tracking.PATH, Tracking.PATH)),
+            Map.entry("foreach .[] as $x (0; 1)", List.of(Tracking.ITEM)),
+            Map.entry("foreach .[] as [$x] (0; 1)", List.of(Tracking.PATH, Tracking.PATH)),
+            Map.entry("foreach .[] as [$x] ?// $x (0; 1)", List.of(Tracking.PATH, Tracking.PATH)),
+            Map.entry(".a += .b", List.of(Tracking.VALUE)));
+    for (Map.Entry<String, List<Tracking>> e : expected.entrySet()) {
+      assertThat(trackings(ir(e.getKey()))).as("trackings of %s", e.getKey()).containsExactlyElementsOf(e.getValue());
+    }
+    StringJoiner names = new StringJoiner(", ", ". as [", "] | 1");
+    List<Tracking> steps = new ArrayList<>(List.of(Tracking.VALUE));
+    for (int i = 0; i < Resolver.BIND_RUN; i++) {
+      names.add("$a" + i);
+      steps.add(Tracking.PATH);
+    }
+    Node binds = ir(names.toString());
+    assertThat(binds).as("IR of a pattern of %s names", Resolver.BIND_RUN).isInstanceOf(Binds.class);
+    assertThat(trackings(binds)).as("trackings of a pattern of %s names", Resolver.BIND_RUN).containsExactlyElementsOf(steps);
+  }
+
+  /** The tracking of each Bind's and AltBind's value and of each Binds value in {@code node}'s tree, in pre-order. */
+  private static List<Tracking> trackings(Node node) {
+    List<Tracking> found = new ArrayList<>();
+    List<Node> pending = new ArrayList<>(List.of(node));
+    while (!pending.isEmpty()) {
+      Node next = pending.removeLast();
+      if (next instanceof Bind b) {
+        found.add(b.tracking());
+      } else if (next instanceof AltBind a) {
+        found.add(a.tracking());
+      } else if (next instanceof Binds b) {
+        found.addAll(b.trackings());
+      }
+      List<Node> parts = new ArrayList<>(parts(next));
+      Collections.reverse(parts);
+      pending.addAll(parts);
+    }
+    return found;
   }
 
   /** The entries whose only Stub was {@code ..}: since #110 each parses, resolves and compiles. */

@@ -76,6 +76,19 @@ own, where jq raises (`def r(g): path(g), (select(false)|r(g))` in place of `r` 
 compiler cannot tell the two apart. Relaxing the rule later, with a root per `path()` run, only turns
 errors into results.
 
+## An update keeps its edit when its left side catches an error (ADR-0048, issue #292)
+
+The left side of `|=` can catch an error of its right side: a `?//` in it runs its next alternative. jq keeps the
+update's edit in the state of `_modify`'s `reduce`, which that error leaves broken, so the next path fails with an
+error the filter does not name. The engine keeps the edit made so far and goes on with the next alternative:
+
+| case | filter | jq 1.8.2 | Rail8 jq |
+| --- | --- | --- | --- |
+| `path-update/deviation-altbind-edit` (`deviation edit-kept`) | `{"a":[1],"b":3,"c":5,"d":0} \| (.a as $x ?// $y \| if $x then (.b, .d) else .c end) \|= (if . == 0 then error("e") else 7 end)` | error "Paths must be specified as an array" | `{"a":[1],"b":7,"c":7,"d":0}` |
+
+Reason: the engine's edit lives outside the run of the left side, so an error the left side catches leaves it
+whole (ADR-0048's path-mode contract). jq's own test files contain no such case.
+
 ## A break is not an error (ADR-0008, issue #7)
 
 In jq, `break $l` raises the error `{"__jq":n}`, where `n` is a per-process label counter. A `try`,

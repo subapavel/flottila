@@ -72,10 +72,10 @@ public final class Flatten {
   private static final Fn2 MINUS = (Fn2) Arithmetic.MINUS.form();
 
   /** {@code flatten}. */
-  public static final Operation ALL = new Operation("flatten", (Fn0) (state, in) -> flatten(state, (JqValue) in, MINUS_ONE));
+  public static final Operation ALL = new Operation("flatten", (Fn0) (state, in) -> flatten(state, (JqValue) in, MINUS_ONE), Declared.KEEPS);
 
   /** {@code flatten($x)}, its argument the depth. */
-  public static final Operation DEPTH = new Operation("flatten", (Fn1) Flatten::depth);
+  public static final Operation DEPTH = new Operation("flatten", (Fn1) Flatten::depth, Declared.KEEPS);
 
   private Flatten() {}
 

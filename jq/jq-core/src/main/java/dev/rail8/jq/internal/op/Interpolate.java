@@ -21,7 +21,7 @@ import java.lang.foreign.MemorySegment;
  */
 public final class Interpolate implements FnN {
   /** The interpolation of a literal, its parts the arguments. */
-  public static final Operation OP = new Operation("interpolation", new Interpolate());
+  public static final Operation OP = new Operation("interpolation", new Interpolate(), Declared.FRESH);
 
   private Interpolate() {}
 

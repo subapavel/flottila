@@ -3,7 +3,6 @@ package dev.rail8.jq.internal.parse;
 import static dev.rail8.jq.internal.parse.ParseAssertions.allCompile;
 import static dev.rail8.jq.internal.parse.ParseAssertions.ir;
 import static dev.rail8.jq.internal.parse.ParseAssertions.notGiven;
-import static dev.rail8.jq.internal.parse.ParseAssertions.parsesToAStub;
 import static dev.rail8.jq.internal.parse.ParseAssertions.shape;
 import static dev.rail8.jq.internal.parse.ParseAssertions.syntaxError;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -96,13 +95,13 @@ class ParserTest {
   }
 
   @Test
-  void theUpdateOperatorParsesAndIsAStub() {
-    // jq syntax the resolver does not lower until spec 3 (jq-ref 1.8.2, observed 2026-11-11 on {"a":...}: ".a |= .b"
-    // runs), so it parses and resolves to the Stub. It is the one entry left of the unbuilt tokens: the inputs jq
+  void theUpdateOperatorParsesAndResolvesToAnUpdate() {
+    // jq-ref 1.8.2, observed 2026-11-11 on {"a":...}: ".a |= .b" runs, and resolves to an Update since path/1 and the
+    // update operators are built. It was the last entry of the unbuilt tokens, a Stub until then: the inputs jq
     // rejects (and, ",", .é, .a.é, #c) moved to unbuiltTokensThatJqRejectsAreErrors when #62 built the syntax errors;
     // #63 lowers .a?, .[0], .["a"], .[], ".a, .b" and .a[0], whose IR ResolverTest.navigationAndCommaLowerToTheirIr
     // asserts; .., $__loc__ and and compile (dotDotAndTheTokensItMarkedCompile). None was dropped.
-    parsesToAStub(".a |= .b");
+    assertThat(shape(ir(".a |= .b"))).as("IR of .a |= .b").isEqualTo("(.a[0,2) |= .b[6,8))");
     // Witness: the built prefixes resolve to IR.
     assertThat(shape(ir(".a"))).as("witness: IR of .a").isEqualTo(".a[0,2)");
     assertThat(shape(ir(".a | .b"))).as("witness: IR of .a | .b").isEqualTo("(.a[0,2) | .b[5,7))");

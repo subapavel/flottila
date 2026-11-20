@@ -83,7 +83,7 @@ class PathVariantPropertyTest {
       case Label l -> new Label(l.source(), l.slot(), track(l.body(), random));
       case Intrinsic i -> {
         Operation op = i.op();
-        yield new Intrinsic(i.source(), new Operation(op.name(), op.form(), new Facts(random.nextBoolean() ? PathRule.SAME : PathRule.NONE)), i.args());
+        yield new Intrinsic(i.source(), new Operation(op.name(), op.form(), new Facts(random.nextBoolean() ? PathRule.SAME : PathRule.NONE, true)), i.args());
       }
       // The leaves of the toy parts: an Identity, a Const, a Var or a Break.
       default -> node;

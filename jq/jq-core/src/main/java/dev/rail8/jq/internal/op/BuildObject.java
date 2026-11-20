@@ -15,7 +15,7 @@ import dev.rail8.jq.value.JqString;
  */
 public final class BuildObject implements FnN {
   /** The construction of a site with a computed key: a key and a value per pair. */
-  public static final Operation PAIRS = new Operation("{...}", new BuildObject(null));
+  public static final Operation PAIRS = new Operation("{...}", new BuildObject(null), Declared.KEEPS);
 
   /** The shape of the site, or null for one with a computed key. */
   private final JqString[] shape;
@@ -26,7 +26,7 @@ public final class BuildObject implements FnN {
 
   /** The construction of a site whose distinct constant keys, in their first place, are {@code shape}. */
   public static Operation shaped(JqString[] shape) {
-    return new Operation("{...}", new BuildObject(shape));
+    return new Operation("{...}", new BuildObject(shape), Declared.KEEPS);
   }
 
   @Override

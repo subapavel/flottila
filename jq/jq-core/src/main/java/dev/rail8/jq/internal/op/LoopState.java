@@ -13,7 +13,7 @@ import dev.rail8.jq.value.JqNull;
  */
 public final class LoopState implements Fn0 {
   /** The state, jq's null for none. */
-  public static final Operation OP = new Operation("_state", new LoopState());
+  public static final Operation OP = new Operation("_state", new LoopState(), Declared.KEEPS);
 
   private LoopState() {}
 

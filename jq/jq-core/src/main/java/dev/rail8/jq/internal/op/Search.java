@@ -44,11 +44,11 @@ import dev.rail8.jq.value.JqValue;
 public final class Search {
   /** {@code contains(b)}. */
   public static final Operation CONTAINS =
-      new Operation("contains", (Fn1) (state, in, b) -> contains(state, (JqValue) in, (JqValue) b));
+      new Operation("contains", (Fn1) (state, in, b) -> contains(state, (JqValue) in, (JqValue) b), Declared.FRESH);
 
   /** {@code bsearch(target)}. */
   public static final Operation BSEARCH =
-      new Operation("bsearch", (Fn1) (state, in, target) -> bsearch(state, (JqValue) in, (JqValue) target));
+      new Operation("bsearch", (Fn1) (state, in, target) -> bsearch(state, (JqValue) in, (JqValue) target), Declared.FRESH);
 
   private Search() {}
 

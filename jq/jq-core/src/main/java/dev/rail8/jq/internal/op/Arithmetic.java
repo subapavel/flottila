@@ -37,22 +37,22 @@ import dev.rail8.jq.value.JqValue;
  */
 public final class Arithmetic {
   /** {@code l + r}. */
-  public static final Operation PLUS = new Operation("_plus", new Plus());
+  public static final Operation PLUS = new Operation("_plus", new Plus(), Declared.KEEPS);
 
   /** {@code l - r}. */
-  public static final Operation MINUS = new Operation("_minus", new Minus());
+  public static final Operation MINUS = new Operation("_minus", new Minus(), Declared.KEEPS);
 
   /** {@code l * r}. */
-  public static final Operation MULTIPLY = new Operation("_multiply", new Multiply());
+  public static final Operation MULTIPLY = new Operation("_multiply", new Multiply(), Declared.KEEPS);
 
   /** {@code l / r}. */
-  public static final Operation DIVIDE = new Operation("_divide", new Divide());
+  public static final Operation DIVIDE = new Operation("_divide", new Divide(), Declared.FRESH);
 
   /** {@code l % r}. */
-  public static final Operation MODULO = new Operation("_mod", new Modulo());
+  public static final Operation MODULO = new Operation("_mod", new Modulo(), Declared.FRESH);
 
   /** {@code -t}, on each result of {@code t}. */
-  public static final Operation NEGATE = new Operation("_negate", new Negate());
+  public static final Operation NEGATE = new Operation("_negate", new Negate(), Declared.FRESH);
 
   private Arithmetic() {}
 

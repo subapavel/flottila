@@ -32,12 +32,13 @@ import java.util.Set;
 
 /**
  * The native table: every builtin signature jq 1.8.2 writes in C or bytecode, plus the natives this engine puts in
- * place of builtin.jq's {@code flatten/0}, {@code flatten/1}, {@code inputs/0} and {@code to_entries/0}, by
- * {@code name/arity}, the input not counted. The {@link Binder} looks it up after the user's definitions and before the
- * prelude; an entry the {@link Binder.Native} enum does not build binds as an unbuilt native, whose lowering is a
- * Stub. Translated from jq 1.8.2's {@code function_list} (src/builtin.c), its BINOPS (src/builtin.h) and the functions
- * of src/libm.h it includes, {@code bind_bytecoded_builtins} and {@code gen_builtin_list} (src/builtin.c); jq-ref
- * 1.8.2's {@code builtins[]} lists the same signatures but those whose name starts with {@code _}.
+ * place of builtin.jq's {@code flatten/0}, {@code flatten/1}, {@code inputs/0}, {@code to_entries/0}, {@code
+ * _modify/2} and {@code _assign/2}, by {@code name/arity}, the input not counted. The {@link Binder} looks it up after
+ * the user's definitions and before the prelude; an entry the {@link Binder.Native} enum does not build binds as an
+ * unbuilt native, whose lowering is a Stub. Translated from jq 1.8.2's {@code function_list} (src/builtin.c), its
+ * BINOPS (src/builtin.h) and the functions of src/libm.h it includes, {@code bind_bytecoded_builtins} and {@code
+ * gen_builtin_list} (src/builtin.c); jq-ref 1.8.2's {@code builtins[]} lists the same signatures but those whose name
+ * starts with {@code _}.
  */
 final class NativeTable {
   /**
@@ -80,12 +81,13 @@ final class NativeTable {
 
   /**
    * bind_bytecoded_builtins, gen_builtin_list's {@code builtins/0}, and the natives that replace builtin.jq's
-   * {@code flatten/0}, {@code flatten/1}, {@code inputs/0} and {@code to_entries/0}.
+   * {@code flatten/0}, {@code flatten/1}, {@code inputs/0}, {@code to_entries/0}, {@code _modify/2} and {@code
+   * _assign/2}.
    */
   private static final List<String> CLOSURE_LIST =
       List.of(
           "empty/0", "not/0", "path/1", "last/1", "range/2", "builtins/0", "flatten/0", "flatten/1", "inputs/0",
-          "to_entries/0");
+          "to_entries/0", "_modify/2", "_assign/2");
 
   private static final Map<String, Kind> TABLE = table();
 

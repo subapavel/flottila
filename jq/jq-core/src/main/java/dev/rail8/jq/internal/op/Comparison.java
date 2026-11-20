@@ -40,22 +40,22 @@ import dev.rail8.jq.value.JqValue;
  */
 public final class Comparison {
   /** {@code l == r}. */
-  public static final Operation EQUAL = new Operation("_equal", (Fn2) (state, in, l, r) -> bool(equal(state, l, r)));
+  public static final Operation EQUAL = new Operation("_equal", (Fn2) (state, in, l, r) -> bool(equal(state, l, r)), Declared.FRESH);
 
   /** {@code l != r}. */
-  public static final Operation NOT_EQUAL = new Operation("_notequal", (Fn2) (state, in, l, r) -> bool(!equal(state, l, r)));
+  public static final Operation NOT_EQUAL = new Operation("_notequal", (Fn2) (state, in, l, r) -> bool(!equal(state, l, r)), Declared.FRESH);
 
   /** {@code l < r}. */
-  public static final Operation LESS = new Operation("_less", (Fn2) (state, in, l, r) -> bool(order(state, l, r) < 0));
+  public static final Operation LESS = new Operation("_less", (Fn2) (state, in, l, r) -> bool(order(state, l, r) < 0), Declared.FRESH);
 
   /** {@code l > r}. */
-  public static final Operation GREATER = new Operation("_greater", (Fn2) (state, in, l, r) -> bool(order(state, l, r) > 0));
+  public static final Operation GREATER = new Operation("_greater", (Fn2) (state, in, l, r) -> bool(order(state, l, r) > 0), Declared.FRESH);
 
   /** {@code l <= r}. */
-  public static final Operation LESS_EQUAL = new Operation("_lesseq", (Fn2) (state, in, l, r) -> bool(order(state, l, r) <= 0));
+  public static final Operation LESS_EQUAL = new Operation("_lesseq", (Fn2) (state, in, l, r) -> bool(order(state, l, r) <= 0), Declared.FRESH);
 
   /** {@code l >= r}. */
-  public static final Operation GREATER_EQUAL = new Operation("_greatereq", (Fn2) (state, in, l, r) -> bool(order(state, l, r) >= 0));
+  public static final Operation GREATER_EQUAL = new Operation("_greatereq", (Fn2) (state, in, l, r) -> bool(order(state, l, r) >= 0), Declared.FRESH);
 
   private Comparison() {}
 

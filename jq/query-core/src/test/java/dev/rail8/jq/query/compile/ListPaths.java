@@ -225,7 +225,7 @@ final class ListPaths implements PathFormat {
 
   /** {@code .name}: a KEY step whose key is its own. */
   static Node field(String name) {
-    return new Intrinsic(AT, new Operation("." + name, new Field(name), new Facts(PathRule.KEY)), List.of());
+    return new Intrinsic(AT, new Operation("." + name, new Field(name), new Facts(PathRule.KEY, true)), List.of());
   }
 
   /** A field read: an Fn0 that adds its name to the input's path. */
@@ -248,12 +248,12 @@ final class ListPaths implements PathFormat {
 
   /** {@code .[key]}, {@code key} an atomic node: an INDEX step. */
   static Node index(Node key) {
-    return new Intrinsic(AT, new Operation(".[]", new Index(), new Facts(PathRule.INDEX)), List.of(key));
+    return new Intrinsic(AT, new Operation(".[]", new Index(), new Facts(PathRule.INDEX, true)), List.of(key));
   }
 
   /** {@code .[key]} as a DYNAMIC step, a key of either kind. */
   static Node dynamic(Node key) {
-    return new Intrinsic(AT, new Operation(".[?]", new Index(), new Facts(PathRule.DYNAMIC)), List.of(key));
+    return new Intrinsic(AT, new Operation(".[?]", new Index(), new Facts(PathRule.DYNAMIC, true)), List.of(key));
   }
 
   /** An index or a name read: an Fn1 whose argument is the key. */
@@ -271,7 +271,7 @@ final class ListPaths implements PathFormat {
 
   /** {@code .[from:to]} of a list: a SLICE step whose key, {@code [from, to]}, it builds. */
   static Node slice(Node from, Node to) {
-    return new Intrinsic(AT, new Operation(".[:]", new Slice(), new Facts(PathRule.SLICE)), List.of(from, to));
+    return new Intrinsic(AT, new Operation(".[:]", new Slice(), new Facts(PathRule.SLICE, true)), List.of(from, to));
   }
 
   /** A slice: an Fn2 of the two bounds, which charges each key it builds. */
@@ -300,7 +300,7 @@ final class ListPaths implements PathFormat {
 
   /** {@code getpath(keys)}: a KEY_LIST step, untracked on an untracked input. */
   static Node getpath(Node keys) {
-    return new Intrinsic(AT, new Operation("getpath", new GetPath(), new Facts(PathRule.KEY_LIST)), List.of(keys));
+    return new Intrinsic(AT, new Operation("getpath", new GetPath(), new Facts(PathRule.KEY_LIST, true)), List.of(keys));
   }
 
   /** A read along a list of keys: an Fn1 that adds each key. */
@@ -331,7 +331,7 @@ final class ListPaths implements PathFormat {
 
   /** {@code .[]} of a list: an ALL step whose cursor is the index. */
   static Node all() {
-    return new Intrinsic(AT, new Operation(".[]", new All(), new Facts(PathRule.ALL)), List.of());
+    return new Intrinsic(AT, new Operation(".[]", new All(), new Facts(PathRule.ALL, true)), List.of());
   }
 
   /** Each value of a list, a Many that is a step. */
@@ -367,7 +367,7 @@ final class ListPaths implements PathFormat {
 
   /** An Fn0 of rule {@code rule} that gives {@code fn} of its input. */
   static Node call(String name, PathRule rule, UnaryOperator<Object> fn) {
-    return new Intrinsic(AT, new Operation(name, (Fn0) (state, in) -> fn.apply(in), new Facts(rule)), List.of());
+    return new Intrinsic(AT, new Operation(name, (Fn0) (state, in) -> fn.apply(in), new Facts(rule, true)), List.of());
   }
 
   /** An Fn0 that writes {@code line} into {@link #log}, then gives its input at its input's path, as a debug does. */
@@ -381,7 +381,7 @@ final class ListPaths implements PathFormat {
                   log.add(line + " " + in);
                   return in;
                 },
-            new Facts(PathRule.SAME)),
+            new Facts(PathRule.SAME, true)),
         List.of());
   }
 

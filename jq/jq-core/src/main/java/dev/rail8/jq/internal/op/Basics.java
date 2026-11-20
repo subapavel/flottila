@@ -66,25 +66,25 @@ import java.lang.foreign.MemorySegment;
  */
 public final class Basics {
   /** {@code length}. */
-  public static final Operation LENGTH = new Operation("length", (Fn0) Basics::length);
+  public static final Operation LENGTH = new Operation("length", (Fn0) Basics::length, Declared.FRESH);
 
   /** {@code type}. */
-  public static final Operation TYPE = new Operation("type", (Fn0) (state, in) -> type((JqValue) in));
+  public static final Operation TYPE = new Operation("type", (Fn0) (state, in) -> type((JqValue) in), Declared.FRESH);
 
   /** {@code tostring}: {@code @text}'s operation (TextFormat). */
-  public static final Operation TOSTRING = new Operation("tostring", new TextFormat());
+  public static final Operation TOSTRING = new Operation("tostring", new TextFormat(), Declared.KEEPS);
 
   /** {@code tojson}. */
-  public static final Operation TOJSON = new Operation("tojson", (Fn0) (state, in) -> TextFormat.dump(state, (JqValue) in));
+  public static final Operation TOJSON = new Operation("tojson", (Fn0) (state, in) -> TextFormat.dump(state, (JqValue) in), Declared.FRESH);
 
   /** {@code fromjson}. */
-  public static final Operation FROMJSON = new Operation("fromjson", (Fn0) Basics::fromjson);
+  public static final Operation FROMJSON = new Operation("fromjson", (Fn0) Basics::fromjson, Declared.FRESH);
 
   /** {@code tonumber}. */
-  public static final Operation TONUMBER = new Operation("tonumber", (Fn0) Basics::tonumber);
+  public static final Operation TONUMBER = new Operation("tonumber", (Fn0) Basics::tonumber, Declared.FRESH);
 
   /** {@code toboolean}. */
-  public static final Operation TOBOOLEAN = new Operation("toboolean", (Fn0) Basics::toboolean);
+  public static final Operation TOBOOLEAN = new Operation("toboolean", (Fn0) Basics::toboolean, Declared.FRESH);
 
   /** {@code null | length}: jq's {@code jv_number(0)}. */
   private static final DoubleNumber ZERO = new DoubleNumber(0);

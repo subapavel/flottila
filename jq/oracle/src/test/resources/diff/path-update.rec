@@ -1,0 +1,603 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case path-update/path-of-slice
+def 6074fad5042d
+rc 0
+stdout [[{"start":1,"end":2}]]\n
+stderr
+end
+
+case path-update/path-of-optional-iterate
+def 645f3ed423ed
+rc 0
+stdout [["a"],["b"]]\n
+stderr
+end
+
+case path-update/path-of-chain
+def 596639b5278d
+rc 0
+stdout [["a",0,"b"]]\n
+stderr
+end
+
+case path-update/path-of-each-step-kind
+def 1bbbc694fe3a
+rc 0
+stdout [["a"],["b"],["c"],[0],["d"],[{"start":1,"end":null}],["e"]]\n
+stderr
+end
+
+case path-update/untracked-field
+def 9da556166d02
+rc 0
+stdout "Invalid path expression near attempt to access element \\"a\\" of 1"\n
+stderr
+end
+
+case path-update/untracked-optional-field
+def 224134363486
+rc 0
+stdout "Invalid path expression near attempt to access element \\"a\\" of 1"\n
+stderr
+end
+
+case path-update/untracked-index
+def 3c00e694006f
+rc 0
+stdout "Invalid path expression near attempt to access element 0 of 1"\n
+stderr
+end
+
+case path-update/untracked-slice
+def dcd245ba57ec
+rc 0
+stdout "Invalid path expression near attempt to access element {\\"start\\":1,\\"end\\":2} of 1"\n
+stderr
+end
+
+case path-update/untracked-iterate
+def fffb185e3a9f
+rc 0
+stdout "Invalid path expression near attempt to iterate through 1"\n
+stderr
+end
+
+case path-update/untracked-result
+def 731709f0868a
+rc 0
+stdout "Invalid path expression with result 1"\n
+stderr
+end
+
+case path-update/untracked-loc
+def 94a3aa9048a3
+rc 0
+stdout "Invalid path expression with result {\\"file\\":\\"<top-level>\\",\\"li...}"\n
+stderr
+end
+
+case path-update/untracked-tostring
+def 3e14acb056e2
+rc 0
+stdout "Invalid path expression with result \\"null\\""\n
+stderr
+end
+
+case path-update/untracked-last
+def a544b86ace26
+rc 0
+stdout "Invalid path expression with result 2"\n
+stderr
+end
+
+case path-update/untracked-catch
+def 8458089e41d3
+rc 0
+stdout "Invalid path expression with result \\"x\\""\n
+stderr
+end
+
+case path-update/path-of-getpath
+def 3839a0570e1e
+rc 0
+stdout [["a","b"]]\n
+stderr
+end
+
+case path-update/path-through-getpath
+def 6909d59228dd
+rc 0
+stdout [["a","b","c","d"]]\n
+stderr
+end
+
+case path-update/path-through-slice
+def 0537d1aa698a
+rc 0
+stdout [["a",{"start":1,"end":null},0]]\n
+stderr
+end
+
+case path-update/path-of-nested-iterate
+def ef7c16a3248f
+rc 0
+stdout [[0,0],[0,1],[1,0]]\n
+stderr
+end
+
+case path-update/path-of-comma-under-pipe
+def c0e2f26eda13
+rc 0
+stdout [["a","b"],["a","c"]]\n
+stderr
+end
+
+case path-update/path-of-first
+def da050b2b5d01
+rc 0
+stdout [["a",0]]\n
+stderr
+end
+
+case path-update/path-of-select
+def 5b4067c72147
+rc 0
+stdout [["a",1]]\n
+stderr
+end
+
+case path-update/path-of-if
+def 0327c6b12fc6
+rc 0
+stdout [["c"]]\n
+stderr
+end
+
+case path-update/path-of-alternative-right
+def db21a8f467d7
+rc 0
+stdout [["b"]]\n
+stderr
+end
+
+case path-update/path-of-alternative-left
+def 77e13f40d319
+rc 0
+stdout [["a"]]\n
+stderr
+end
+
+case path-update/path-of-arrays-filter
+def 281314185da7
+rc 0
+stdout [[1,0]]\n
+stderr
+end
+
+case path-update/path-of-recurse-on-null
+def 9db831ab6918
+rc 0
+stdout [[]]\n
+stderr
+end
+
+case path-update/path-of-recurse
+def b9049c77ed66
+rc 0
+stdout [[],[0],[0,0]]\n
+stderr
+end
+
+case path-update/paths
+def 0a0b05cbebf2
+rc 0
+stdout [["a"],["a",0],["a",1],["a",1,"b"]]\n
+stderr
+end
+
+case path-update/paths-of-filter
+def 27fda4586003
+rc 0
+stdout [["a",0],["a",1,"b"]]\n
+stderr
+end
+
+case path-update/path-of-bind-body
+def ddf102bcb80c
+rc 0
+stdout [[]]\n
+stderr
+end
+
+case path-update/path-pattern-step-untracked
+def 8cd9a4530b0e
+rc 0
+stdout "Invalid path expression near attempt to access element 0 of [1]"\n
+stderr
+end
+
+case path-update/path-bound-value-step
+def b14863d13b07
+rc 0
+stdout [["b"]]\n
+stderr
+end
+
+case path-update/path-reduce-source-untracked
+def 5c8552b3a4e5
+rc 0
+stdout "Invalid path expression near attempt to iterate through [1]"\n
+stderr
+end
+
+case path-update/path-foreach-source-untracked
+def 1f19725408ee
+rc 0
+stdout "Invalid path expression near attempt to iterate through [1]"\n
+stderr
+end
+
+case path-update/path-bind-value-in-value-mode
+def 378936202573
+rc 0
+stdout [[]]\n
+stderr
+end
+
+case path-update/path-foreach-item
+def ba8694168ba9
+rc 0
+stdout [[0,0],[1,0]]\n
+stderr
+end
+
+case path-update/modify-each
+def 02a28ed45518
+rc 0
+stdout [2,3]\n
+stderr
+end
+
+case path-update/modify-deletes
+def c0d2726e6133
+rc 0
+stdout [3]\n
+stderr
+end
+
+case path-update/modify-deletes-nested
+def 1b9b9a0faaed
+rc 0
+stdout {}\n
+stderr
+end
+
+case path-update/modify-deletes-key
+def 5bec284268e3
+rc 0
+stdout {}\n
+stderr
+end
+
+case path-update/modify-first-result
+def 41e564876190
+rc 0
+stdout [3]\n
+stderr
+end
+
+case path-update/modify-no-path
+def 2ccd47fb469d
+rc 0
+stdout 5\n
+stderr
+end
+
+case path-update/modify-builds-null
+def f1e55918bf64
+rc 0
+stdout {"a":{"b":1}}\n
+stderr
+end
+
+case path-update/modify-index-error
+def 917410370bd7
+rc 0
+stdout "Cannot index number with string (\\"a\\")"\n
+stderr
+end
+
+case path-update/modify-lhs-error-after-delete
+def d09ca6e386f2
+rc 0
+stdout "Cannot index array with string (\\"a\\")"\n
+stderr
+end
+
+case path-update/modify-slice-not-array
+def 55a2e321e828
+rc 0
+stdout "A slice of an array can only be assigned another array"\n
+stderr
+end
+
+case path-update/modify-string-slice
+def febfef9894ea
+rc 0
+stdout "Cannot update string slices"\n
+stderr
+end
+
+case path-update/modify-slice
+def f46f6fb25055
+rc 0
+stdout [1,20,30,4,5]\n
+stderr
+end
+
+case path-update/modify-each-nested
+def 601a4c981675
+rc 0
+stdout {"a":[{"b":10},{"b":20}]}\n
+stderr
+end
+
+case path-update/modify-same-path-twice
+def 24da84ffe41f
+rc 0
+stdout {"a":3}\n
+stderr
+end
+
+case path-update/modify-map
+def 33e10f6691ac
+rc 0
+stdout {"a":[6,8]}\n
+stderr
+end
+
+case path-update/modify-altbind
+def 0e73a2cba32f
+rc 0
+stdout {"a":["b"],"b":0,"c":1}\n
+stderr
+end
+
+case path-update/modify-by-name
+def cf3bc01b8391
+rc 0
+stdout {"a":1}\n{"b":2}\n
+stderr
+end
+
+case path-update/user-modify-wins
+def 8cda0dab63ab
+rc 0
+stdout 42\n
+stderr
+end
+
+case path-update/user-assign-wins
+def 2dccc44b191b
+rc 0
+stdout 43\n
+stderr
+end
+
+case path-update/assign-each-value
+def 20dbce9d97ac
+rc 0
+stdout {"a":1}\n{"a":2}\n
+stderr
+end
+
+case path-update/assign-two-paths
+def dfb1a400fe57
+rc 0
+stdout {"a":1,"b":1}\n{"a":2,"b":2}\n
+stderr
+end
+
+case path-update/assign-slice
+def c54f409acbe8
+rc 0
+stdout [1,"x",4]\n
+stderr
+end
+
+case path-update/assign-pads
+def 0d9f93d24820
+rc 0
+stdout [0,null,1]\n
+stderr
+end
+
+case path-update/assign-negative-index
+def 009edb63d138
+rc 0
+stdout "Out of bounds negative array index"\n
+stderr
+end
+
+case path-update/assign-reads-input
+def aeb38bbec617
+rc 0
+stdout {"a":{"a":1}}\n
+stderr
+end
+
+case path-update/assign-nested
+def 0250339f50cf
+rc 0
+stdout {"a":{"b":{"c":1,"d":2}}}\n
+stderr
+end
+
+case path-update/assign-of-variable
+def 94ec30339ddc
+rc 0
+stdout {"a":1,"b":1}\n
+stderr
+end
+
+case path-update/assign-computed-keys
+def 33819afadfa5
+rc 0
+stdout {"a":1,"b":1}\n
+stderr
+end
+
+case path-update/assign-slice-empty
+def df05d30f4214
+rc 0
+stdout {"a":[1]}\n
+stderr
+end
+
+case path-update/alternative-update
+def a282b0d71d79
+rc 0
+stdout {"a":3}\n
+stderr
+end
+
+case path-update/add-update-each-value
+def d5828744f49a
+rc 0
+stdout {"a":2}\n{"a":3}\n
+stderr
+end
+
+case path-update/arithmetic-updates
+def 468d5dbf3ff2
+rc 0
+stdout {"a":5}\n{"a":14}\n{"a":3.5}\n{"a":1}\n
+stderr
+end
+
+case path-update/add-update-builds
+def ba60c4c60172
+rc 0
+stdout {"a":1,"b":{"c":1}}\n
+stderr
+end
+
+case path-update/add-update-twice
+def e066867e82b1
+rc 0
+stdout {"a":2}\n
+stderr
+end
+
+case path-update/map-values
+def 6039b22bf29f
+rc 0
+stdout {"a":4,"b":5}\n
+stderr
+end
+
+case path-update/del
+def bdee733867bf
+rc 0
+stdout {"b":2}\n
+stderr
+end
+
+case path-update/del-indices
+def 808f07045686
+rc 0
+stdout [2]\n
+stderr
+end
+
+case path-update/with-entries
+def 6123c177aa72
+rc 0
+stdout {"a":2}\n
+stderr
+end
+
+case path-update/reduce-of-updates
+def 3a034aa26dcb
+rc 0
+stdout {"a":2,"b":1}\n
+stderr
+end
+
+case path-update/pick
+def bc565229dd7a
+rc 0
+stdout {"a":{"b":{"c":1}}}\n
+stderr
+end
+
+case path-update/walk
+def 4dceaa46a7d9
+rc 0
+stdout [2,[3,4]]\n
+stderr
+end
+
+case path-update/assign-into-limit
+def 016bfacb0c92
+rc 0
+stdout [1,5,1]\n
+stderr
+end
+
+case path-update/modify-depth-9999
+def d9e99c8c6be5
+rc 0
+stdout [1]\n
+stderr
+end
+
+case path-update/modify-depth-10000
+def 1b7667a93a91
+rc 0
+stdout "Path too deep"\n
+stderr
+end
+
+case path-update/modify-delete-depth-10000
+def 17b71942de32
+rc 0
+stdout null\n
+stderr
+end
+
+case path-update/modify-depth-10001
+def 5461b6b04ca4
+rc 0
+stdout "Path too deep"\n
+stderr
+end
+
+case path-update/assign-depth-10000
+def 5b236c4024cf
+rc 0
+stdout [1]\n
+stderr
+end
+
+case path-update/assign-depth-10001
+def 69549c566856
+rc 0
+stdout "Path too deep"\n
+stderr
+end
+
+case path-update/path-depth-10001
+def 165c7d74fc93
+rc 0
+stdout "Path too deep"\n
+stderr
+end
+
+case path-update/deviation-altbind-edit
+def c99914dd180e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Paths must be specified as an array\n
+end

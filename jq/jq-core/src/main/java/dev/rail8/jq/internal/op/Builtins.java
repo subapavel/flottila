@@ -37,7 +37,7 @@ import java.util.stream.Stream;
  */
 public final class Builtins {
   /** {@code builtins}. */
-  public static final Operation BUILTINS = new Operation("builtins", (Fn0) (state, in) -> builtins(state));
+  public static final Operation BUILTINS = new Operation("builtins", (Fn0) (state, in) -> builtins(state), Declared.FRESH);
 
   /** The signatures, in jq-ref 1.8.2's order. */
   private static final BuiltString[] SIGNATURES =

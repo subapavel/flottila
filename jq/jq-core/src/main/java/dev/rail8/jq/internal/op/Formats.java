@@ -62,36 +62,36 @@ import java.util.Map;
  */
 public final class Formats {
   /** {@code @json}: {@code tojson}. */
-  private static final Operation JSON = new Operation("@json", (Fn0) (state, in) -> TextFormat.dump(state, (JqValue) in));
+  private static final Operation JSON = new Operation("@json", (Fn0) (state, in) -> TextFormat.dump(state, (JqValue) in), Declared.FRESH);
 
   /** {@code @csv}. */
-  private static final Operation CSV = new Operation("@csv", (Fn0) (state, in) -> row(state, (JqValue) in, Row.CSV));
+  private static final Operation CSV = new Operation("@csv", (Fn0) (state, in) -> row(state, (JqValue) in, Row.CSV), Declared.FRESH);
 
   /** {@code @tsv}. */
-  private static final Operation TSV = new Operation("@tsv", (Fn0) (state, in) -> row(state, (JqValue) in, Row.TSV));
+  private static final Operation TSV = new Operation("@tsv", (Fn0) (state, in) -> row(state, (JqValue) in, Row.TSV), Declared.FRESH);
 
   /** {@code @html}. */
-  private static final Operation HTML = new Operation("@html", (Fn0) (state, in) -> html(state, (JqValue) in));
+  private static final Operation HTML = new Operation("@html", (Fn0) (state, in) -> html(state, (JqValue) in), Declared.FRESH);
 
   /** {@code @uri}. */
-  private static final Operation URI = new Operation("@uri", (Fn0) (state, in) -> uri(state, (JqValue) in));
+  private static final Operation URI = new Operation("@uri", (Fn0) (state, in) -> uri(state, (JqValue) in), Declared.FRESH);
 
   /** {@code @urid}. */
-  private static final Operation URID = new Operation("@urid", (Fn0) (state, in) -> urid(state, (JqValue) in));
+  private static final Operation URID = new Operation("@urid", (Fn0) (state, in) -> urid(state, (JqValue) in), Declared.FRESH);
 
   /** {@code @sh}. */
-  private static final Operation SH = new Operation("@sh", (Fn0) (state, in) -> row(state, (JqValue) in, Row.SH));
+  private static final Operation SH = new Operation("@sh", (Fn0) (state, in) -> row(state, (JqValue) in, Row.SH), Declared.FRESH);
 
   /** {@code @base64}. */
-  private static final Operation BASE64 = new Operation("@base64", (Fn0) (state, in) -> base64(state, (JqValue) in));
+  private static final Operation BASE64 = new Operation("@base64", (Fn0) (state, in) -> base64(state, (JqValue) in), Declared.FRESH);
 
   /** {@code @base64d}. */
-  private static final Operation BASE64D = new Operation("@base64d", (Fn0) (state, in) -> base64d(state, (JqValue) in));
+  private static final Operation BASE64D = new Operation("@base64d", (Fn0) (state, in) -> base64d(state, (JqValue) in), Declared.FRESH);
 
   /** Each format by its name without the {@code @}. */
   private static final Map<String, Operation> BUILT =
       Map.of(
-          "text", new Operation("@text", new TextFormat()),
+          "text", new Operation("@text", new TextFormat(), Declared.KEEPS),
           "json", JSON,
           "csv", CSV,
           "tsv", TSV,
@@ -103,7 +103,7 @@ public final class Formats {
           "base64d", BASE64D);
 
   /** {@code format(f)}: the format that {@code f} names, on the input. */
-  public static final Operation FORMAT = new Operation("format", (Fn1) (state, in, f) -> format(state, in, (JqValue) f));
+  public static final Operation FORMAT = new Operation("format", (Fn1) (state, in, f) -> format(state, in, (JqValue) f), Declared.KEEPS);
 
   /** jq's {@code escape_string} lookups of {@code @html}: a NUL is {@code \0} there, as in every escaped string. */
   private static final byte[][] HTML_ESCAPES = escapes("&&amp;", "<&lt;", ">&gt;", "'&apos;", "\"&quot;");
@@ -148,7 +148,7 @@ public final class Formats {
     Operation op = BUILT.get(name);
     return op != null ? op : new Operation("@" + name, (Fn0) (state, in) -> {
       throw Arithmetic.error(name + " is not a valid format");
-    });
+    }, Declared.FRESH);
   }
 
   /**

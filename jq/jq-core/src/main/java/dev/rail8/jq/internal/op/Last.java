@@ -38,7 +38,7 @@ import dev.rail8.jq.query.run.RunState;
  */
 public final class Last implements Fn0 {
   /** {@code last(f)}'s end. */
-  public static final Operation OP = new Operation("last", new Last());
+  public static final Operation OP = new Operation("last", new Last(), Declared.KEEPS);
 
   /** The state before {@code f}'s first result: no jq value, so no result of {@code f} is it. */
   public static final Object UNSET = new Object();

@@ -6,6 +6,8 @@ import dev.rail8.jq.internal.op.Arithmetic;
 import dev.rail8.jq.internal.op.Basics;
 import dev.rail8.jq.internal.op.BuildObject;
 import dev.rail8.jq.internal.op.Builtins;
+import dev.rail8.jq.internal.op.ConstantStep;
+import dev.rail8.jq.internal.op.Declared;
 import dev.rail8.jq.internal.op.Dates;
 import dev.rail8.jq.internal.op.Empty;
 import dev.rail8.jq.internal.op.Field;
@@ -20,6 +22,7 @@ import dev.rail8.jq.internal.op.Last;
 import dev.rail8.jq.internal.op.LoopState;
 import dev.rail8.jq.internal.op.NumberTests;
 import dev.rail8.jq.internal.op.ObjectKey;
+import dev.rail8.jq.internal.op.PathEdits;
 import dev.rail8.jq.internal.op.Paths;
 import dev.rail8.jq.internal.op.Raise;
 import dev.rail8.jq.internal.op.Range;
@@ -53,10 +56,12 @@ import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.Operation;
 import dev.rail8.jq.query.ir.ParamCall;
 import dev.rail8.jq.query.ir.PathOf;
+import dev.rail8.jq.query.ir.PathRule;
 import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Source;
+import dev.rail8.jq.query.ir.Tracking;
 import dev.rail8.jq.query.ir.Try;
 import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
@@ -263,8 +268,11 @@ public final class Resolver {
    */
   private record Closure(Ast body, Env env, Source site, int param, ExpansionMeasure.Form measured) {}
 
-  /** A Bind a pattern's match lowers to: its value, its slot, and the part of the pattern it spans. */
-  private record Step(Node value, int slot, Source source) {}
+  /**
+   * A Bind a pattern's match lowers to: its value and how a path variant runs it, its slot, and the part of the pattern
+   * it spans.
+   */
+  private record Step(Node value, Tracking tracking, int slot, Source source) {}
 
   /** A pattern's match so far: its steps in jq's matcher order, and for each name the slot of its latest store. */
   private static final class Match {
@@ -428,6 +436,9 @@ public final class Resolver {
     }
     if (ast instanceof Ast.Recurse) {
       return recurse(ast);
+    }
+    if (ast instanceof Ast.Binary && binder.update((Ast.Binary) ast) != null) {
+      return lower(binder.update((Ast.Binary) ast));
     }
     return built(ast);
   }
@@ -700,7 +711,22 @@ public final class Resolver {
       case GETPATH -> withArgument(c, Paths.GETPATH);
       case SETPATH -> withArguments(c, Paths.SETPATH);
       case DELPATHS -> withArgument(c, Paths.DELPATHS);
+      case PATH -> new PathOf(at, lower(c.args().getFirst()), PathEdits.FORMAT);
+      case MODIFY -> new Update(at, Update.Kind.MODIFY, lower(c.args().getFirst()), lower(c.args().get(1)), PathEdits.FORMAT);
+      case ASSIGN -> assign(c);
     };
+  }
+
+  /**
+   * {@code _assign(paths; $value)}, builtin.jq's {@code reduce path(paths) as $p (.; setpath($p; $value))}: an ASSIGN
+   * Update of {@code paths} for each result of {@code $value} on the input, which is bound around it as an operator's
+   * operand is, or passed as it is when it is an Identity, Const or Var.
+   */
+  private Node assign(Ast.Call c) {
+    Node paths = lower(c.args().getFirst());
+    Node value = lower(c.args().get(1));
+    int slot = operandSlot(value);
+    return bind(value, slot, new Update(here(c.source()), Update.Kind.ASSIGN, paths, argument(value, slot), PathEdits.FORMAT));
   }
 
   /**
@@ -1000,11 +1026,11 @@ public final class Resolver {
               yield f.target();
             }
             case Ast.StringField f -> {
-              steps.push(keyed(here(f.source()), here(f.source()), f.name(), f.optional() ? Index.QUIET : Index.PLAIN));
+              steps.push(keyed(here(f.source()), here(f.source()), f.name(), f.optional()));
               yield f.target();
             }
             case Ast.Index i -> {
-              steps.push(keyed(here(i.source()), here(dotted(i.target(), i.source())), i.index(), i.optional() ? Index.QUIET : Index.PLAIN));
+              steps.push(keyed(here(i.source()), here(dotted(i.target(), i.source())), i.index(), i.optional()));
               yield i.target();
             }
             case Ast.Each e -> {
@@ -1119,7 +1145,7 @@ public final class Resolver {
             reads.add(((Stage) step).read());
           }
           String name = new String(text.bytes(), span.start(), span.end() - span.start(), StandardCharsets.UTF_8);
-          nodes.add(new Intrinsic(span, new Operation(name, new StepRun(reads)), List.of()));
+          nodes.add(new Intrinsic(span, new Operation(name, new StepRun(reads), first.op().facts()), List.of()));
         } else {
           // A short run, or one link that is no such step.
           end = Math.max(end, i + 1);
@@ -1156,7 +1182,7 @@ public final class Resolver {
 
   /** A field read: one result from its input alone. */
   private static Stage read(Source own, String name, Field field) {
-    return new Stage(own, own, new Operation(name, field), List.of(), field);
+    return new Stage(own, own, new Operation(name, field, Declared.step(PathRule.KEY)), List.of(), field);
   }
 
   /** The Source of a bracket step that stands alone on the leading dot of {@code .[...]}: the dot too. */
@@ -1169,14 +1195,14 @@ public final class Resolver {
    * chain's first: the key lowered now and bound outside the target unless it is a Const or a Var; a Const key makes
    * the step one of one result or none.
    */
-  private Peeled keyed(Source own, Source alone, Ast keyAst, Operation op) {
+  private Peeled keyed(Source own, Source alone, Ast keyAst, boolean quiet) {
     Node key = lower(keyAst);
     int slot = slotFor(key);
+    Operation op = quiet ? Index.QUIET : Index.PLAIN;
     Fn0 read = null;
     if (key instanceof Const k) {
-      Fn1 fn = (Fn1) op.form();
-      Object constant = k.value();
-      read = (state, in) -> fn.apply(state, in, constant);
+      op = Index.of(k.value(), quiet);
+      read = ConstantStep.of((Fn1) op.form(), k.value());
     }
     Stage stage = new Stage(own, alone, op, List.of(argument(key, slot)), read);
     return slot == NO_SLOT ? stage : new Bound(List.of(key), List.of(slot), stage);
@@ -1194,10 +1220,7 @@ public final class Resolver {
     Operation op = s.optional() ? Slice.QUIET : Slice.PLAIN;
     Fn0 read = null;
     if (from instanceof Const a && to instanceof Const b) {
-      Fn2 fn = (Fn2) op.form();
-      Object first = a.value();
-      Object last = b.value();
-      read = (state, in) -> fn.apply(state, in, first, last);
+      read = ConstantStep.of((Fn2) op.form(), a.value(), b.value());
     }
     Stage stage = new Stage(here(s.source()), here(dotted(s.target(), s.source())), op, List.of(argument(from, fromSlot), argument(to, toSlot)), read);
     List<Node> values = new ArrayList<>();
@@ -1487,7 +1510,7 @@ public final class Resolver {
     Node init = lower(r.init());
     int state = slots++;
     Node source = lower(r.input());
-    Node each = bound(r.source(), source, r.patterns(), () -> advance(state, r.update()));
+    Node each = bound(r.source(), source, Tracking.PATH, r.patterns(), () -> advance(state, r.update()));
     Source at = here(r.source());
     return pipe(new Reduce(at, init, state, each), state(at));
   }
@@ -1505,6 +1528,7 @@ public final class Resolver {
         bound(
             f.source(),
             source,
+            f.patterns().size() == 1 && f.patterns().getFirst() instanceof Ast.VarPattern ? Tracking.ITEM : Tracking.PATH,
             f.patterns(),
             () -> {
               Node advance = advance(state, f.update());
@@ -1605,18 +1629,22 @@ public final class Resolver {
    */
   private Node binding(Ast.Bind b) {
     Node value = lower(b.value());
-    return bound(b.source(), value, b.patterns(), () -> lower(b.body()));
+    return bound(b.source(), value, Tracking.VALUE, b.patterns(), () -> lower(b.body()));
   }
 
   /**
-   * {@code value}, lowered already, bound to a slot of its own and taken apart by {@code patterns} around the node
-   * {@code body} lowers in the patterns' scope: a Bind for one pattern, an AltBind for a {@code ?//} chain.
-   * {@code E as p | body} and the source and pattern of a {@code reduce} or {@code foreach} lower so.
+   * {@code value}, lowered already, bound to a slot of its own with {@code tracking} and taken apart by {@code
+   * patterns} around the node {@code body} lowers in the patterns' scope: a Bind for one pattern, an AltBind for a
+   * {@code ?//} chain. {@code E as p | body} (VALUE) and the source and pattern of a {@code reduce} (PATH) or {@code
+   * foreach} (ITEM for {@code as $name}, PATH otherwise) lower so; each index step of a pattern is PATH, so in a path
+   * variant it raises on a value that has no path, as in jq.
    */
-  private Node bound(Source source, Node value, List<Ast.Pattern> patterns, Supplier<Node> body) {
+  private Node bound(Source source, Node value, Tracking tracking, List<Ast.Pattern> patterns, Supplier<Node> body) {
     int slot = slots++;
     Source at = here(source);
-    return patterns.size() == 1 ? destructure(at, value, slot, patterns.getFirst(), body) : alternatives(at, value, slot, patterns, body);
+    return patterns.size() == 1
+        ? destructure(at, value, tracking, slot, patterns.getFirst(), body)
+        : alternatives(at, value, tracking, slot, patterns, body);
   }
 
   /**
@@ -1624,14 +1652,14 @@ public final class Resolver {
    * first store, as the Binder bound it. {@code E as $x | body} is so one Bind; past {@link #BIND_RUN} Binds the value
    * and the steps are one Binds ({@link #nest}).
    */
-  private Node destructure(Source source, Node value, int slot, Ast.Pattern pattern, Supplier<Node> lowerBody) {
+  private Node destructure(Source source, Node value, Tracking tracking, int slot, Ast.Pattern pattern, Supplier<Node> lowerBody) {
     Env outer = env;
     Match match = new Match();
     match(pattern, slot, match);
     Node body = lowerBody.get();
     env = outer;
     List<Step> steps = new ArrayList<>(match.steps.size() + 1);
-    steps.add(new Step(value, slot, source));
+    steps.add(new Step(value, tracking, slot, source));
     steps.addAll(match.steps);
     return nest(source, steps, body);
   }
@@ -1642,7 +1670,7 @@ public final class Resolver {
    * slot takes the slot of the name's latest store, or, for a name the alternative never stores, the slot of one Const
    * null bound around the chain: jq-core never passes -1, since query-core's null is no jq value.
    */
-  private Node alternatives(Source source, Node value, int slot, List<Ast.Pattern> patterns, Supplier<Node> lowerBody) {
+  private Node alternatives(Source source, Node value, Tracking tracking, int slot, List<Ast.Pattern> patterns, Supplier<Node> lowerBody) {
     Map<String, Object> groups = binder.groups(patterns);
     Env outer = env;
     List<Alternative> alternatives = new ArrayList<>();
@@ -1672,7 +1700,7 @@ public final class Resolver {
     }
     Node body = lowerBody.get();
     env = outer;
-    Node chain = new AltBind(source, value, slot, alternatives, groupSlots, body);
+    Node chain = new AltBind(source, value, tracking, slot, alternatives, groupSlots, body);
     return nil == NO_SLOT ? chain : new Bind(source, new Const(source, JqNull.NULL), nil, chain);
   }
 
@@ -1692,7 +1720,7 @@ public final class Resolver {
           Ast.Pattern element = a.elements().get(i);
           Source place = here(element.source());
           Const at = new Const(place, LiteralNumber.ofLexeme(Integer.toString(i)));
-          match(element, step(index(level, at, place), place, match), match);
+          match(element, step(index(level, at, place), Tracking.PATH, place, match), match);
         }
       }
       case Ast.ObjectPattern o -> {
@@ -1700,8 +1728,9 @@ public final class Resolver {
           Node key = key(entry.key());
           Source place = here(entry.source());
           Source keyAt = here(key.source());
-          Node read = key instanceof Const || key instanceof Var ? key : new Var(keyAt, step(pipe(new Var(keyAt, level), key), place, match));
-          int value = step(index(level, read, place), place, match);
+          Node read =
+              key instanceof Const || key instanceof Var ? key : new Var(keyAt, step(pipe(new Var(keyAt, level), key), Tracking.VALUE, place, match));
+          int value = step(index(level, read, place), Tracking.PATH, place, match);
           if (entry.key() instanceof Ast.VarKey k) {
             store(k.name(), k, value, match);
           }
@@ -1719,16 +1748,17 @@ public final class Resolver {
     env = new Env(declaration, slot, null, env);
   }
 
-  /** A new step of {@code match} that binds {@code value}; its slot. */
-  private int step(Node value, Source source, Match match) {
+  /** A new step of {@code match} that binds {@code value} with {@code tracking}; its slot. */
+  private int step(Node value, Tracking tracking, Source source, Match match) {
     int slot = slots++;
-    match.steps.add(new Step(value, slot, source));
+    match.steps.add(new Step(value, tracking, slot, source));
     return slot;
   }
 
   /** The level's value indexed by the atomic {@code key}, jq's non-quiet {@code INDEX}. */
   private Node index(int level, Node key, Source source) {
-    return pipe(new Var(source, level), new Intrinsic(source, Index.PLAIN, List.of(key)));
+    Operation op = key instanceof Const k ? Index.of(k.value(), false) : Index.PLAIN;
+    return pipe(new Var(source, level), new Intrinsic(source, op, List.of(key)));
   }
 
   /**
@@ -1738,16 +1768,18 @@ public final class Resolver {
   private static Node nest(Source source, List<Step> steps, Node body) {
     if (steps.size() > BIND_RUN) {
       List<Node> values = new ArrayList<>(steps.size());
+      List<Tracking> trackings = new ArrayList<>(steps.size());
       List<Integer> stepSlots = new ArrayList<>(steps.size());
       for (Step step : steps) {
         values.add(step.value());
+        trackings.add(step.tracking());
         stepSlots.add(step.slot());
       }
-      return new Binds(source, values, stepSlots, body);
+      return new Binds(source, values, trackings, stepSlots, body);
     }
     for (int i = steps.size() - 1; i >= 0; i--) {
       Step step = steps.get(i);
-      body = new Bind(step.source(), step.value(), step.slot(), body);
+      body = new Bind(step.source(), step.value(), step.tracking(), step.slot(), body);
     }
     return body;
   }

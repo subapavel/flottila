@@ -35,7 +35,8 @@ public final class PreludeSignatures {
           "debug/1", "INDEX/2", "INDEX/1", "JOIN/2", "JOIN/3", "JOIN/4", "IN/1", "IN/2");
 
   /** The prelude definitions an engine native replaces. */
-  public static final Set<String> REPLACED = Set.of("flatten/0", "flatten/1", "inputs/0", "to_entries/0");
+  public static final Set<String> REPLACED =
+      Set.of("flatten/0", "flatten/1", "inputs/0", "to_entries/0", "_modify/2", "_assign/2");
 
   /**
    * The definitions whose call {@code name(.;…)} lifts a recursive prelude group to a function at #110 (ADR-0042
@@ -43,27 +44,23 @@ public final class PreludeSignatures {
    * while/2, until/2, repeat/1 and combinations/0 are in a recursive group, and range/3 (two calls of while/2) and
    * combinations/1 (one of combinations/0) call one. Each reaches exactly one recursive definition, so each call lifts
    * one function. They left {@link #STUBS} at #110; tostream/0 and walk/1, also recursive, and paths/0 and paths/1,
-   * which call recurse/0, stay there for spec 3's {@code path/1} and update operators.
+   * which call recurse/0, left it with {@code path/1} and the update operators, each lifting one function too.
    */
   public static final Set<String> LIFTED =
-      Set.of("recurse/0", "recurse/1", "recurse/2", "_flatten/1", "while/2", "until/2", "repeat/1", "combinations/0", "range/3", "combinations/1");
+      Set.of(
+          "recurse/0", "recurse/1", "recurse/2", "_flatten/1", "while/2", "until/2", "repeat/1", "combinations/0", "range/3",
+          "combinations/1", "tostream/0", "walk/1", "paths/0", "paths/1");
 
   /**
    * The definitions whose call {@code name(.;…)} compiles to a Stub at #110, each for the first reason its body reaches
    * (read from builtin.jq by the test-author):
    *
    * <ul>
-   *   <li>a recursive group that also reaches spec 3's paths: tostream/0 and walk/1 ({@code path/1}, {@code getpath},
-   *       {@code map_values}), and paths/0 and paths/1, which call recurse/0 inside {@code path/1}. The other ten
-   *       recursive ones ({@link #LIFTED}) left at #110 (ADR-0042 amendment for #110);
    *   <li>a replaced definition, whose native is unbuilt: inputs/0 (spec 5);
-   *   <li>spec 3's paths: {@code path/1} and the update and assignment operators (del, _assign, _modify,
-   *       map_values, pick, INDEX/1, INDEX/2);
-   *   <li>the regex families: sub/2, sub/3, gsub/2 and gsub/3, whose bodies reach the update operators;
    *   <li>spec 7's host builtins: {@code halt_error/1}, {@code debug/0} (halt_error/0, debug/1).
    * </ul>
    *
-   * <p>The 88 others compile. 61 lift no function: error/1, map, select, add/0, add/1, abs, nulls, values, range/1, limit, skip, first/0,
+   * <p>The 103 others compile. 61 lift no function: error/1, map, select, add/0, add/1, abs, nulls, values, range/1, limit, skip, first/0,
    * first/1, isempty, all/0..2, any/0..2, nth/1, nth/2, last/0, JOIN/2..4, IN/1, IN/2 with the natives built before
    * #71 ({@code empty}, {@code not}, {@code error/0}, {@code range/2}) and the constructs of #63 to #70; since #72's
    * natives ({@code type}, {@code length}, {@code tostring}, {@code has}, {@code keys_unsorted}, {@code isinfinite},
@@ -82,13 +79,13 @@ public final class PreludeSignatures {
    * split/2, which RegexTest and diff/regex.cases run. The date natives moved four out, none lifting a function:
    * fromdateiso8601, todateiso8601, fromdate and todate, which DatesTest and diff/dates.cases run. The path natives
    * ({@code getpath}, {@code setpath}, {@code delpaths}) moved two more out, neither lifting a function:
-   * truncate_stream/1 and fromstream/1, which jq's own tests run through the oracle.
+   * truncate_stream/1 and fromstream/1, which jq's own tests run through the oracle. {@code path/1} and the update
+   * operators moved fifteen out: del/1, _assign/2, _modify/2 (two replaced definitions, whose natives are built now),
+   * map_values/1, pick/1, INDEX/1, INDEX/2, sub/2, sub/3, gsub/2 and gsub/3, none lifting a function, and tostream/0,
+   * walk/1, paths/0 and paths/1, each lifting one ({@link #LIFTED}); diff/path-update.cases runs map_values, del,
+   * pick, walk and paths, and jq's own tests run the others through the oracle.
    */
-  public static final Set<String> STUBS =
-      Set.of(
-          "halt_error/0", "del/1", "_assign/2", "_modify/2", "map_values/1", "paths/0", "paths/1",
-          "sub/3", "sub/2", "gsub/3",
-          "gsub/2", "inputs/0", "tostream/0", "walk/1", "pick/1", "debug/1", "INDEX/2", "INDEX/1");
+  public static final Set<String> STUBS = Set.of("halt_error/0", "inputs/0", "debug/1");
 
   /** The call of {@code signature} with {@code .} for every argument: {@code map(.)}, {@code limit(.; .)}, {@code add}. */
   public static String call(String signature) {

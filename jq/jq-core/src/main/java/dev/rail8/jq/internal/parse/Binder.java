@@ -55,6 +55,9 @@ final class Binder {
    */
   private static final Set<String> PREDEFINED = Set.of("ENV", "ARGS", "JQ_BUILD_CONFIGURATION");
 
+  /** The name of the variable an arithmetic update or {@code //=} binds its value to: no filter can spell it. */
+  private static final String UPDATE_VALUE = "*value";
+
   /** What a variable of a {@code ?//} chain binds to in an alternative that has not stored it yet: a Const null. */
   static final Object UNSTORED = new Object();
 
@@ -111,80 +114,76 @@ final class Binder {
     }
   }
 
-  /**
-   * The built entries of the {@link NativeTable}, one constant a line. Each declares {@code keepsArgs}, which in-place
-   * updates rely on: whether its result may share a container or string with an argument or its input.
-   */
+  /** The built entries of the {@link NativeTable}, one constant a line. */
   enum Native implements Callee {
-    EMPTY("empty", 0, false),
-    ERROR("error", 0, false),
-    NOT("not", 0, false),
-    RANGE("range", 2, false),
-    LENGTH("length", 0, false),
-    TYPE("type", 0, false),
-    TOSTRING("tostring", 0, true),
-    TOJSON("tojson", 0, false),
-    TONUMBER("tonumber", 0, false),
-    LAST("last", 1, true),
-    HAS("has", 1, false),
-    KEYS("keys", 0, true),
-    KEYS_UNSORTED("keys_unsorted", 0, true),
-    TO_ENTRIES("to_entries", 0, true),
-    FLATTEN("flatten", 0, true),
-    FLATTEN_DEPTH("flatten", 1, true),
-    NAN("nan", 0, false),
-    INFINITE("infinite", 0, false),
-    ISNAN("isnan", 0, false),
-    ISINFINITE("isinfinite", 0, false),
-    ISNORMAL("isnormal", 0, false),
-    HAVE_DECNUM("have_decnum", 0, false),
-    HAVE_LITERAL_NUMBERS("have_literal_numbers", 0, false),
-    SORT("sort", 0, true),
-    SORT_BY("_sort_by_impl", 1, true),
-    GROUP_BY("_group_by_impl", 1, true),
-    UNIQUE("unique", 0, true),
-    UNIQUE_BY("_unique_by_impl", 1, true),
-    MIN("min", 0, true),
-    MAX("max", 0, true),
-    MIN_BY("_min_by_impl", 1, true),
-    MAX_BY("_max_by_impl", 1, true),
-    STARTSWITH("startswith", 1, false),
-    ENDSWITH("endswith", 1, false),
-    UTF8BYTELENGTH("utf8bytelength", 0, false),
-    TRIM("trim", 0, true),
-    LTRIM("ltrim", 0, true),
-    RTRIM("rtrim", 0, true),
-    EXPLODE("explode", 0, false),
-    IMPLODE("implode", 0, false),
-    SPLIT("split", 1, false),
-    STRINDICES("_strindices", 1, false),
-    CONTAINS("contains", 1, false),
-    BSEARCH("bsearch", 1, false),
-    BUILTINS("builtins", 0, false),
-    FROMJSON("fromjson", 0, false),
-    TOBOOLEAN("toboolean", 0, false),
-    FORMAT("format", 1, true),
-    MATCH("_match_impl", 3, false),
-    STRPTIME("strptime", 1, false),
-    STRFTIME("strftime", 1, false),
-    STRFLOCALTIME("strflocaltime", 1, false),
-    MKTIME("mktime", 0, false),
-    GMTIME("gmtime", 0, false),
-    LOCALTIME("localtime", 0, false),
-    NOW("now", 0, false),
-    GETPATH("getpath", 1, true),
-    SETPATH("setpath", 2, true),
-    DELPATHS("delpaths", 1, true),
+    EMPTY("empty", 0),
+    ERROR("error", 0),
+    NOT("not", 0),
+    RANGE("range", 2),
+    LENGTH("length", 0),
+    TYPE("type", 0),
+    TOSTRING("tostring", 0),
+    TOJSON("tojson", 0),
+    TONUMBER("tonumber", 0),
+    LAST("last", 1),
+    HAS("has", 1),
+    KEYS("keys", 0),
+    KEYS_UNSORTED("keys_unsorted", 0),
+    TO_ENTRIES("to_entries", 0),
+    FLATTEN("flatten", 0),
+    FLATTEN_DEPTH("flatten", 1),
+    NAN("nan", 0),
+    INFINITE("infinite", 0),
+    ISNAN("isnan", 0),
+    ISINFINITE("isinfinite", 0),
+    ISNORMAL("isnormal", 0),
+    HAVE_DECNUM("have_decnum", 0),
+    HAVE_LITERAL_NUMBERS("have_literal_numbers", 0),
+    SORT("sort", 0),
+    SORT_BY("_sort_by_impl", 1),
+    GROUP_BY("_group_by_impl", 1),
+    UNIQUE("unique", 0),
+    UNIQUE_BY("_unique_by_impl", 1),
+    MIN("min", 0),
+    MAX("max", 0),
+    MIN_BY("_min_by_impl", 1),
+    MAX_BY("_max_by_impl", 1),
+    STARTSWITH("startswith", 1),
+    ENDSWITH("endswith", 1),
+    UTF8BYTELENGTH("utf8bytelength", 0),
+    TRIM("trim", 0),
+    LTRIM("ltrim", 0),
+    RTRIM("rtrim", 0),
+    EXPLODE("explode", 0),
+    IMPLODE("implode", 0),
+    SPLIT("split", 1),
+    STRINDICES("_strindices", 1),
+    CONTAINS("contains", 1),
+    BSEARCH("bsearch", 1),
+    BUILTINS("builtins", 0),
+    FROMJSON("fromjson", 0),
+    TOBOOLEAN("toboolean", 0),
+    FORMAT("format", 1),
+    MATCH("_match_impl", 3),
+    STRPTIME("strptime", 1),
+    STRFTIME("strftime", 1),
+    STRFLOCALTIME("strflocaltime", 1),
+    MKTIME("mktime", 0),
+    GMTIME("gmtime", 0),
+    LOCALTIME("localtime", 0),
+    NOW("now", 0),
+    GETPATH("getpath", 1),
+    SETPATH("setpath", 2),
+    DELPATHS("delpaths", 1),
+    PATH("path", 1),
+    MODIFY("_modify", 2),
+    ASSIGN("_assign", 2),
     ;
 
     private final String signature;
 
-    /** Whether the result may share a container or string with an argument or the input, at any depth. */
-    final boolean keepsArgs;
-
-    Native(String name, int arity, boolean keepsArgs) {
+    Native(String name, int arity) {
       this.signature = name + "/" + arity;
-      this.keepsArgs = keepsArgs;
     }
   }
 
@@ -223,6 +222,9 @@ final class Binder {
 
   /** The names of each {@code ?//} chain, in source order, each with its group declaration. */
   private final Map<List<Ast.Pattern>, Map<String, Object>> groups = new IdentityHashMap<>();
+
+  /** The call each update operator stands for ({@link #asCall}), by identity: what the walk bound in its place. */
+  private final Map<Ast.Binary, Ast> updates = new IdentityHashMap<>();
 
   /** The declarations of the host variables, in their slots' order. */
   private final List<Object> hosts = new ArrayList<>();
@@ -371,6 +373,11 @@ final class Binder {
   /** What {@code reference}, an {@link Ast.Call}, variable reference or {@link Ast.Break} of the filter, binds to. */
   Object binding(Object reference) {
     return bindings.get(reference);
+  }
+
+  /** The call the update operator {@code b} stands for, which the walk bound in its place; null for any other operator. */
+  Ast update(Ast.Binary b) {
+    return updates.get(b);
   }
 
   /** The names of the {@code ?//} chain of {@code patterns}, in source order, each with its group declaration. */
@@ -601,21 +608,45 @@ final class Binder {
   /**
    * {@code l op r}. An arithmetic or comparison operator is jq's call of a C function: its operands are in this level,
    * left first, but jq places their code right first, so their inner levels come right first. {@code and}, {@code or}
-   * and {@code //} are jq's own code, in source order. {@code =} and {@code |=} are calls of builtin.jq's
-   * {@code _assign} and {@code _modify}, whose operands are closures, inner levels; the other update operators run
-   * their value in this level, then pass the paths to {@code _modify} (jq's {@code gen_update}), as in jq 1.8.2.
+   * and {@code //} are jq's own code, in source order. An update operator is walked as the call it stands for
+   * ({@link #asCall}), kept for the Resolver: {@code =} and {@code |=} call {@code _assign} and {@code _modify}, whose
+   * operands are closures, inner levels; the other update operators bind their value in this level, then pass the
+   * paths to {@code _modify}, as in jq 1.8.2.
    */
   private void binary(Ast.Binary b) {
-    BinOp op = b.op();
-    if (inLevel(op)) {
+    if (inLevel(b.op())) {
       operands(b);
-    } else if (op == BinOp.ASSIGN || op == BinOp.UPDATE) {
-      inner(b.left());
-      inner(b.right());
     } else {
-      walk(b.right());
-      inner(b.left());
+      Ast call = asCall(b);
+      updates.put(b, call);
+      walk(call);
     }
+  }
+
+  /**
+   * The call the update operator {@code b} stands for, as jq 1.8.2's parser writes it ({@code gen_update} and {@code
+   * gen_definedor_assign}): {@code l |= r} is {@code _modify(l; r)}, {@code l = r} is {@code _assign(l; r)}, and
+   * {@code l op= r} is {@code r as $v | _modify(l; . op $v)}, {@code //=} with {@code //} for {@code op}, where no
+   * filter can name {@code $v}. Every node of it has {@code b}'s Source.
+   */
+  private static Ast asCall(Ast.Binary b) {
+    Source at = b.source();
+    if (b.op() == BinOp.UPDATE || b.op() == BinOp.ASSIGN) {
+      return new Ast.Call(at, b.op() == BinOp.UPDATE ? "_modify" : "_assign", List.of(b.left(), b.right()));
+    }
+    BinOp leaf =
+        switch (b.op()) {
+          case ADD_UPDATE -> BinOp.ADD;
+          case SUBTRACT_UPDATE -> BinOp.SUBTRACT;
+          case MULTIPLY_UPDATE -> BinOp.MULTIPLY;
+          case DIVIDE_UPDATE -> BinOp.DIVIDE;
+          case MODULO_UPDATE -> BinOp.MODULO;
+          case ALTERNATIVE_UPDATE -> BinOp.ALTERNATIVE;
+          default -> throw new IllegalArgumentException("no update operator: " + b.op());
+        };
+    Ast update = new Ast.Binary(at, leaf, new Ast.Dot(at), new Ast.Var(at, UPDATE_VALUE));
+    Ast modify = new Ast.Call(at, "_modify", List.of(b.left(), update));
+    return new Ast.Bind(at, b.right(), List.of(new Ast.VarPattern(at, UPDATE_VALUE)), modify);
   }
 
   /**

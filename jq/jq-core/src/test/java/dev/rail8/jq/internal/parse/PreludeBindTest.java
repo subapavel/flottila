@@ -41,7 +41,7 @@ class PreludeBindTest {
   }
 
   /**
-   * Each definition but the three a native replaces (their bodies are never live) compiles or is a Stub: no binding
+   * Each definition but those a native replaces (their bodies are never live) compiles or is a Stub: no binding
    * error. A binding error in a prelude body is the Binder's IllegalStateException, which this test does not catch, so
    * it fails with that exception: a binder that does not look in the native table from a prelude body fails at the
    * first definition, halt_error/0 ({@code halt_error/1 is not defined in the prelude's halt_error/0, bytes 16 to 26 of

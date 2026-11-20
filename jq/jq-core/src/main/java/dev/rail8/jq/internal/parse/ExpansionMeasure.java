@@ -271,8 +271,12 @@ final class ExpansionMeasure {
       }
       case Ast.Label l -> parts.add(l.body());
       case Ast.Binary b -> {
-        parts.add(b.left());
-        parts.add(b.right());
+        if (binder.update(b) != null) {
+          parts.add(binder.update(b));
+        } else {
+          parts.add(b.left());
+          parts.add(b.right());
+        }
       }
       case Ast.Neg n -> parts.add(n.operand());
       case Ast.Try t -> {
@@ -454,7 +458,11 @@ final class ExpansionMeasure {
         acc.own(1, 1);
         children(acc, parts, done, 1);
       }
-      case Ast.Binary _ -> {
+      case Ast.Binary b -> {
+        // An update operator lowers as the call it stands for.
+        if (binder.update(b) != null) {
+          return done.get(parts.getFirst());
+        }
         acc.own(1, 4);
         children(acc, parts, done, 3);
       }

@@ -36,10 +36,13 @@ import dev.rail8.jq.internal.value.MergeSort;
 import dev.rail8.jq.internal.value.Numbers;
 import dev.rail8.jq.internal.value.Order;
 import dev.rail8.jq.query.ir.Operation;
+import dev.rail8.jq.query.ir.PathRule;
 import dev.rail8.jq.query.run.Charges;
 import dev.rail8.jq.query.run.FilterException;
 import dev.rail8.jq.query.run.Fn1;
 import dev.rail8.jq.query.run.Fn2;
+import dev.rail8.jq.query.run.Path;
+import dev.rail8.jq.query.run.PathStep;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.value.JqArray;
 import dev.rail8.jq.value.JqNull;
@@ -73,22 +76,49 @@ public final class Paths {
   static final int MAX_DEPTH = 10_000;
 
   /** {@code getpath/1}. */
-  public static final Operation GETPATH =
-      new Operation("getpath", (Fn1) (state, in, path) -> getpath(state, (JqValue) in, (JqValue) path));
+  public static final Operation GETPATH = new Operation("getpath", new GetPath(), Declared.step(PathRule.KEY_LIST));
 
   /** {@code setpath/2}. */
   public static final Operation SETPATH =
       new Operation(
-          "setpath", (Fn2) (state, in, path, value) -> setpath(state, (JqValue) in, (JqValue) path, (JqValue) value));
+          "setpath", (Fn2) (state, in, path, value) -> setpath(state, (JqValue) in, (JqValue) path, (JqValue) value), Declared.KEEPS);
 
   /** {@code delpaths/1}. */
   public static final Operation DELPATHS =
-      new Operation("delpaths", (Fn1) (state, in, paths) -> delpaths(state, (JqValue) in, (JqValue) paths));
+      new Operation("delpaths", (Fn1) (state, in, paths) -> delpaths(state, (JqValue) in, (JqValue) paths), Declared.KEEPS);
 
   /** The first capacity of an object built entry by entry. */
   private static final int ROOM = 4;
 
   private Paths() {}
+
+  /**
+   * {@code getpath/1}: in a path variant its result's path is its input's with each key of its argument added in turn,
+   * as jq's {@code _jq_path_append} concatenates them; on an untracked input its result is untracked, with no error.
+   */
+  private static final class GetPath implements Fn1, PathStep {
+    @Override
+    public Object apply(RunState state, Object in, Object path) {
+      return getpath(state, (JqValue) in, (JqValue) path);
+    }
+
+    /** Never asked: the result of getpath on an untracked input is untracked, with no error. */
+    @Override
+    public FilterException untracked(RunState state, Object in, Object key, Object end) {
+      throw new IllegalStateException("getpath raises no error on an input that is not found in a path variant's input");
+    }
+
+    /** {@code at} with each key of {@code keys}, the array {@link #apply} read along, added in order. */
+    @Override
+    public Path extend(RunState state, Path at, Object in, Object keys, Object end) {
+      Members list = (Members) keys;
+      Path p = at;
+      for (int c = list.first(); c != -1; c = list.next(state, c)) {
+        p = p.child(list.member(state, c));
+      }
+      return p;
+    }
+  }
 
   /** jq's {@code jv_getpath}: {@code root} read at each key of {@code path} in turn; the first error ends the walk. */
   static JqValue getpath(RunState state, JqValue root, JqValue path) {
@@ -222,9 +252,14 @@ public final class Paths {
     }
     int n = Slice.length(state, array);
     if (n > MAX_DEPTH) {
-      throw error("Path too deep");
+      throw tooDeep();
     }
     return n;
+  }
+
+  /** jq's error for a path of more keys than a native takes. */
+  static FilterException tooDeep() {
+    return error("Path too deep");
   }
 
   /** jq's {@code jv_set(t, k, null)} where {@code k} is no slice, for its error only: it builds nothing. */

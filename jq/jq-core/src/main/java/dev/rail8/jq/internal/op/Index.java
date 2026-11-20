@@ -24,6 +24,7 @@
  */
 package dev.rail8.jq.internal.op;
 
+import dev.rail8.jq.internal.json.ErrorDump;
 import dev.rail8.jq.internal.value.ArrayView;
 import dev.rail8.jq.internal.value.BuiltArray;
 import dev.rail8.jq.internal.value.DoubleNumber;
@@ -32,8 +33,11 @@ import dev.rail8.jq.internal.value.Keyed;
 import dev.rail8.jq.internal.value.Members;
 import dev.rail8.jq.internal.value.Numbers;
 import dev.rail8.jq.query.ir.Operation;
+import dev.rail8.jq.query.ir.PathRule;
 import dev.rail8.jq.query.run.CallForm;
+import dev.rail8.jq.query.run.FilterException;
 import dev.rail8.jq.query.run.Fn1;
+import dev.rail8.jq.query.run.PathStep;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.value.JqArray;
 import dev.rail8.jq.value.JqBool;
@@ -48,14 +52,28 @@ import dev.rail8.jq.value.JqValue;
  * and a number give the element, or null for NaN or past either end, a fraction cut toward zero and a negative index
  * counted from the end; an array or a string and an object key give the slice of the key's {@code "start"} and {@code
  * "end"} ({@link Slice}); null and a string, number or object key give null; an array and an array key give the key's
- * {@link #indexes}. Any other pair is jq's error, which the quiet variant {@code .[k]?} drops.
+ * {@link #indexes}. Any other pair is jq's error, which the quiet variant {@code .[k]?} drops. In a path variant it
+ * adds its key to the path, as given. Its operations differ by their path rule alone: KEY for a constant string key,
+ * INDEX for a constant number and DYNAMIC for any other key.
  */
-public final class Index implements Fn1 {
-  /** {@code .[k]}. */
-  public static final Operation PLAIN = new Operation(".[k]", new Index(false));
+public final class Index implements Fn1, PathStep {
+  /** {@code .[k]}, a key known at run time or a constant that is neither a string nor a number. */
+  public static final Operation PLAIN = new Operation(".[k]", new Index(false), Declared.step(PathRule.DYNAMIC));
 
-  /** {@code .[k]?}. */
-  public static final Operation QUIET = new Operation(".[k]?", new Index(true));
+  /** {@code .[k]?}, as {@link #PLAIN}. */
+  public static final Operation QUIET = new Operation(".[k]?", new Index(true), Declared.step(PathRule.DYNAMIC));
+
+  /** {@code .["k"]}, a constant string key. */
+  private static final Operation KEY = new Operation(".[k]", PLAIN.form(), Declared.step(PathRule.KEY));
+
+  /** {@code .["k"]?}, a constant string key. */
+  private static final Operation KEY_QUIET = new Operation(".[k]?", QUIET.form(), Declared.step(PathRule.KEY));
+
+  /** {@code .[n]}, a constant number. */
+  private static final Operation AT = new Operation(".[k]", PLAIN.form(), Declared.step(PathRule.INDEX));
+
+  /** {@code .[n]?}, a constant number. */
+  private static final Operation AT_QUIET = new Operation(".[k]?", QUIET.form(), Declared.step(PathRule.INDEX));
 
   /** {@code .[k]} for the natives that read along a path. */
   private static final Index READ = new Index(false);
@@ -124,6 +142,21 @@ public final class Index implements Fn1 {
       return CallForm.NONE;
     }
     throw NavigationErrors.cannotIndex(state, t, k);
+  }
+
+  /** {@code .[k]}, or {@code .[k]?} when {@code quiet}, by the constant {@code key}: its rule by the key's kind. */
+  public static Operation of(Object key, boolean quiet) {
+    return switch (key) {
+      case JqString _ -> quiet ? KEY_QUIET : KEY;
+      case JqNumber _ -> quiet ? AT_QUIET : AT;
+      default -> quiet ? QUIET : PLAIN;
+    };
+  }
+
+  /** jq's error for indexing {@code in}, an input not found in a path variant's input, by {@code key}. */
+  @Override
+  public FilterException untracked(RunState state, Object in, Object key, Object end) {
+    return NavigationErrors.invalidAccess(state, ErrorDump.of(state, (JqValue) key), (JqValue) in);
   }
 
   /** jq's {@code jv_get}: {@code t[k]}, or jq's error. */

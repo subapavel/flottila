@@ -66,11 +66,11 @@ public final class NumberTests {
 
   /** The operation {@code name} whose one result is {@code value}, shared by every run as a constant is. */
   private static Operation constant(String name, Object value) {
-    return new Operation(name, (Fn0) (state, in) -> value);
+    return new Operation(name, (Fn0) (state, in) -> value, Declared.FRESH);
   }
 
   /** The operation {@code name}: whether its input is a number whose double passes {@code test}. */
   private static Operation test(String name, DoublePredicate test) {
-    return new Operation(name, (Fn0) (state, in) -> in instanceof JqNumber n && test.test(Numbers.doubleValue(state, n)) ? JqBool.TRUE : JqBool.FALSE);
+    return new Operation(name, (Fn0) (state, in) -> in instanceof JqNumber n && test.test(Numbers.doubleValue(state, n)) ? JqBool.TRUE : JqBool.FALSE, Declared.FRESH);
   }
 }

@@ -266,7 +266,7 @@ class PathVariantTest {
     Node same = ListPaths.call("same", PathRule.SAME, in -> in);
     assertThat(pathOf(pipe(field("a"), same), object())).isEqualTo("results [[a]], answer true, steps 1, built 0, log []");
     FnN sameOfMany = (state, in, args) -> in;
-    Node sameN = new Intrinsic(AT, new Operation("sameN", sameOfMany, new Facts(PathRule.SAME)), List.of(c(1L), c(2L), c(3L)));
+    Node sameN = new Intrinsic(AT, new Operation("sameN", sameOfMany, new Facts(PathRule.SAME, true)), List.of(c(1L), c(2L), c(3L)));
     assertThat(pathOf(pipe(field("a"), sameN), object())).isEqualTo("results [[a]], answer true, steps 1, built 0, log []");
   }
 
