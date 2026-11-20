@@ -402,7 +402,9 @@ CPI). A call needs no network, and the body is not copied on its way in. The moc
   same place in the journal.
 - **Tests.** `rail8 test` runs the real `direct` component, so a call runs the flow of the package
   or of a dependency that serves the address. `sent`, `retries`, `dlq` and the wait for the work
-  queue count every flow the case's message reached, and a real call counts as a send. A case's
+  queue count every flow the case's message reached, and a real call counts as a send. A case also
+  waits until no delivery of the node is in flight, so an at-most-once callee that waits on a timer,
+  such as a retry's backoff, finishes before the case settles. A case's
   mock may stand in for a `direct` endpoint like any other. A test of a flow fed by `direct` sends
   its fixture through a `direct` producer, as a caller at depth 0 would.
 

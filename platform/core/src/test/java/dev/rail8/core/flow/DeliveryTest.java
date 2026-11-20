@@ -1360,6 +1360,26 @@ class DeliveryTest {
         assertEquals(List.of("ingress", "partner"), rowNames(in.id()));
     }
 
+    /** An at-most-once run is in flight from its Accepted until its trail closed, and none is before it or after. */
+    @Test
+    void anAtMostOnceRunIsInFlightUntilItsTrailClosed() {
+        Delivery delivery = delivery(onePermit("at-most-once"));
+        Envelope in = ingressInOwnStore(ORDER);
+        List<Thread> runs = new CopyOnWriteArrayList<>();
+        partner.replyWith(e -> { runs.add(Thread.currentThread()); return e; });
+        own.hold();
+        assertEquals(0, delivery.inFlight());
+
+        assertEquals(new Ack.Accepted(in.id()), delivery.apply(in).await());
+        until(() -> own.held() == 1 && runs.size() == 1 && endedOrWaiting(runs.get(0)),
+                () -> "the run past its pipeline, its trail's persist asked: held " + own.held() + ", runs " + runs);
+        assertEquals(1, delivery.inFlight(), "accepted, its trail still closing");
+
+        own.release();
+        assertTrue(settled(delivery.stop(Duration.ofHours(1))).succeeded(), "it landed once its trail closed");
+        assertEquals(0, delivery.inFlight());
+    }
+
     /**
      * FIX-264 (from the replay's permit case): a sync run that fails holds its flow permit until its trail closed, as a run that
      * replies does ({@link #aSyncReplyIsAnsweredBeforeItsBodiesPersistAndThePermitReturnsAfter}): the caller has its failure while
