@@ -1,0 +1,43 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case path-item/nested-path-of-item
+def b7d4569492cd
+rc 0
+stdout "Invalid path expression with result [5]"\n
+stderr
+end
+
+case path-item/path-of-item-alone
+def 0d5c619f2e30
+rc 0
+stdout "Invalid path expression with result [5]"\n
+stderr
+end
+
+case path-item/update-of-item
+def f8b8caddbe8c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Invalid path expression with result "E"\n
+end
+
+case path-item/closure-under-callee-path
+def eda519d23b83
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Invalid path expression with result [5]\n
+end
+
+case path-item/deviation-closure-argument
+def ab7e3014d76e
+rc 0
+stdout [[0],[1]]\n
+stderr
+end
+
+case path-item/deviation-lifted-capture
+def 00be4ea8fd40
+rc 0
+stdout [[0],[1]]\n
+stderr
+end

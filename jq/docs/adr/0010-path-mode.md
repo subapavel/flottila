@@ -1,6 +1,6 @@
 # Path mode is a second variant over parent-linked paths
 
-Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); amended by ADR-0022 (issue #8: a licensed WALK writes in place); bound values by `Tracking` (F-59, ADR-0048), walk state in hidden frame slots (F-62), path variants through calls and on the driver (spec 3 grilling rounds 1–2)
+Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); amended by ADR-0022 (issue #8: a licensed WALK writes in place); bound values by `Tracking` (F-59, ADR-0048), walk state in hidden frame slots (F-62), path variants through calls and on the driver (spec 3 grilling rounds 1–2), where a foreach item keeps its path (owner-proxy, 2026-11-20, #297)
 
 Path mode is a second variant of the nodes. It is built only for the nodes that a TRACKED
 `PathOf` or `Update` can reach (ADR-0007; WALK may run as TRACKED).
@@ -14,7 +14,12 @@ Path mode is a second variant of the nodes. It is built only for the nodes that 
     and `ParamCall` pass it on unchanged. Their conditions run in value mode, and a bound value
     as its `Tracking` says (ADR-0048, F-59).
   - `foreach … as $name` binds its item as a (value, path) pair, the path in a hidden frame slot
-    (Tracking ITEM); a destructured item is untracked (F-59).
+    (Tracking ITEM); a destructured item is untracked (F-59). A Var of the item passes that path on
+    only when nothing separates it from its bind in the IR after inlining: no `PathOf` body, no
+    `Update` lhs, no closure argument of a real `Call` and no lifted function body. Everywhere else
+    it is untracked. A path counts only under the `PathOf` or `Update` run that made it, so a nested
+    `path($x)` raises as in jq (owner-proxy, 2026-11-20, issue #297). Relaxing the rule later, with
+    a root per run, only turns errors into results.
   - An `Intrinsic` follows its operation's path rule (none, step or same; ADR-0005). For example,
     `{"a":1} | path(.a|debug)` gives `["a"]`.
   - The results of a `Try` handler are untracked: `[path(try error("x") catch .)]` raises.
