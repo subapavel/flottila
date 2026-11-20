@@ -1,0 +1,50 @@
+# Differential cases (ADR-0020) of #298: where a `foreach … as $x` item keeps its path. A Var of the item passes its
+# path on only when nothing separates it from its bind: no `path()` body, no update lhs, no closure argument of a
+# real call and no lifted function body (ADR-0048, ADR-0010). Everywhere else it is untracked, so a nested `path($x)`
+# raises as in jq, and the two deviation cases raise where jq gives a path (DEVIATIONS.md). Format:
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in path-item.rec, written by
+# scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+case path-item/nested-path-of-item
+arg -c
+filter try path(foreach .[] as $x (0; 1; error(path($x)))) catch .
+stdin [[5],[6]]\n
+end
+
+case path-item/path-of-item-alone
+arg -c
+filter try (foreach .[] as $x (0; 1; error(path($x)))) catch .
+stdin [[5],[6]]\n
+end
+
+case path-item/update-of-item
+arg -c
+filter path(foreach .[] as $x (.; .; try ($x |= 1) catch "E"))
+stdin [[5],[6]]\n
+end
+
+case path-item/closure-under-callee-path
+arg -c
+filter def r(g): path(g), (select(false)|r(g)); [path(foreach .[] as $x (0;1; r($x)))]
+stdin [[5],[6]]\n
+end
+
+case path-item/deviation-closure-argument
+arg -c
+filter def r(g): g, (select(false)|r(g)); [path(foreach .[] as $x (0;1; r($x)))]
+stdin [[5],[6]]\n
+deviation item-apart
+engine-rc 5
+engine-stdout
+engine-stderr jq: error (at <stdin>:1): Invalid path expression with result [5]\n
+end
+
+case path-item/deviation-lifted-capture
+arg -c
+filter [path(foreach .[] as $x (0;1; def r: $x, (select(false)|r); r))]
+stdin [[5],[6]]\n
+deviation item-apart
+engine-rc 5
+engine-stdout
+engine-stderr jq: error (at <stdin>:1): Invalid path expression with result [5]\n
+end

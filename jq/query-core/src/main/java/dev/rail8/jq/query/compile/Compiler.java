@@ -75,8 +75,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Compiles a program: verifies it, specialises it in the optimised compile and verifies it again, freezes it, finds its
@@ -90,6 +92,10 @@ import java.util.Map;
  * <p>A program that holds a PathOf or an Update has hidden cells besides, after a frame's other cells: in a function's
  * frame first the cell of its input's path, then in every frame one cell per ITEM bind that runs in it, which keeps the
  * path of the bind's slot. A program that holds neither has none.
+ *
+ * <p>A Var of an ITEM bind's slot passes that path on only when nothing separates it from its bind: no PathOf body, no
+ * Update lhs, no closure argument of a Call and no lifted function body lies between them. Everywhere else it is
+ * untracked, so a path counts only under the PathOf or Update run that made it.
  */
 public final class Compiler {
   /** The shell of each function of the program, made before any body is built, so a call links to its callee. */
@@ -128,6 +134,9 @@ public final class Compiler {
 
   /** Whether the program holds a PathOf or an Update, so that its frames have hidden cells. */
   private final boolean paths;
+
+  /** The slots of the ITEM binds in scope here that nothing separates from the node being built. */
+  private Set<Integer> near = new HashSet<>();
 
   private Compiler(LiftedFunction[] shells, Map<Node, List<Integer>> closures, Nesting nesting, Numbering numbering, Facts facts, CallKinds kinds, boolean paths) {
     this.paths = paths;
@@ -207,13 +216,13 @@ public final class Compiler {
     for (int i = 0; i < shells.length; i++) {
       compiler.region = new Region(null, null, slots[i + 1], items.get(i));
       compiler.body = i;
-      shells[i].define(compiler.interpreter(functions.get(i).body()));
+      shells[i].define(compiler.apart(functions.get(i).body()));
     }
     Map<Integer, Integer> main = paths ? items(frozen.main(), slots[0]) : Map.of();
     compiler.region = new Region(null, null, slots[0], main);
     compiler.body = -1;
     Frozen record = new Frozen(frozen, numbering, graph, pass.origin(), pass.specialised(), pass.refused());
-    return new Executable(compiler.interpreter(frozen.main()), slots[0] + main.size(), parameters, facts, kinds, nesting, record);
+    return new Executable(compiler.apart(frozen.main()), slots[0] + main.size(), parameters, facts, kinds, nesting, record);
   }
 
   /** Whether any body of the program {@code numbering} numbers, with {@code functions} functions, holds a PathOf or an Update. */
@@ -256,7 +265,7 @@ public final class Compiler {
       case Const c -> new ConstOp(value, c.value());
       case Pipe p -> new PipeOp(value, interpreter(p.left()), interpreter(p.right()));
       case Comma c -> new CommaOp(value, interpreter(c.left()), interpreter(c.right()));
-      case Bind b -> new BindOp(value, interpreter(b.value()), b.tracking() != Tracking.VALUE, frameCell(b.slot()), region.items().getOrDefault(b.slot(), -1), interpreter(b.body()));
+      case Bind b -> bind(value, b);
       case Binds b -> binds(value, b);
       case Var v -> variable(value, v);
       case Intrinsic i -> intrinsic(value, i);
@@ -278,12 +287,32 @@ public final class Compiler {
         At at = parameter(p.param());
         yield new ParamCallOp(at.level(), at.cell(), nesting.units(p), nesting.starterUnits());
       }
-      case PathOf p -> new PathOfOp(value, interpreter(p.body()), p.paths());
+      case PathOf p -> new PathOfOp(value, apart(p.body()), p.paths());
       case Update u ->
           u.kind() == Update.Kind.MODIFY
-              ? UpdateOp.modify(value, interpreter(u.lhs()), interpreter(u.rhs()), u.paths())
-              : UpdateOp.assign(value, interpreter(u.lhs()), argument(u.rhs()), u.paths());
+              ? UpdateOp.modify(value, apart(u.lhs()), interpreter(u.rhs()), u.paths())
+              : UpdateOp.assign(value, apart(u.lhs()), argument(u.rhs()), u.paths());
     };
+  }
+
+  /** The op of {@code node}, built with no ITEM bind of the nodes around it near. */
+  private Op apart(Node node) {
+    Set<Integer> outer = near;
+    near = new HashSet<>();
+    Op op = interpreter(node);
+    near = outer;
+    return op;
+  }
+
+  /** The Bind {@code b} in the run form {@code value}; an ITEM bind's slot is near in its body. */
+  private Op bind(boolean value, Bind b) {
+    Op bound = interpreter(b.value());
+    boolean item = b.tracking() == Tracking.ITEM && near.add(b.slot());
+    Op body = interpreter(b.body());
+    if (item) {
+      near.remove(b.slot());
+    }
+    return new BindOp(value, bound, b.tracking() != Tracking.VALUE, frameCell(b.slot()), region.items().getOrDefault(b.slot(), -1), body);
   }
 
   /** The cell of {@code slot}, which a node of the running frame binds (the verifier keeps a loop's Advance in it). */
@@ -318,20 +347,16 @@ public final class Compiler {
   }
 
   /**
-   * The hidden cell that keeps the path of {@code slot}, in scope here, in the frame {@link #at} finds it in: the cell of
-   * the ITEM bind that binds it, or -1 for a slot no ITEM bind binds.
+   * The hidden cell that keeps the path of {@code slot}, in scope here: the cell of the ITEM bind that binds it when that
+   * bind is near, which puts it in the running frame, or -1, as in a program without hidden cells.
    */
   private int pathCell(int slot) {
-    Region r = region;
-    while (r.cells() != null && !r.cells().containsKey(slot)) {
-      r = r.outer();
-    }
-    return r.items().getOrDefault(slot, -1);
+    return near.contains(slot) ? region.items().getOrDefault(slot, -1) : -1;
   }
 
   /**
    * A Var in the run form {@code value}: its slot in the running frame, or in a frame further out, and the cell of its
-   * path when an ITEM bind binds it.
+   * path when an ITEM bind binds it and is near.
    */
   private Op variable(boolean value, Var v) {
     At at = at(v.slot());
@@ -378,7 +403,7 @@ public final class Compiler {
     int cells = 0;
     Op op;
     if (own.isEmpty()) {
-      op = interpreter(body);
+      op = apart(body);
     } else {
       Map<Integer, Integer> at = new HashMap<>();
       for (int slot : own) {
@@ -388,7 +413,7 @@ public final class Compiler {
       cells = own.size() + 1 + items.size();
       Region outer = region;
       region = new Region(outer, at, 0, items);
-      op = interpreter(body);
+      op = apart(body);
       region = outer;
     }
     return closed ? ClosureArgument.closed(op, cells, emitDepth) : ClosureArgument.written(op, cells, emitDepth);

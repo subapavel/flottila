@@ -1,6 +1,6 @@
 # Paths and updates in the IR: `PathOf`, `Update` and its Kind, operation `Facts` with one path rule, and `Tracking` on binds
 
-Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 3 rounds 1–2); amends ADR-0005 (kinds 21 and 22, `Update.Kind`, `Facts` on `Operation`), ADR-0009 (`getpath` is KEY_LIST), ADR-0010 (who passes the path on), ADR-0038, ADR-0041 and ADR-0043 (`Tracking` on pattern, loop and `Binds` values) and ADR-0042 (`_modify/2`, `_assign/2`); records F-59 and F-60; amended by the path-mode contract (2026-11-19, owner-proxy, #153)
+Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 3 rounds 1–2); amends ADR-0005 (kinds 21 and 22, `Update.Kind`, `Facts` on `Operation`), ADR-0009 (`getpath` is KEY_LIST), ADR-0010 (who passes the path on), ADR-0038, ADR-0041 and ADR-0043 (`Tracking` on pattern, loop and `Binds` values) and ADR-0042 (`_modify/2`, `_assign/2`); records F-59 and F-60; amended by the path-mode contract (2026-11-19, owner-proxy, #153) and by where an ITEM keeps its path (2026-11-20, owner-proxy, #297)
 
 ADR-0005 names `PathOf` and `Update` (`|=`) and lets each `Operation` fact join with its first
 user (ADR-0034); 2b keeps `Operation` as `(name, form)` (ADR-0045). Spec 3 builds path mode
@@ -51,8 +51,12 @@ observed on 1.8.2 by the architect (probes P1–P6) or the adviser
   - VALUE: the value runs in value mode, as ADR-0010 wrote for every bound value.
   - PATH: the value runs in path mode on the bind's input and its paths are dropped, so a
     navigation step on an untracked value raises by ADR-0010's untracked-step rule.
-  - ITEM: as PATH, and each result's `Path` waits in a hidden frame slot (ADR-0045) that the
-    slot's `Var` passes on in a path variant.
+  - ITEM: as PATH, and each result's `Path` waits in a hidden frame slot (ADR-0045) that the slot's
+    `Var` passes on in a path variant, only when nothing separates it from its bind in the IR after
+    inlining: no `PathOf` body, no `Update` lhs, no closure argument of a real `Call` and no lifted
+    function body. Everywhere else it is untracked. A path counts only under the `PathOf` or
+    `Update` run that made it, so a nested `path($x)` raises as in jq (owner-proxy, 2026-11-20,
+    issue #297). Relaxing the rule later, with a root per run, only turns errors into results.
   - The Resolver sets PATH on a pattern's index steps and on a `reduce` or `foreach` source. It
     sets ITEM on the source of `foreach … as $name`, and VALUE everywhere else. A pattern's first
     step then raises jq's message once per source result, and a later `?//` alternative runs on

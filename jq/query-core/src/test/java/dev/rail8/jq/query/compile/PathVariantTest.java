@@ -65,6 +65,9 @@ class PathVariantTest {
 
   private final ListPaths paths = new ListPaths();
 
+  /** {@code [[5],[6]]}: the input of the foreach item cases. */
+  private static final Object ITEMS = List.of(List.of(5L), List.of(6L));
+
   /** How {@code program} ran on {@code in} in {@code mode} declaring {@code stackBytes}: results, end, steps, built, log. */
   private String ran(Program program, CompileMode mode, long stackBytes, Object in) {
     paths.log.clear();
@@ -398,5 +401,66 @@ class PathVariantTest {
   @Test
   void anUpdateInsideAPathOfIsUntracked() {
     assertThat(pathOf(modify(field("a"), c(1L)), object())).isEqualTo("results [], error invalid path of {a=1}, steps 0, built 0, log [get [a], set [a] 1, end]");
+  }
+
+  /** {@code foreach .[] as $x (0; 1; each)}, its item in slot 1. */
+  private static Node foreachItem(Node each) {
+    return new Foreach(AT, c(0L), 0, new Bind(AT, all(), Tracking.ITEM, 1, pipe(new Advance(AT, 0, c(1L)), each)));
+  }
+
+  /** An Fn0 that raises its input, as {@code error} does. */
+  private static Node error() {
+    return ListPaths.call(
+        "error",
+        PathRule.NONE,
+        in -> {
+          throw new FilterException(in);
+        });
+  }
+
+  /** {@code select(false)}. */
+  private static Node selectFalse() {
+    return new If(AT, c(false), new Identity(AT), nothing(), TRUTH);
+  }
+
+  @Test
+  void anItemBoundOutsideANestedPathOfIsUntrackedThere() {
+    // try path(foreach .[] as $x (0; 1; error(path($x)))) catch .
+    Node outer = new Try(AT, new PathOf(AT, foreachItem(pipe(new PathOf(AT, v(1), paths), error())), paths), new Identity(AT));
+    assertThat(outcome(outer, ITEMS)).isEqualTo("results [invalid path of [5]], answer true, steps 1, built 0, log []");
+    // try (foreach .[] as $x (0; 1; error(path($x)))) catch .: with no path variant around it, the item has no path.
+    Node alone = new Try(AT, foreachItem(pipe(new PathOf(AT, v(1), paths), error())), new Identity(AT));
+    assertThat(outcome(alone, ITEMS)).isEqualTo("results [invalid path of [5]], answer true, steps 1, built 0, log []");
+  }
+
+  @Test
+  void anItemBoundOutsideAnUpdateIsUntrackedInItsLhs() {
+    // path(foreach .[] as $x (.; .; try ($x |= 1) catch "E")): the lhs raises before the edit reads a path, and the
+    // outer PathOf raises on the handler's untracked result.
+    Node each = new Foreach(AT, new Identity(AT), 0, new Bind(AT, all(), Tracking.ITEM, 1, pipe(new Advance(AT, 0, new Identity(AT)), new Try(AT, modify(v(1), c(1L)), c("E")))));
+    assertThat(pathOf(each, ITEMS)).isEqualTo("results [], error invalid path of E, steps 1, built 0, log []");
+  }
+
+  @Test
+  void anItemInAClosureArgumentOfACallIsUntracked() {
+    // def r(g): path(g), (select(false) | r(g)); path(foreach .[] as $x (0; 1; r($x)))
+    Node r = comma(new PathOf(AT, new ParamCall(AT, 0), paths), pipe(selectFalse(), new Call(AT, 0, List.of(new ParamCall(AT, 0)), List.of())));
+    Program inner = new Program(new PathOf(AT, foreachItem(new Call(AT, 0, List.of(v(1)), List.of())), paths), List.of(new Function(AT, 1, 0, r)));
+    // The conservative compile ticks for the item's key, the Call and the ParamCall; the optimised one runs r's copy,
+    // which takes $x as a value parameter, with no ParamCall.
+    assertThat(outcomes(inner, ITEMS)).containsExactly("results [], error invalid path of [5], steps 3, built 0, log []", "results [], error invalid path of [5], steps 2, built 0, log []");
+    // def r(g): g, (select(false) | r(g)); [path(foreach .[] as $x (0; 1; r($x)))], where the reference gives [[0],[1]].
+    Node passes = comma(new ParamCall(AT, 0), pipe(selectFalse(), new Call(AT, 0, List.of(new ParamCall(AT, 0)), List.of())));
+    Program outer = new Program(new PathOf(AT, foreachItem(new Call(AT, 0, List.of(v(1)), List.of())), paths), List.of(new Function(AT, 1, 0, passes)));
+    assertThat(outcomes(outer, ITEMS)).containsExactly("results [], error invalid path of [5], steps 3, built 0, log []", "results [], error invalid path of [5], steps 2, built 0, log []");
+  }
+
+  @Test
+  void anItemALiftedFunctionCapturesIsUntrackedInItsBody() {
+    // [path(foreach .[] as $x (0; 1; def r: $x, (select(false) | r); r))], where the reference gives [[0],[1]]. The
+    // front end passes the captured $x as r's value parameter.
+    Node r = comma(v(0), pipe(selectFalse(), new Call(AT, 0, List.of(), List.of(v(0)))));
+    Program program = new Program(new PathOf(AT, foreachItem(new Call(AT, 0, List.of(), List.of(v(1)))), paths), List.of(new Function(AT, 0, 1, r)));
+    assertThat(outcome(program, ITEMS)).isEqualTo("results [], error invalid path of [5], steps 2, built 0, log []");
   }
 }

@@ -59,6 +59,23 @@ Reason: jq decides these by value identity, which the engine's views and identit
 have. jq's own test files contain no such case. Relaxing the rule later only turns errors into
 results, except in the `?//` row above.
 
+A `foreach … as $name` item keeps its path only where nothing separates its Var from the bind in the
+IR after inlining: no `path()` body, no update lhs, no closure argument of a real call and no lifted
+function body (ADR-0048, ADR-0010, issue #298). jq keeps one current path per `path()` run, so it
+also accepts the item inside a closure argument or a definition that runs under the run that bound
+it, where the engine raises:
+
+| case | filter | jq 1.8.2 | Rail8 jq |
+| --- | --- | --- | --- |
+| `path-item/deviation-closure-argument` (`deviation item-apart`) | `[[5],[6]] \| def r(g): g, (select(false)\|r(g)); [path(foreach .[] as $x (0;1; r($x)))]` | `[[0],[1]]` | error |
+| `path-item/deviation-lifted-capture` (`deviation item-apart`) | `[[5],[6]] \| [path(foreach .[] as $x (0;1; def r: $x, (select(false)\|r); r))]` | `[[0],[1]]` | error |
+
+Reason: a path counts only under the `path()` or update run that made it, and the compiler decides
+that from the IR, at no cost at run time. A callee may run the same closure under a `path()` of its
+own, where jq raises (`def r(g): path(g), (select(false)|r(g))` in place of `r` above), and the
+compiler cannot tell the two apart. Relaxing the rule later, with a root per `path()` run, only turns
+errors into results.
+
 ## A break is not an error (ADR-0008, issue #7)
 
 In jq, `break $l` raises the error `{"__jq":n}`, where `n` is a per-process label counter. A `try`,
