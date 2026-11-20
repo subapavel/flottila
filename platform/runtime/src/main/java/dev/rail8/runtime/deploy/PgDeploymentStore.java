@@ -157,13 +157,13 @@ public final class PgDeploymentStore implements DeploymentStore {
                         .put("commit", p.commit()));
             }
             String[] runs = r.atLeastOnce().toArray(String[]::new);
-            return write(List.of(Map.entry(MARK, Tuple.of(r.name(), runs)), Map.entry(REVIVE, Tuple.of((Object) runs)),
+            return write(List.of(Map.entry(MARK, Tuple.of(r.name(), (Object) runs)), Map.entry(REVIVE, Tuple.of((Object) runs)),
                     Map.entry(SAVE, Tuple.of(r.name(), r.version(), r.repository(), r.commit(), r.content(), r.deployedAt().atOffset(ZoneOffset.UTC), pins, runs))));
         }
 
         @Override
         public Future<Long> delete(String name) {
-            return write(List.of(Map.entry(MARK, Tuple.of(name, new String[0])), Map.entry(DELETE, Tuple.of(name))));
+            return write(List.of(Map.entry(MARK, Tuple.of(name, (Object) new String[0])), Map.entry(DELETE, Tuple.of(name))));
         }
 
         /**
