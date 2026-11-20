@@ -11,6 +11,8 @@ import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Future;
+import dev.rail8.runtime.deploy.DeploymentStore.PoolLock;
+import dev.rail8.runtime.deploy.DeploymentStore.Snapshot;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterEach;
@@ -218,17 +220,12 @@ class DeploymentsRestoreTest {
     /** A {@link DeploymentStore} whose rows cannot be read: list fails with {@code message}; it is never written to. */
     record Unreadable(String message) implements DeploymentStore {
         @Override
-        public Future<Void> save(DeploymentRecord record) {
-            return fail("a restore writes no row: " + record);
+        public Future<Optional<PoolLock>> lock() {
+            return fail("a restore takes no lock");
         }
 
         @Override
-        public Future<Void> delete(String name) {
-            return fail("a restore deletes no row: " + name);
-        }
-
-        @Override
-        public Future<List<DeploymentRecord>> list() {
+        public Future<Snapshot> read() {
             return Future.failedFuture(new IllegalStateException(message));
         }
 
@@ -295,14 +292,15 @@ class DeploymentsRestoreTest {
     /** A record the pool holds that no node deployed: {@code files} committed to the repository {@code name}, recorded with {@code content}. */
     String stored(String name, Map<String, byte[]> files, String content) {
         String commit = repos.commit(name, files);
-        records.save(new DeploymentRecord(name, "1.0.0", name, commit, content, NOW, List.of())).await();
+        records.save(new DeploymentRecord(name, "1.0.0", name, commit, content, NOW, List.of(), List.of())).await();
         return commit;
     }
 
     /** {@code name}'s record with {@code content} in place of its own. */
     void recordedWith(String name, String content) {
         DeploymentRecord row = records.rows().stream().filter(r -> r.name().equals(name)).findFirst().orElseThrow();
-        records.save(new DeploymentRecord(row.name(), row.version(), row.repository(), row.commit(), content, row.deployedAt(), row.dependencies())).await();
+        records.save(new DeploymentRecord(row.name(), row.version(), row.repository(), row.commit(), content, row.deployedAt(), row.dependencies(),
+                row.atLeastOnce())).await();
     }
 
     /** {@code p}'s files, each under {@code folder/}. */
@@ -811,7 +809,7 @@ class DeploymentsRestoreTest {
         assertRunning(now, "shop after the deploy");
         assertEquals(List.of("shop/a", "shop/b"), now.flows());
         assertFalse(now.files().isEmpty(), "its files are listed again");
-        assertEquals(List.of(new DeploymentRecord("shop", "1.0.0", "shop", again, shop.content(), deployed.pkg().deployedAt(), List.of())), records.rows(),
+        assertEquals(List.of(new DeploymentRecord("shop", "1.0.0", "shop", again, shop.content(), deployed.pkg().deployedAt(), List.of(), List.of())), records.rows(),
                 "the deploy's record");
         assertInstanceOf(Ack.Reply.class, second.send("shop/a"), "a serves");
         assertInstanceOf(Ack.Reply.class, second.send("shop/b"), "b serves");

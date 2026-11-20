@@ -7,7 +7,8 @@ import java.util.Objects;
 
 /**
  * The record of a package deployed: one per package, shared by every node of the pool, written once the deploy's flows
- * started — its commit point — and replaced whole by the next deploy of the package. It holds no bytes: the package's files are
+ * started — its commit point — and replaced whole by the next deploy of the package. Every node of the pool runs what the records
+ * name. It holds no bytes: the package's files are
  * the commit's, read from the node's git cache or fetched, and checked against {@code content}.
  *
  * @param name the package's name
@@ -19,10 +20,11 @@ import java.util.Objects;
  * @param deployedAt the {@link DeployedPackage#deployedAt()} of the deploy, truncated to the microsecond (what Postgres keeps)
  * @param dependencies the closure of the package's dependencies as its deploy resolved them, in the order resolved: the
  *                     directories this deploy runs with, never pruned while the record pins them; empty without dependencies
+ * @param atLeastOnce the qualified ids ({@code <package>/<flow>}) of the flows this version runs at-least-once, sorted
  * @since 0.1
  */
 public record DeploymentRecord(String name, String version, String repository, String commit, String content, Instant deployedAt,
-                               List<Pin> dependencies) {
+                               List<Pin> dependencies, List<String> atLeastOnce) {
     public DeploymentRecord {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(version, "version");
@@ -31,6 +33,7 @@ public record DeploymentRecord(String name, String version, String repository, S
         Objects.requireNonNull(content, "content");
         deployedAt = deployedAt.truncatedTo(ChronoUnit.MICROS);
         dependencies = List.copyOf(dependencies);
+        atLeastOnce = atLeastOnce.stream().sorted().toList();
     }
 
     /**

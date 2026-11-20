@@ -3,17 +3,23 @@ package dev.rail8.runtime.deploy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import dev.rail8.runtime.deploy.DeploymentStore.PoolLock;
+import io.vertx.core.Future;
+
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * What every {@link DeploymentStore} guarantees: one row per package, written by {@code save} (an upsert by name: a second save of
  * a package replaces its row whole), {@code list} answering every row sorted by name in the order {@code DeployedPackage}s are
  * listed ({@link String#compareTo}: {@code shop-eu} before {@code shopa}, whatever the database's collation), {@code deployedAt}
- * kept to the microsecond, the pins of each row in the order saved, and {@code delete} removing one row. Run by
- * {@code InMemoryDeploymentStoreTest} and {@code PgDeploymentStoreIT}.
+ * kept to the microsecond, the pins and the at-least-once flows of each row as saved, and {@code delete} removing one row; the
+ * pool's lock held by one holder at a time, every write through it raising the generation by one, and a lock that was freed
+ * writing nothing. Run by {@code InMemoryDeploymentStoreTest} and {@code PgDeploymentStoreIT}.
  */
 public abstract class DeploymentStoreContract {
 
@@ -37,11 +43,12 @@ public abstract class DeploymentStoreContract {
     }
 
     static DeploymentRecord record(String name, String version, String commit, String content, Instant at) {
-        return new DeploymentRecord(name, version, name, commit, content, at, List.of());
+        // out of order: the record sorts them
+        return new DeploymentRecord(name, version, name, commit, content, at, List.of(), List.of(name + "/orders", name + "/audit"));
     }
 
     static DeploymentRecord record(String name, String version, String content, List<DeploymentRecord.Pin> pins) {
-        return new DeploymentRecord(name, version, name, C_1, content, AT, pins);
+        return new DeploymentRecord(name, version, name, C_1, content, AT, pins, List.of());
     }
 
     static DeploymentRecord.Pin pin(String name, String version, String content, String commit) {
@@ -49,11 +56,30 @@ public abstract class DeploymentStoreContract {
     }
 
     List<DeploymentRecord> list() {
-        return store.list().await();
+        return store.read().await().records();
+    }
+
+    /** The pool's lock, taken: a case that finds it held fails. */
+    PoolLock lock() {
+        return store.lock().await().orElseThrow(() -> new AssertionError("the pool's lock is held"));
     }
 
     void save(DeploymentRecord r) {
-        store.save(r).await();
+        PoolLock lock = lock();
+        try {
+            lock.save(r).await();
+        } finally {
+            lock.close().await();
+        }
+    }
+
+    void delete(String name) {
+        PoolLock lock = lock();
+        try {
+            lock.delete(name).await();
+        } finally {
+            lock.close().await();
+        }
     }
 
     @Test
@@ -73,7 +99,7 @@ public abstract class DeploymentStoreContract {
         save(other);
         // every field differs: an upsert that keeps an old column (a coalesce, a partial update) shows here
         DeploymentRecord second = new DeploymentRecord("shop", "2.0.0", "shop-moved", C_2, SHA_2, AT.plusSeconds(3600),
-                List.of(pin("common", "1.0.0", SHA_3, C_3)));
+                List.of(pin("common", "1.0.0", SHA_3, C_3)), List.of("shop/refunds"));
         save(second);
         assertEquals(List.of(other, second), list(), "one row per package: shop's second save replaced its first whole, billing's row stays");
     }
@@ -138,7 +164,7 @@ public abstract class DeploymentStoreContract {
         DeploymentRecord common = record("common", "1.2.0", C_1, SHA_2, AT);
         for (DeploymentRecord r : List.of(shop, shopEu, shopa, common)) save(r);
 
-        store.delete("shop").await();
+        delete("shop");
 
         assertEquals(List.of(common, shopEu, shopa), list(), "shop's row is gone, every other row as saved");
 
@@ -146,8 +172,63 @@ public abstract class DeploymentStoreContract {
         save(again);
         assertEquals(List.of(common, again, shopEu, shopa), list(), "a save after the delete is listed again, as saved, with no old pin");
 
-        store.delete("common").await();
-        store.delete("shop-eu").await();
+        delete("common");
+        delete("shop-eu");
         assertEquals(List.of(again, shopa), list(), "each delete removes its own row");
+    }
+
+    /** The lock is one holder's: a second one is refused, not waited for, until the first is freed; then it is taken again. */
+    @Test
+    void theLockIsOneHoldersAtATime() {
+        PoolLock first = lock();
+        Optional<PoolLock> second = store.lock().await();
+        assertTrue(second.isEmpty(), "a second holder is refused while the first holds the lock");
+        first.close().await();
+        PoolLock again = lock();
+        again.close().await();
+    }
+
+    /**
+     * Each save and each delete raises the generation by one and answers it, a delete of a package with no row too; a lock reads
+     * the pool as it was when taken, and a read answers the generation with the records.
+     */
+    @Test
+    void eachWriteRaisesTheGeneration() {
+        long start = store.read().await().generation();
+        DeploymentRecord shop = record("shop", "1.0.0", C_1, SHA_1, AT);
+        PoolLock lock = lock();
+        try {
+            assertEquals(new DeploymentStore.Snapshot(start, List.of()), lock.snapshot(), "the pool as the lock read it");
+            assertEquals(start + 1, lock.save(shop).await(), "a save raises the generation");
+            assertEquals(start + 2, lock.delete("billing").await(), "a delete raises it, a row there or not");
+        } finally {
+            lock.close().await();
+        }
+        assertEquals(new DeploymentStore.Snapshot(start + 2, List.of(shop)), store.read().await(), "the generation and the records, read together");
+        PoolLock next = lock();
+        try {
+            assertEquals(new DeploymentStore.Snapshot(start + 2, List.of(shop)), next.snapshot(), "the next lock reads what the last one wrote");
+        } finally {
+            next.close().await();
+        }
+    }
+
+    /** A lock that was freed writes nothing: its save and its delete fail, and the pool stays as it was. */
+    @Test
+    void aFreedLockWritesNothing() {
+        DeploymentRecord shop = record("shop", "1.0.0", C_1, SHA_1, AT);
+        save(shop);
+        DeploymentStore.Snapshot before = store.read().await();
+        PoolLock lock = lock();
+        lock.close().await();
+
+        assertTrue(failsLater(lock.save(record("billing", "1.0.0", C_2, SHA_2, AT))), "a save through a freed lock fails");
+        assertTrue(failsLater(lock.delete("shop")), "a delete through a freed lock fails");
+        assertEquals(before, store.read().await(), "nothing written");
+    }
+
+    /** Whether {@code write} fails, once it completed. */
+    static boolean failsLater(Future<Long> write) {
+        return write.transform(done -> Future.succeededFuture(done.failed())).await();
     }
 }

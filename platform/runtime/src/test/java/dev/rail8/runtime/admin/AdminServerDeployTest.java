@@ -9,6 +9,8 @@ import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.runtime.deploy.DeploymentRecord;
 import dev.rail8.runtime.deploy.DeploymentStore;
+import dev.rail8.runtime.deploy.DeploymentStore.PoolLock;
+import dev.rail8.runtime.deploy.DeploymentStore.Snapshot;
 import dev.rail8.runtime.deploy.Deployments;
 import dev.rail8.runtime.deploy.Doors;
 import dev.rail8.runtime.deploy.GitRepos;
@@ -868,7 +870,7 @@ class AdminServerDeployTest {
         OnVirtualThread.call(() -> first.deploy("zeta", zeta, "test"));
         OnVirtualThread.call(() -> { first.close(); return null; });
         repos.delete("zeta");
-        DeploymentRecord zetaRow = rows.list().await().get(1);
+        DeploymentRecord zetaRow = rows.read().await().records().get(1);
         assertEquals("zeta", zetaRow.name(), "fixture: zeta's row");
         Deployments second = deployments(tmp.resolve("node-2"), rows, true);
         OnVirtualThread.call(() -> { second.restore(); return null; });
@@ -1059,9 +1061,15 @@ class AdminServerDeployTest {
 
         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
         DeploymentStore failingDelete = new DeploymentStore() {
-            @Override public Future<Void> save(DeploymentRecord record) { return rows.save(record); }
-            @Override public Future<List<DeploymentRecord>> list() { return rows.list(); }
-            @Override public Future<Void> delete(String name) { return Future.failedFuture(new IllegalStateException("connection reset by peer")); }
+            @Override public Future<Snapshot> read() { return rows.read(); }
+            @Override public Future<Optional<PoolLock>> lock() {
+                return rows.lock().map(held -> held.map(lock -> new PoolLock() {
+                    @Override public Snapshot snapshot() { return lock.snapshot(); }
+                    @Override public Future<Long> save(DeploymentRecord record) { return lock.save(record); }
+                    @Override public Future<Long> delete(String name) { return Future.failedFuture(new IllegalStateException("connection reset by peer")); }
+                    @Override public Future<Void> close() { return lock.close(); }
+                }));
+            }
             @Override public Future<Void> audit(String actor, String repository, JsonObject detail) { return rows.audit(actor, repository, detail); }
         };
         Deployments failing = deployments(tmp.resolve("node-3"), failingDelete, true);
@@ -1154,7 +1162,9 @@ class AdminServerDeployTest {
                 .file("urn-a/beta.test.yaml", "schemaVersion: 1\nkind: test\nflow: beta\ncases: [ { name: c, send: in.xml, expect: { steps: 1 } } ]\n")
                 .file("urn-a/in.xml", "<in/>");
         String commit = repos.commit(legacy);
-        rows.save(new DeploymentRecord("legacy", "1.0.0", "legacy", commit, legacy.content(), rt.clock().instant(), List.of())).await(10, TimeUnit.SECONDS);
+        DeploymentStore.PoolLock seeding = rows.lock().await(10, TimeUnit.SECONDS).orElseThrow();
+        seeding.save(new DeploymentRecord("legacy", "1.0.0", "legacy", commit, legacy.content(), rt.clock().instant(), List.of(), List.of())).await(10, TimeUnit.SECONDS);
+        seeding.close().await(10, TimeUnit.SECONDS);
         Deployments restoring = deployments(tmp.resolve("node-2"), rows, true);
         OnVirtualThread.call(() -> { restoring.restore(); return null; });
         int at = serve(Optional.of(restoring));
