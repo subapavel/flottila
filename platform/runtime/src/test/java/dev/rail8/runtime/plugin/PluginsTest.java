@@ -500,6 +500,8 @@ class PluginsTest {
                 PluginFixtures.NullCommand.class, "module null-command: command() is null",
                 PluginFixtures.FailingCommand.class, "module failing-command: command() failed: java.lang.IllegalStateException: no command today",
                 PluginFixtures.NullUsage.class, "module null-usage: the usage of " + says + " is null",
+                PluginFixtures.LookupUsage.class, "module lookup-usage: usage() of " + PluginFixtures.LookupUsageCommand.class.getName()
+                        + " failed: java.util.ServiceConfigurationError: no provider of the usage",
                 PluginFixtures.TabbedUsage.class, "module tabbed: the usage of " + says + " holds U+0009 on line 1; no control or format character");
         for (Map.Entry<Class<?>, String> refused : refusals.entrySet()) {
             try (URLClassLoader classPath = classPath(moduleJar(refused.getKey().getSimpleName() + ".jar", refused.getKey()))) {

@@ -618,8 +618,8 @@ start; building them opens nothing.
   `unsupported-media-type`, `not-utf-8`, `busy` and `invalid-reply`.
 - **A command of the command line.** A module may bring one command (`Plugin.command()`), named
   after the module: `rail8 mapping compile <dir>` would be the `mapping` module's, with `compile`
-  its own argument. Every load takes it and its usage once, after the steps and languages: the
-  node's start, `rail8 validate`, `rail8 test`, `rail8 help`, `rail8 new-adapter` and
+  its own argument. Every load takes it and its usage once, after the steps and languages, and
+  neither opens anything: the node's start, `rail8 validate`, `rail8 test`, `rail8 help`, `rail8 new-adapter` and
   `rail8 <module>`. Refused, naming it: a plugin of `RAIL8_PLUGINS` that brings one, a module named
   `validate`, `test`, `lock`, `deploy`, `new-adapter` or `help` that brings one, and a usage of more
   than 16 lines, a line over 120 characters, or a control or format character other than the line
@@ -630,7 +630,7 @@ start; building them opens nothing.
 - **The list.** `GET /admin/modules` answers each module, then each plugin, as they loaded: its
   kind, name, version, api, SHA-256 and where it came from (`null` where the log line says `-` or
   the class path), and what it brings: the schemes of its components, its step types, its
-  languages, its admin services and whether it brings a command.
+  languages, its admin services (by path, then method) and whether it brings a command.
 
 A refused module, plugin, setting, step type, language, admin service or command stops the node with exit 2
 before Vert.x starts; a refused component, with exit 1. `rail8 validate` and `rail8 test` load the same plugins, from `--plugins` or

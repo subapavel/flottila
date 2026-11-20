@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.SequencedMap;
 import java.util.Set;
+import java.util.ServiceConfigurationError;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -199,7 +200,7 @@ public final class Cli {
                 Thread.currentThread().interrupt();
                 err.println("rail8: " + name + ": " + oneLine(interrupted.toString()));
                 return 1;
-            } catch (IOException | RuntimeException | LinkageError failed) {
+            } catch (IOException | RuntimeException | ServiceConfigurationError | LinkageError failed) {
                 err.println("rail8: " + name + ": " + oneLine(failed.toString()));
                 return 1;
             }
