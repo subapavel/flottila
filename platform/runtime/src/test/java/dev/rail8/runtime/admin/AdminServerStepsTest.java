@@ -9,7 +9,6 @@ import dev.rail8.core.flow.SequentialIntake;
 import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.runtime.deploy.Deployments;
-import dev.rail8.runtime.deploy.DirArchiveStore;
 import dev.rail8.runtime.deploy.Doors;
 import dev.rail8.runtime.deploy.OptionSchemaSteps;
 import dev.rail8.runtime.deploy.InMemoryDeploymentStore;
@@ -89,7 +88,7 @@ class AdminServerStepsTest {
         InMemoryWorkQueue queue = new InMemoryWorkQueue(rt.clock());
         deployments = new Deployments(NodeConfig.from(e), runtime, components, rt.clock(), rt.timer(),
                 List.of(new OptionSchemaSteps.Sheet(), new OptionSchemaSteps.Garbled(OptionSchemaSteps.Garbled.NOT_JSON)), List.of(), messages, dlq,
-                queue, () -> 0L, new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve("archives")), new SequentialIntake(messages, queue),
+                queue, () -> 0L, new InMemoryDeploymentStore(), new SequentialIntake(messages, queue),
                 new InMemoryPollerLeases(rt.clock()), new Targets(new Targets.Limit(3, Duration.ofMillis(750)), Map.of(), rt.timer()));
         Map<String, Supplier<Future<Health>>> checks = Map.of();
         server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), messages, dlq, rt.blobs(),

@@ -3,10 +3,12 @@ package dev.rail8.runtime.deploy;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
+import io.vertx.sqlclient.Row;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -14,20 +16,14 @@ import org.junit.jupiter.api.Test;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
-import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * P1-09c3a (D-070): the Postgres record store passes the store contract over V7's {@code deployments} table, on a container
- * whose database collates en_US.utf8 (the image's default): {@code listIsSortedByName} holds there too.
- *
- * <p>P2-02b (D-087): V9 adds {@code dependencies jsonb not null default '[]'::jsonb}; a row written before it reads as no pins.
- *
- * <p>P2-02c (D-095): the contract's {@code aDeleteRemovesOnlyThatPackagesRow} runs here too; {@link #aDeleteRemovesTheTableRow}
- * reads the table itself, so a store that only hides the row from its own {@code list} shows.
+ * The Postgres record store passes the store contract over the {@code deployments} table, on a container whose database collates
+ * en_US.utf8 (the image's default): {@code listIsSortedByName} holds there too. {@link #aDeleteRemovesTheTableRow} reads the
+ * table itself, so a store that only hides the row from its own {@code list} shows.
  */
 class PgDeploymentStoreIT extends DeploymentStoreContract {
 
@@ -66,8 +62,8 @@ class PgDeploymentStoreIT extends DeploymentStoreContract {
     @Test
     void aDeleteRemovesTheTableRow() {
         DeploymentStore s = emptyStore();
-        s.save(record("shop", "1.0.0", SHA_1, List.of(new DeploymentRecord.Pin("common", "1.2.0", SHA_2)))).await();
-        s.save(record("common", "1.2.0", Optional.empty(), SHA_2, AT)).await();
+        s.save(record("shop", "1.0.0", SHA_1, List.of(pin("common", "1.2.0", SHA_2, C_2)))).await();
+        s.save(record("common", "1.2.0", C_2, SHA_2, AT)).await();
 
         s.delete("shop").await();
 
@@ -76,10 +72,22 @@ class PgDeploymentStoreIT extends DeploymentStoreContract {
         assertEquals(List.of("common"), left, "shop's row is deleted from the table, common's stays");
     }
 
-    /** A row written at V8 (no dependencies column), then V9 applied: the store lists it with no pins, every other field as written. */
+    /** An audit row of a deploy: the actor, the action {@code deploy}, the subject {@code repository/<name>} and the detail as given. */
     @Test
-    void aV7RowReadsAsNoPins() throws Exception {
-        String database = "v7_row";
+    void anAuditRowIsWritten() {
+        pool.query("delete from audit where action = 'deploy'").execute().await();
+        JsonObject detail = new JsonObject().put("repository", "shop").put("commit", C_1).put("outcome", "deployed");
+        emptyStore().audit("ops@example", "shop", detail).await();
+
+        Row row = pool.query("select actor, action, subject, detail from audit where action = 'deploy'").execute().await().iterator().next();
+        assertEquals(List.of("ops@example", "deploy", "repository/shop"), List.of(row.getString(0), row.getString(1), row.getString(2)));
+        assertEquals(detail, new JsonObject(row.getValue(3).toString()), "the detail as given");
+    }
+
+    /** A row written at V25 names an archive: V26 deletes it, and the store saves and lists rows from git. */
+    @Test
+    void aRowNamingAnArchiveIsDeleted() throws Exception {
+        String database = "v25_row";
         try (Connection admin = DriverManager.getConnection(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
              Statement create = admin.createStatement()) {
             create.execute("CREATE DATABASE \"" + database + "\"");
@@ -88,18 +96,21 @@ class PgDeploymentStoreIT extends DeploymentStoreContract {
         int query = base.indexOf('?');
         String path = query < 0 ? base : base.substring(0, query);
         String url = path.substring(0, path.lastIndexOf('/') + 1) + database + (query < 0 ? "" : base.substring(query));
-        org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword()).locations(Migrations.LOCATION).target("8").load().migrate();
+        org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword()).locations(Migrations.LOCATION).target("25").load().migrate();
         Pool own = PgBuilder.pool().connectingTo(new PgConnectOptions().setHost(pg.getHost()).setPort(pg.getMappedPort(5432)).setDatabase(database)
                 .setUser(pg.getUsername()).setPassword(pg.getPassword())).with(new PoolOptions().setMaxSize(1)).using(vertx).build();
         try {
-            own.query("insert into deployments(package, version, revision, archive_sha256, deployed_at) values ('shop', '1.0.0', 'r1', '" + SHA_1
+            own.query("insert into deployments(package, version, revision, archive_sha256, deployed_at) values ('shop', '1.0.0', 'r1', '" + "1".repeat(64)
                     + "', timestamptz '2026-10-27 09:30:00.123456+00')").execute().await();
 
             Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-            assertEquals("25", r.schemaVersion(), "V9 (and V10, P2-07, V11, P2-07c, V12, CORE-4c1, V13, CORE-4c3, V14, P2-15a, V15, P2-16a, V16, FIX-141, V17, CORE-14b, V18, CORE-5a, V19, FIX-175, V20, work.stopped_at, V21, work.cancel_audit, V22, processed_ids dropped, V23, messages.log, V24, messages_flow_step, and V25, messages_arrivals and audit_message_cancel) applied over the V8 database");
-            assertEquals(List.of(new DeploymentRecord("shop", "1.0.0", Optional.of("r1"), SHA_1, Instant.parse("2026-10-27T09:30:00.123456Z"), List.of())),
-                    new PgDeploymentStore(own).list().await(), "the row written before V9 lists with no pins");
+            assertEquals("26", r.schemaVersion(), "V26 applied over the V25 database");
+            PgDeploymentStore store = new PgDeploymentStore(own);
+            assertEquals(List.of(), store.list().await(), "the row naming an archive is deleted");
+            DeploymentRecord shop = record("shop", "1.0.0", SHA_1, List.of(pin("common", "1.2.0", SHA_2, C_2)));
+            store.save(shop).await();
+            assertEquals(List.of(shop), store.list().await(), "a row from git saves and lists");
         } finally {
             own.close().await();
         }

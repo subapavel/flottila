@@ -17,6 +17,7 @@ import dev.rail8.components.mock.nested.NestedMock;
 import dev.rail8.core.record.Snapshot;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.deploy.Doors;
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.runtime.deploy.PackageDraft;
 import dev.rail8.api.plugin.AdminService;
 import dev.rail8.api.plugin.ComponentContext;
@@ -55,16 +56,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.localstack.LocalStackContainer;
 import org.testcontainers.utility.DockerImageName;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -198,6 +190,7 @@ class NodeIT {
         env.put("RAIL8_PG_PASSWORD", pg.getPassword());
         env.put("RAIL8_PG_POOL_SIZE", "4");
         TestJournalKey.with(env);   // a node needs a journal master key (CORE-4c1, D-106): a required configuration
+        GitRepos.with(env);   // in dev and ci the node deploys from the JVM's test repositories
         return env;
     }
 
@@ -212,8 +205,8 @@ class NodeIT {
         Map<String, String> env = env("prod");
         env.put("RAIL8_PG_DURABILITY", "local");   // FIX-136: a deployed node defaults to ha; the case's one Postgres has no standby
         env.put("RAIL8_BLOB_TREE_LIMIT", "65536");
-        // P1-09c3a (D-070): a deployed node refuses the dir archive store and a plain-http endpoint; it builds its S3 client at
-        // start and contacts S3 only to restore a recorded package (none here), so an https endpoint nothing listens on will do
+        // a deployed node refuses the dir archive store and a plain-http S3 endpoint; nothing contacts S3, so an https endpoint
+        // nothing listens on will do
         env.put("RAIL8_ARCHIVE_STORE", "s3");
         env.put("RAIL8_S3_BUCKET", "rail8-archives");
         env.put("RAIL8_S3_REGION", "eu-central-1");
@@ -492,11 +485,11 @@ class NodeIT {
     }
 
     /** {@code shop} 1.0.0: flow {@code feed} from the polling endpoint {@code drop} to {@code partner}, both on the {@code poll} scheme. */
-    static byte[] pollingShop() {
+    static PackageDraft pollingShop() {
         return PackageDraft.of("shop", "1.0.0")
                 .endpoint("drop", "poll", "in", new JsonObject().put("path", "/drop"))
                 .endpoint("partner", "poll", "out", new JsonObject().put("url", "poll://partner"))
-                .flow("feed", "1.0.0", "sync", "drop", 1024, PackageDraft.toPartner()).zip();
+                .flow("feed", "1.0.0", "sync", "drop", 1024, PackageDraft.toPartner());
     }
 
     /** Every record at WARNING or above under {@code dev.rail8}, formatted; attached while a case runs. */
@@ -554,7 +547,7 @@ class NodeIT {
                 PollingDoors poll = new PollingDoors();
                 Node started = start(env, ctx -> List.of(poll));
 
-                putOk(started.adminPort(), "shop", pollingShop());
+                deployOk(started.adminPort(), pollingShop());
 
                 until(() -> exists(api, FEED_LEASE), "the polling flow's lease key " + FEED_LEASE + " appears in the node's Valkey");
                 String owner = api.get(FEED_LEASE).await().toString();
@@ -597,7 +590,7 @@ class NodeIT {
             Node started = start(env, ctx -> List.of(poll));
 
             assertEquals(1, warnings.namingValkey().size(), "start logged exactly one WARNING naming the missing Valkey: " + warnings.records);
-            putOk(started.adminPort(), "shop", pollingShop());
+            deployOk(started.adminPort(), pollingShop());
             until(poll::aConsumerRuns, "the polling flow's consumer starts under a lease held in memory");
             assertEquals(1, warnings.namingValkey().size(), "holding a lease in memory warns no more: " + warnings.records);
         } finally {
@@ -655,16 +648,24 @@ class NodeIT {
         return text.getBytes(StandardCharsets.UTF_8);
     }
 
-    static byte[] zip(Map<String, byte[]> files) throws IOException {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (java.util.zip.ZipOutputStream out = new java.util.zip.ZipOutputStream(bytes)) {
-            for (Map.Entry<String, byte[]> f : files.entrySet()) {
-                out.putNextEntry(new java.util.zip.ZipEntry(f.getKey()));
-                out.write(f.getValue());
-                out.closeEntry();
-            }
-        }
-        return bytes.toByteArray();
+    /** The body of {@code POST /admin/deploy}: {@code commit} of {@code repository}. */
+    static byte[] deployBody(String repository, String commit) {
+        return new JsonObject().put("repository", repository).put("commit", commit).encode().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Commits {@code files} to the test JVM's repository {@code name} ({@link GitRepos#shared}) and deploys that commit with
+     * {@code POST /admin/deploy} on the admin port {@code admin}; the answer.
+     */
+    static HttpResponse<String> deploy(HttpClient client, int admin, String name, Map<String, byte[]> files) throws IOException, InterruptedException {
+        String commit = GitRepos.shared().commit(name, files);
+        return send(client, "POST", admin, "/admin/deploy", deployBody(name, commit), "application/json");
+    }
+
+    /** Commits {@code p} to the test JVM's repository of its name and deploys that commit on {@code admin}; the answer. */
+    static HttpResponse<String> deploy(HttpClient client, int admin, PackageDraft p) throws IOException, InterruptedException {
+        String commit = GitRepos.shared().commit(p);
+        return send(client, "POST", admin, "/admin/deploy", deployBody(p.name(), commit), "application/json");
     }
 
     static String sha256(byte[] bytes) throws Exception {
@@ -702,20 +703,20 @@ class NodeIT {
     }
 
     @Test
-    void deploysTheDemoZipAndAnInvoiceGetsThePartnersReply() throws Exception {
+    void deploysTheDemoFromACommitAndAnInvoiceGetsThePartnersReply() throws Exception {
         Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
         try (HttpClient client = http()) {
             Map<String, byte[]> files = demoFiles("http://127.0.0.1:" + partner.actualPort());
-            byte[] zip = zip(files);
+            String commit = GitRepos.shared().commit("demo", files);
             startDemoNode(env("ci"));
             int admin = node.adminPort();
 
-            HttpResponse<String> put = send(client, "PUT", admin, "/admin/packages/demo?revision=9df3f78", zip, "application/zip");
+            HttpResponse<String> put = send(client, "POST", admin, "/admin/deploy", deployBody("demo", commit), "application/json");
 
             assertEquals(200, put.statusCode(), put.body());
-            assertEquals(new JsonObject().put("package", "demo").put("version", "0.1.0").put("revision", "9df3f78").put("archive", "sha256:" + sha256(zip))
+            assertEquals(new JsonObject().put("package", "demo").put("version", "0.1.0").put("repository", "demo").put("commit", commit)
                     .put("flows", new io.vertx.core.json.JsonArray().add("demo/invoice-sync")).put("added", new io.vertx.core.json.JsonArray().add("demo/invoice-sync"))
                     .put("swapped", new io.vertx.core.json.JsonArray()).put("removed", new io.vertx.core.json.JsonArray()), new JsonObject(put.body()), "the deploy's answer");
 
@@ -732,7 +733,7 @@ class NodeIT {
             assertTrue(String.valueOf(flowItem.remove("hash")).matches("sha256:[0-9a-f]{64}"), "the flow's effective hash: " + flows.body());
             assertEquals("RUNNING", flowItem.remove("state"), "the flow's state: " + flows.body());
             assertEquals(new JsonObject().put("items", new io.vertx.core.json.JsonArray().add(new JsonObject().put("id", "demo/invoice-sync").put("package", "demo")
-                    .put("packageVersion", "0.1.0").put("revision", "9df3f78").put("flowVersion", "0.1.0").put("delivery", "sync"))), listed);
+                    .put("packageVersion", "0.1.0").put("commit", commit).put("flowVersion", "0.1.0").put("delivery", "sync"))), listed);
 
             HttpResponse<String> packages = get(admin, "/admin/packages");
             assertEquals(200, packages.statusCode(), packages.body());
@@ -757,8 +758,8 @@ class NodeIT {
             JsonObject timeline = new JsonObject(get(admin, "/admin/messages/" + found.get(0)).body());
             assertEquals("demo/invoice-sync", timeline.getString("flow"), "the timeline names the qualified flow");
             for (Object s : timeline.getJsonArray("steps")) {
-                assertEquals(new JsonObject().put("flow", "demo/invoice-sync@0.1.0").put("package", "demo@0.1.0").put("revision", "9df3f78"),
-                        ((JsonObject) s).getJsonObject("versions"), "every snapshot carries flow, package and revision: " + s);
+                assertEquals(new JsonObject().put("flow", "demo/invoice-sync@0.1.0").put("package", "demo@0.1.0").put("commit", commit),
+                        ((JsonObject) s).getJsonObject("versions"), "every snapshot carries flow, package and commit: " + s);
             }
         } finally {
             partner.close().await();
@@ -778,11 +779,11 @@ class NodeIT {
         int messages = 5;
         String cpuPath = "/admin/flows/demo%2Finvoice-sync/cpu";
         try (HttpClient client = http()) {
-            byte[] zip = zip(demoFiles("http://127.0.0.1:" + partner.actualPort()));
+            Map<String, byte[]> demo = demoFiles("http://127.0.0.1:" + partner.actualPort());
             Map<String, String> sampling = env("ci");
             sampling.put("RAIL8_CPU_SAMPLING", "PT0.004S");
             Node first = startDemoNode(sampling);
-            putOk(first.adminPort(), "demo", zip);
+            deployOk(first.adminPort(), "demo", demo);
             byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
             for (int i = 0; i < messages; i++) {
                 HttpResponse<String> sent = send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml");
@@ -851,11 +852,11 @@ class NodeIT {
             external.enable("dev.rail8.Step");
             external.enable(Phase.class);
             external.start();
-            byte[] zip = zip(demoFiles("http://127.0.0.1:" + partner.actualPort()));
+            Map<String, byte[]> demo = demoFiles("http://127.0.0.1:" + partner.actualPort());
             byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
 
             Node off = startDemoNode(env("ci"));
-            putOk(off.adminPort(), "demo", zip);
+            deployOk(off.adminPort(), "demo", demo);
             for (int i = 0; i < messages; i++) {
                 HttpResponse<String> sent = send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml");
                 assertEquals(200, sent.statusCode(), "fixture: invoice " + i + " went through the node without sampling: " + sent.body());
@@ -908,7 +909,7 @@ class NodeIT {
             Map<String, String> sampling = env("ci");
             sampling.put("RAIL8_CPU_SAMPLING", "PT0.004S");
             Node n = startDemoNode(sampling);
-            putOk(n.adminPort(), "demo", zip(demoFiles("http://127.0.0.1:" + partner.actualPort())));
+            deployOk(n.adminPort(), "demo", demoFiles("http://127.0.0.1:" + partner.actualPort()));
             byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
             for (int i = 0; i < messages; i++) {
                 HttpResponse<String> sent = send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml");
@@ -954,63 +955,31 @@ class NodeIT {
     }
 
     /**
-     * P1-09c3a (D-070): a node with RAIL8_ARCHIVE_STORE s3 over Postgres and LocalStack. A PUT of the demo stores the archive's
-     * bytes as the object {@code <prefix>/archives/<sha256>.zip} in the configured bucket — the node's S3 archive store, not its
-     * disk — and writes the package's {@code deployments} row in the node's Postgres, naming that SHA-256.
+     * A deploy of the demo writes the package's {@code deployments} row in the node's Postgres: its version, the repository and
+     * commit it came from, the content digest of its files and its deploy time.
      */
     @Test
-    void aPutOnAnS3NodeStoresTheArchiveBySha256AndRecordsTheRow() throws Exception {
-        String bucket = "rail8-node-it";
-        String prefix = "node-it-prefix";
-        try (LocalStackContainer localstack = new LocalStackContainer("localstack/localstack:4").withServices("s3")) {
-            localstack.start();
-            try (S3Client s3 = S3Client.builder().endpointOverride(localstack.getEndpoint()).region(Region.of(localstack.getRegion()))
-                    .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.getAccessKey(), localstack.getSecretKey())))
-                    .forcePathStyle(true).httpClientBuilder(UrlConnectionHttpClient.builder()).build();
-                 HttpClient client = http()) {
-                s3.createBucket(CreateBucketRequest.builder().bucket(bucket).build());
-                Map<String, String> env = env("ci");   // ci is no deployed environment: a plain-http endpoint is allowed
-                env.put("RAIL8_ARCHIVE_STORE", "s3");
-                env.put("RAIL8_S3_BUCKET", bucket);
-                env.put("RAIL8_S3_REGION", localstack.getRegion());
-                env.put("RAIL8_S3_ENDPOINT", localstack.getEndpoint().toString());
-                env.put("RAIL8_S3_PATH_STYLE", "true");
-                env.put("RAIL8_S3_PREFIX", prefix);
-                env.put("RAIL8_S3_ACCESS_KEY", localstack.getAccessKey());
-                env.put("RAIL8_S3_SECRET_KEY", localstack.getSecretKey());
-                byte[] zip = zip(demoFiles("http://127.0.0.1:9"));
-                String sha = sha256(zip);
-                startDemoNode(env);
+    void aDeployRecordsTheRepositoryCommitAndContentInPostgres() throws Exception {
+        try (HttpClient client = http()) {
+            startDemoNode(env("ci"));
 
-                HttpResponse<String> put = send(client, "PUT", node.adminPort(), "/admin/packages/demo?revision=9df3f78", zip, "application/zip");
+            HttpResponse<String> deployed = deploy(client, node.adminPort(), "demo", demoFiles("http://127.0.0.1:9"));
 
-                assertEquals(200, put.statusCode(), put.body());
-                assertEquals("sha256:" + sha, new JsonObject(put.body()).getString("archive"), "the deploy's answer names the archive: " + put.body());
-                String key = prefix + "/archives/" + sha + ".zip";
-                byte[] stored;
-                try {
-                    stored = s3.getObjectAsBytes(GetObjectRequest.builder().bucket(bucket).key(key).build()).asByteArray();
-                } catch (NoSuchKeyException missing) {
-                    throw new AssertionError("no object s3://" + bucket + "/" + key + " after the PUT: the node did not store the archive in its S3 archive store", missing);
-                }
-                assertTrue(java.util.Arrays.equals(zip, stored), "the object holds the PUT's bytes: " + stored.length + " bytes stored, " + zip.length + " put");
-                try (Connection c = DriverManager.getConnection(url, pg.getUsername(), pg.getPassword());
-                     Statement q = c.createStatement();
-                     java.sql.ResultSet rows = q.executeQuery("select package, version, revision, archive_sha256, deployed_at from deployments")) {
-                    assertTrue(rows.next(), "the PUT wrote the package's row in the node's Postgres");
-                    assertEquals("demo", rows.getString("package"));
-                    assertEquals("0.1.0", rows.getString("version"));
-                    assertEquals("9df3f78", rows.getString("revision"));
-                    assertEquals(sha, rows.getString("archive_sha256"), "the row names the stored archive's SHA-256");
-                    assertNotNull(rows.getTimestamp("deployed_at"), "the row carries its deploy time");
-                    assertFalse(rows.next(), "one row per package");
-                }
-            } finally {
-                if (node != null) {
-                    Node started = node;
-                    node = null;
-                    OnVirtualThread.call(() -> { started.close(); return null; });   // before LocalStack stops
-                }
+            assertEquals(200, deployed.statusCode(), deployed.body());
+            String commit = new JsonObject(deployed.body()).getString("commit");
+            String content = itemOf(listed(node.adminPort(), "packages", "name"), "demo", "deployed").getString("content");
+            try (Connection c = DriverManager.getConnection(url, pg.getUsername(), pg.getPassword());
+                 Statement q = c.createStatement();
+                 java.sql.ResultSet rows = q.executeQuery("select package, version, repository, commit, content, deployed_at from deployments")) {
+                assertTrue(rows.next(), "the deploy wrote the package's row in the node's Postgres");
+                assertEquals("demo", rows.getString("package"));
+                assertEquals("0.1.0", rows.getString("version"));
+                assertEquals("demo", rows.getString("repository"));
+                assertEquals(commit, rows.getString("commit"), "the row names the commit deployed");
+                assertTrue(content.matches("sha256:[0-9a-f]{64}"), "fixture: the listed content digest: " + content);
+                assertEquals(content, rows.getString("content"), "the row names the content digest of the package's files");
+                assertNotNull(rows.getTimestamp("deployed_at"), "the row carries its deploy time");
+                assertFalse(rows.next(), "one row per package");
             }
         }
     }
@@ -1020,8 +989,8 @@ class NodeIT {
     // The packet names these three cases NodeTest; NodeTest's node has no Postgres (a closed port) and the restore runs after the
     // migration, so they run here, against the case database, under the packet's method names. Each node of a case runs the
     // Doors component (scheme rec) of the deploy tests: a start held or failed by flow, a hook inside every stop. The ci node
-    // stores archives in its dir store, <dataDir>/archives; a restart on the same data dir and database is the next node of
-    // the pool.
+    // deploys from the test JVM's repositories and keeps their commits in its git cache, <dataDir>/git; a restart on the same data
+    // dir and database is the next node of the pool.
 
     /** {@code name} 1.0.0 on the Doors component: a sync flow per id from its own in endpoint {@code <id>-in} to {@code partner}. */
     static PackageDraft doorsPackage(String name, String... flows) {
@@ -1043,10 +1012,19 @@ class NodeIT {
         OnVirtualThread.call(() -> { n.close(); return null; });
     }
 
-    static void putOk(int admin, String name, byte[] zip) throws Exception {
+    /** Commits {@code files} to the test JVM's repository {@code name} and deploys that commit on {@code admin}: 200, or the case fails. */
+    static void deployOk(int admin, String name, Map<String, byte[]> files) throws Exception {
         try (HttpClient client = http()) {
-            HttpResponse<String> put = send(client, "PUT", admin, "/admin/packages/" + name, zip, "application/zip");
-            assertEquals(200, put.statusCode(), "fixture: " + name + " deploys: " + put.body());
+            HttpResponse<String> deployed = deploy(client, admin, name, files);
+            assertEquals(200, deployed.statusCode(), "fixture: " + name + " deploys: " + deployed.body());
+        }
+    }
+
+    /** Commits {@code p} to the test JVM's repository of its name and deploys that commit on {@code admin}: 200, or the case fails. */
+    static void deployOk(int admin, PackageDraft p) throws Exception {
+        try (HttpClient client = http()) {
+            HttpResponse<String> deployed = deploy(client, admin, p);
+            assertEquals(200, deployed.statusCode(), "fixture: " + p.name() + " deploys: " + deployed.body());
         }
     }
 
@@ -1073,11 +1051,11 @@ class NodeIT {
         return item;
     }
 
-    /** A node 1 on {@code data} that deployed {@code packages} (name → zip) over its admin API, then closed. */
-    void deployedAndClosed(Map<String, byte[]> packages) throws Exception {
+    /** A node 1 on {@code data} that deployed {@code packages} over its admin API, then closed. */
+    void deployedAndClosed(PackageDraft... packages) throws Exception {
         Node first = startWith(env("ci"), new Doors());
         try {
-            for (Map.Entry<String, byte[]> p : packages.entrySet()) putOk(first.adminPort(), p.getKey(), p.getValue());
+            for (PackageDraft p : packages) deployOk(first.adminPort(), p);
         } finally {
             closeNode(first);
         }
@@ -1113,21 +1091,21 @@ class NodeIT {
     }
 
     /**
-     * PUT demo and a library {@code lib}, an invoice through demo's in endpoint reaches the partner; DELETE demo answers 200
+     * A deploy of demo and of a library {@code lib}, an invoice through demo's in endpoint reaches the partner; DELETE demo answers 200
      * {name, version, flowsRemoved}, deletes its row in Postgres and its directories, and its endpoint no longer runs an invoice
      * (404 on the node's HTTP port, the partner sees nothing more); its flow answers as unknown; a second DELETE is 404. The node restarted on
      * its data directory and database restores lib, not demo.
      */
     @Test
-    void aPutThenDeleteUndeploysAndARestartDoesNotRestoreIt() throws Exception {
+    void aDeployThenDeleteUndeploysAndARestartDoesNotRestoreIt() throws Exception {
         Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
         try {
-            byte[] zip = zip(demoFiles("http://127.0.0.1:" + partner.actualPort()));
+            Map<String, byte[]> demo = demoFiles("http://127.0.0.1:" + partner.actualPort());
             startDemoNode(env("ci"));
-            putOk(node.adminPort(), "demo", zip);
-            putOk(node.adminPort(), "lib", PackageDraft.of("lib", "1.0.0").file("xslt/lib.xsl", "<xsl:stylesheet/>").zip());
+            deployOk(node.adminPort(), "demo", demo);
+            deployOk(node.adminPort(), PackageDraft.of("lib", "1.0.0").file("xslt/lib.xsl", "<xsl:stylesheet/>"));
             assertEquals(200, postInvoice(node.httpPort()), "fixture: the demo serves");
             assertEquals(1, partnerSaw.size(), "fixture: the partner saw the invoice: " + partnerSaw);
             assertEquals(List.of("demo", "lib"), recordedPackages(), "fixture: both are recorded");
@@ -1176,7 +1154,7 @@ class NodeIT {
      */
     @Test
     void restoreRunsBeforeTheAdminPortOpens() throws Exception {
-        deployedAndClosed(Map.of("shop", doorsPackage("shop", "a", "b").zip()));
+        deployedAndClosed(doorsPackage("shop", "a", "b"));
         int admin = freePort();
         Map<String, String> env = env("ci");
         env.put("RAIL8_ADMIN_PORT", String.valueOf(admin));
@@ -1211,16 +1189,16 @@ class NodeIT {
     /**
      * The {@code deployments} health check: UP while every package and flow runs; DEGRADED — /health 200 with the status UP, the
      * other checks UP, the wire showing the status only, never a name — while a flow is FAILED (a redeploy's rollback could not
-     * build it again), and while a package could not be restored (its archive gone); UP again once a PUT of that package ran it.
+     * build it again), and while a package could not be restored (its commit gone); UP again once a deploy of that package ran it.
      */
     @Test
     void healthIsDegradedWhileAFlowOrPackageIsFailed() throws Exception {
-        byte[] shop = doorsPackage("shop", "a", "b").zip();
-        byte[] store = doorsPackage("store", "c").zip();
+        PackageDraft shop = doorsPackage("shop", "a", "b");
+        PackageDraft store = doorsPackage("store", "c");
         Doors doors = new Doors();
         node = startWith(env("ci"), doors);
-        putOk(node.adminPort(), "shop", shop);
-        putOk(node.adminPort(), "store", store);
+        deployOk(node.adminPort(), shop);
+        deployOk(node.adminPort(), store);
         JsonObject up = health(node.adminPort(), 200);
         assertEquals("UP", up.getJsonObject("checks").getString("deployments"), "the node reports a deployments check, UP while everything runs: " + up.encode());
 
@@ -1233,10 +1211,11 @@ class NodeIT {
         closeNode(node);
         node = null;
 
-        Files.delete(data.resolve("archives").resolve(sha256(store) + ".zip"));
+        GitRepos.shared().delete("store");   // and the node's cached copy of it: the commit is nowhere
+        deleteTree(data.resolve("git").resolve("store.git"));
         node = startWith(env("ci"), new Doors());
         Map<String, JsonObject> packages = listed(node.adminPort(), "packages", "name");
-        assertEquals("FAILED", itemOf(packages, "store", "restored without store's archive").getString("state"), "fixture: store's archive is gone: " + packages);
+        assertEquals("FAILED", itemOf(packages, "store", "restored without store's commit").getString("state"), "fixture: store's commit is gone: " + packages);
         assertEquals("RUNNING", itemOf(packages, "shop", "restored").getString("state"), "fixture: shop restored: " + packages);
         assertEquals(Set.of("RUNNING"), listed(node.adminPort(), "flows", "id").values().stream().map(f -> f.getString("state")).collect(java.util.stream.Collectors.toSet()),
                 "fixture: every flow listed runs, shop/b included");
@@ -1245,9 +1224,9 @@ class NodeIT {
         assertEquals("DEGRADED", packageDown.getJsonObject("checks").getString("deployments"), "a FAILED package: " + packageDown.encode());
         assertFalse(packageDown.encode().contains("store"), "the wire shows the status only, never which package: " + packageDown.encode());
 
-        putOk(node.adminPort(), "store", store);
+        deployOk(node.adminPort(), store);
         JsonObject again = health(node.adminPort(), 200);
-        assertEquals("UP", again.getJsonObject("checks").getString("deployments"), "recovered by a PUT: " + again.encode());
+        assertEquals("UP", again.getJsonObject("checks").getString("deployments"), "recovered by a deploy: " + again.encode());
     }
 
     /**
@@ -1257,7 +1236,7 @@ class NodeIT {
      */
     @Test
     void anAdminStartFailureStopsTheRestoredFlows() throws Exception {
-        deployedAndClosed(Map.of("shop", doorsPackage("shop", "a", "b").zip()));
+        deployedAndClosed(doorsPackage("shop", "a", "b"));
         Doors second = new Doors();
         List<String> atStop = new CopyOnWriteArrayList<>();
         second.onStop(door -> atStop.add(door.flow() + (Thread.currentThread().isVirtual()
@@ -1296,7 +1275,7 @@ class NodeIT {
      */
     @Test
     void aRestoredFlowThatDoesNotStopIsSuppressedUnderTheAdminStartFailure() throws Exception {
-        deployedAndClosed(Map.of("shop", doorsPackage("shop", "a").zip()));
+        deployedAndClosed(doorsPackage("shop", "a"));
         Doors second = new Doors();
         second.failStop("shop/a", "the restored consumer did not stop");
         try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
@@ -1337,7 +1316,7 @@ class NodeIT {
     }
 
     /**
-     * The demo runs; v2 changes only its stylesheet. The PUT answers 200 with the flow swapped, its listed hash moves, and the next
+     * The demo runs; v2 changes only its stylesheet. The deploy answers 200 with the flow swapped, its listed hash moves, and the next
      * invoice — on the same in port, which v2's consumer took over — reaches the partner mapped by v2's stylesheet.
      */
     @Test
@@ -1350,23 +1329,23 @@ class NodeIT {
             startDemoNode(env("ci"));
             int admin = node.adminPort();
             byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
-            assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo?revision=r1", zip(v1), "application/zip").statusCode(), "fixture: v1 deploys");
+            assertEquals(200, deploy(client, admin, "demo", v1).statusCode(), "fixture: v1 deploys");
             assertEquals(200, send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml").statusCode(), "fixture: v1 serves");
             assertTrue(partnerSaw.get(0).contains(V1_ROOT), "fixture: v1 maps to PartnerInvoice: " + partnerSaw);
             String v1Hash = flowItem(admin).getString("hash");
-            byte[] v2Zip = zip(withRenamedRoot(v1));
+            String v2 = GitRepos.shared().commit("demo", withRenamedRoot(v1));
 
-            HttpResponse<String> put = send(client, "PUT", admin, "/admin/packages/demo?revision=r2", v2Zip, "application/zip");
+            HttpResponse<String> put = send(client, "POST", admin, "/admin/deploy", deployBody("demo", v2), "application/json");
 
             assertEquals(200, put.statusCode(), put.body());
             JsonObject body = new JsonObject(put.body());
             assertEquals(new io.vertx.core.json.JsonArray().add("demo/invoice-sync"), body.getJsonArray("swapped"), "the flow reading the stylesheet swaps: " + body);
             assertEquals(new io.vertx.core.json.JsonArray(), body.getJsonArray("added"), body.encode());
             assertEquals(new io.vertx.core.json.JsonArray(), body.getJsonArray("removed"), body.encode());
-            assertEquals("sha256:" + sha256(v2Zip), body.getString("archive"));
+            assertEquals(v2, body.getString("commit"));
             JsonObject listed = flowItem(admin);
             assertNotEquals(v1Hash, listed.getString("hash"), "the listed hash moved with the stylesheet: " + listed);
-            assertEquals("r2", listed.getString("revision"), "the swapped flow carries v2's revision: " + listed);
+            assertEquals(v2, listed.getString("commit"), "the swapped flow carries v2's commit: " + listed);
 
             HttpResponse<String> next = send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml");
 
@@ -1381,8 +1360,8 @@ class NodeIT {
     }
 
     /**
-     * The demo runs; v2's stylesheet does not compile. The PUT is 422 naming the flow and the file; the flow and package are
-     * listed as v1 (same hash, same archive) and the next invoice is still mapped by v1's stylesheet.
+     * The demo runs; v2's stylesheet does not compile. The deploy is 422 naming the flow and the file; the flow and package are
+     * listed as v1 (same hash, same commit) and the next invoice is still mapped by v1's stylesheet.
      */
     @Test
     void anInvalidRedeployLeavesV1Serving() throws Exception {
@@ -1391,26 +1370,27 @@ class NodeIT {
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
         try (HttpClient client = http()) {
             Map<String, byte[]> v1 = demoFiles("http://127.0.0.1:" + partner.actualPort());
-            byte[] v1Zip = zip(v1);
             startDemoNode(env("ci"));
             int admin = node.adminPort();
             byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
-            assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", v1Zip, "application/zip").statusCode(), "fixture: v1 deploys");
+            HttpResponse<String> first = deploy(client, admin, "demo", v1);
+            assertEquals(200, first.statusCode(), "fixture: v1 deploys: " + first.body());
+            String v1Commit = new JsonObject(first.body()).getString("commit");
             JsonObject v1Flow = flowItem(admin);
             Map<String, byte[]> broken = withRenamedRoot(v1);
             broken.put("flows/invoice-to-partner.xsl", "<xsl:stylesheet xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\" version=\"3.0\"><xsl:template match=\"/\">"
                     .getBytes(StandardCharsets.UTF_8));   // not well-formed
 
-            HttpResponse<String> put = send(client, "PUT", admin, "/admin/packages/demo", zip(broken), "application/zip");
+            HttpResponse<String> put = deploy(client, admin, "demo", broken);
 
             assertEquals(422, put.statusCode(), put.body());
             JsonObject body = new JsonObject(put.body());
             assertEquals(Set.of("error", "problems"), body.fieldNames(), body.encode());
             assertTrue(body.getJsonArray("problems").stream().map(String::valueOf).anyMatch(l -> l.contains("invoice-sync") && l.contains("invoice-to-partner.xsl")),
                     "a problem names the flow and its stylesheet: " + body);
-            assertEquals(v1Flow, flowItem(admin), "the flow is listed as v1: same hash, revision and state");
+            assertEquals(v1Flow, flowItem(admin), "the flow is listed as v1: same hash, commit and state");
             HttpResponse<String> packages = get(admin, "/admin/packages");
-            assertEquals("sha256:" + sha256(v1Zip), new JsonObject(packages.body()).getJsonArray("items").getJsonObject(0).getString("archive"), "the package is v1's");
+            assertEquals(v1Commit, new JsonObject(packages.body()).getJsonArray("items").getJsonObject(0).getString("commit"), "the package is v1's");
 
             HttpResponse<String> next = send(client, "POST", node.httpPort(), "/http/in", invoice, "application/xml");
 
@@ -1432,7 +1412,7 @@ class NodeIT {
     }
 
     /**
-     * One flow per path on the node's HTTP port: the PUT of a second package whose in endpoint names the first's address is 422
+     * One flow per path on the node's HTTP port: the deploy of a second package whose in endpoint names the first's address is 422
      * naming both flows and endpoints; package one alone is listed, and N POSTs, each on a connection of its own, all reach
      * package one's partner path.
      */
@@ -1444,11 +1424,11 @@ class NodeIT {
             String partnerBase = "http://127.0.0.1:" + partner.actualPort();
             start(env("ci"), ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer(), ctx.http())));
             int admin = node.adminPort();
-            putOk(admin, "one", relay("one", partnerBase + "/one").zip());
+            deployOk(admin, relay("one", partnerBase + "/one"));
 
             HttpResponse<String> put;
             try (HttpClient client = http()) {
-                put = send(client, "PUT", admin, "/admin/packages/two", relay("two", partnerBase + "/two").zip(), "application/zip");
+                put = deploy(client, admin, relay("two", partnerBase + "/two"));
             }
 
             assertEquals(422, put.statusCode(), "the second package at the first's path is refused: " + put.body());
@@ -1476,12 +1456,12 @@ class NodeIT {
         io.vertx.core.Promise<Void> release = io.vertx.core.Promise.promise();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, release.future(), ack);
         try (HttpClient client = http()) {
-            byte[] zip = zip(demoFiles("http://127.0.0.1:" + partner.actualPort()));
+            Map<String, byte[]> demo = demoFiles("http://127.0.0.1:" + partner.actualPort());
             Map<String, String> env = env("ci");
             env.put("RAIL8_STOP_DEADLINE", "PT2M");
             startDemoNode(env);
             int admin = node.adminPort();
-            HttpResponse<String> put = send(client, "PUT", admin, "/admin/packages/demo", zip, "application/zip");
+            HttpResponse<String> put = deploy(client, admin, "demo", demo);
             assertEquals(200, put.statusCode(), put.body());
             java.util.concurrent.CompletableFuture<HttpResponse<String>> held = client.sendAsync(
                     request("POST", node.httpPort(), "/http/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml"), HttpResponse.BodyHandlers.ofString());
@@ -1586,12 +1566,12 @@ class NodeIT {
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
         try (HttpClient client = http()) {
-            byte[] zip = zip(demoFiles("http://127.0.0.1:" + partner.actualPort()));
+            String commit = GitRepos.shared().commit("demo", demoFiles("http://127.0.0.1:" + partner.actualPort()));
             Map<String, String> env = env("ci");
             env.put("RAIL8_ADMIN_TOKEN", token);
             startDemoNode(env);
             int admin = node.adminPort();
-            HttpResponse<String> put = authed(client, "PUT", admin, "/admin/packages/demo", zip, token);
+            HttpResponse<String> put = authed(client, "POST", admin, "/admin/deploy", deployBody("demo", commit), token);
             assertEquals(200, put.statusCode(), "fixture: the demo deploys: " + put.body());
             HttpResponse<String> invoice = send(client, "POST", node.httpPort(), "/http/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
             assertEquals(200, invoice.statusCode(), "fixture: the invoice went through: " + invoice.body());
@@ -1634,7 +1614,7 @@ class NodeIT {
         HttpRequest.Builder req = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).timeout(Duration.ofSeconds(20))
                 .header("Authorization", "Bearer " + token)
                 .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofByteArray(body));
-        if (body != null) req.header("content-type", "PUT".equals(method) ? "application/zip" : "application/json");
+        if (body != null) req.header("content-type", "application/json");
         try {
             return client.send(req.build(), HttpResponse.BodyHandlers.ofString());
         } catch (IOException | InterruptedException e) {
@@ -1681,7 +1661,7 @@ class NodeIT {
         env.put("RAIL8_RETRIES_COUNT", "0");   // CORE-14a (P6): the worker run's failure parks its ingress at once
         startDemoNode(env);
         int admin = node.adminPort();
-        assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip(files), "application/zip").statusCode(), "fixture: the demo deploys");
+        assertEquals(200, deploy(client, admin, "demo", files).statusCode(), "fixture: the demo deploys");
         HttpResponse<String> accepted = send(client, "POST", node.httpPort(), "/http/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
         assertEquals(202, accepted.statusCode(), accepted.body());
         String parked = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
@@ -1807,7 +1787,7 @@ class NodeIT {
             env.put("RAIL8_RETRIES_INTERVAL", "PT1S");
             startDemoNode(env);
             int admin = node.adminPort();
-            assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip(files), "application/zip").statusCode(), "fixture: the demo deploys");
+            assertEquals(200, deploy(client, admin, "demo", files).statusCode(), "fixture: the demo deploys");
             HttpResponse<String> accepted = send(client, "POST", node.httpPort(), "/http/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
             assertEquals(202, accepted.statusCode(), accepted.body());
             String id = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
@@ -1890,7 +1870,7 @@ class NodeIT {
             Map<String, String> env = env("ci");
             env.put("RAIL8_BLOB_MEMORY_TIER", "4096");
             startDemoNode(env);
-            HttpResponse<String> put = send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip(files), "application/zip");
+            HttpResponse<String> put = deploy(client, node.adminPort(), "demo", files);
             assertEquals(200, put.statusCode(), put.body());
 
             byte[] invoice = (Files.readString(DEMO.resolve("fixtures/sample-invoice.xml")) + "<!-- " + "padding ".repeat(1024) + "-->")
@@ -1957,7 +1937,7 @@ class NodeIT {
             files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
             startDemoNode(env("ci"));   // before FIX-136: refused, "synchronous_commit is off for the node's sessions"
             assertEquals(200, get(node.adminPort(), "/health").statusCode(), "the node starts on the database whose default is off");
-            HttpResponse<String> put = send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip(files), "application/zip");
+            HttpResponse<String> put = deploy(client, node.adminPort(), "demo", files);
             assertEquals(200, put.statusCode(), put.body());
 
             PgConnection ddl = PgConnection.connect(vertx, options(database)).await();
@@ -2282,7 +2262,7 @@ class NodeIT {
             return List.of(doors);
         }, List.of(), List.of()));
         int port = node.adminPort();
-        putOk(port, "shop", doorsPackage("shop", "a").zip());
+        deployOk(port, doorsPackage("shop", "a"));
 
         CountDownLatch partner = doors.partner().holdNext(1);
         Doors.Gate stop = doors.holdStopOf("shop/a");
@@ -2361,7 +2341,7 @@ class NodeIT {
         Doors doors = new Doors();
         node = startWith(env("ci"), doors);
         int port = node.adminPort();
-        putOk(port, "shop", doorsPackage("shop", "a", "b").zip());
+        deployOk(port, doorsPackage("shop", "a", "b"));
         failB(doors, port);
 
         assertEquals(readyBody("UP"), answer(port, "/ready", 200), "a FAILED flow: the node stays ready for the flows that run");
@@ -2375,7 +2355,7 @@ class NodeIT {
      */
     @Test
     void restartingFlowNodeIsReady() throws Exception {
-        deployedAndClosed(Map.of("shop", doorsPackage("shop", "a", "b").zip()));
+        deployedAndClosed(doorsPackage("shop", "a", "b"));
         Doors second = new Doors();
         for (int i = 0; i < 4; i++) second.failStartOf("shop/b", "address in use");   // at the restore and 1, 3 and 7 s later
         node = startWith(env("ci"), second);
@@ -2392,7 +2372,7 @@ class NodeIT {
 
     /**
      * Makes shop/b FAILED on the node at {@code admin}, which runs shop with flows a and b on {@code doors}: a redeploy changes b,
-     * whose start fails, and its rollback cannot build the b before again. The PUT answers 500.
+     * whose start fails, and its rollback cannot build the b before again. The deploy answers 500.
      */
     static void failB(Doors doors, int admin) throws Exception {
         doors.failStartOf("shop/b", "address in use");
@@ -2400,9 +2380,9 @@ class NodeIT {
         doors.onConsumer(cfg -> {   // the second: the redeploy builds the first
             if ("shop/b".equals(cfg.options().get("flow")) && builds.incrementAndGet() == 2) throw new IllegalArgumentException("shop/b cannot be built again");
         });
-        byte[] changed = doorsPackage("shop", "a", "b").flow("b", "2.0.0", "sync", "b-in", 1024, PackageDraft.toPartner()).zip();
+        PackageDraft changed = doorsPackage("shop", "a", "b").flow("b", "2.0.0", "sync", "b-in", 1024, PackageDraft.toPartner());
         try (HttpClient client = http()) {
-            HttpResponse<String> put = send(client, "PUT", admin, "/admin/packages/shop", changed, "application/zip");
+            HttpResponse<String> put = deploy(client, admin, changed);
             assertEquals(500, put.statusCode(), "fixture: the redeploy, whose b does not start, rolled back: " + put.body());
         }
         assertEquals("FAILED", itemOf(listed(admin, "flows", "id"), "shop/b", "after the rollback").getString("state"), "fixture: the rollback could not build b again");
@@ -2425,6 +2405,14 @@ class NodeIT {
             for (int i = 0; i < 3; i++) assertEquals(LIVE, answer(port, "/live", 200), "live without Postgres");
         } finally {
             observer.query("alter database \"" + database + "\" with allow_connections true").execute().await();
+        }
+    }
+
+    /** Deletes {@code root} and everything under it; nothing when it is missing. */
+    static void deleteTree(Path root) throws IOException {
+        if (Files.notExists(root)) return;
+        try (Stream<Path> walk = Files.walk(root)) {
+            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(p);
         }
     }
 }

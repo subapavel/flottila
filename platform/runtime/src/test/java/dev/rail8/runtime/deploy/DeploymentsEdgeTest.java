@@ -78,16 +78,16 @@ class DeploymentsEdgeTest {
     }
 
     DeployedPackage deploy(Deployments d, PackageDraft p) throws Exception {
-        Path archive = p.zipTo(tmp.resolve("archives"));
-        return OnVirtualThread.call(() -> d.deploy("shop", Optional.empty(), archive)).pkg();
+        Path folder = p.folderIn(tmp.resolve("folders"));
+        return OnVirtualThread.call(() -> d.deploy("shop", folder)).pkg();
     }
 
     DeployRefusedException refused(Deployments d, PackageDraft p) {
-        return refused(d, p.zipTo(tmp.resolve("archives")));
+        return refused(d, p.folderIn(tmp.resolve("folders")));
     }
 
-    static DeployRefusedException refused(Deployments d, Path archive) {
-        return assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> d.deploy("shop", Optional.empty(), archive)));
+    static DeployRefusedException refused(Deployments d, Path folder) {
+        return assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> d.deploy("shop", folder)));
     }
 
     @Test
@@ -106,15 +106,15 @@ class DeploymentsEdgeTest {
         doors.failStop("shop/a", "socket stuck");
         doors.failStart(2, "address in use");
 
-        Path archive = shop("a", "b").zipTo(tmp.resolve("archives"));
+        PackageDraft p = shop("a", "b");
 
-        DeployRefusedException refused = refused(d, archive);
+        DeployRefusedException refused = refused(d, p.folderIn(tmp.resolve("folders")));
 
         assertEquals(Kind.FAILED, refused.kind(), refused.getMessage());
         assertEquals("flow 'shop/b' did not start: address in use", refused.error(), "the answer is the start that failed, not the stop");
         assertTrue(doors.door("shop/a").stopped(), "the flow that started was stopped (its stop failed)");
         assertEquals(List.of(), d.flows());
-        assertFalse(Files.exists(tmp.resolve("data").resolve("packages").resolve("shop").resolve(PackageDraft.sha256(archive))), "no package directory is left");
+        assertFalse(Files.exists(tmp.resolve("data").resolve("packages").resolve("shop").resolve(p.content().substring("sha256:".length()))), "no package directory is left");
         assertEquals(List.of("shop/a", "shop/b"), deploy(deployments(Map.of(Doors.SCHEME, new Doors()), List.of()), shop("a", "b")).flows(),
                 "fixture: the same package deploys where its consumers start and stop");
     }

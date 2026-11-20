@@ -1,6 +1,9 @@
 package dev.rail8.cli;
 
 import dev.rail8.cli.CliRuns.Ran;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.treewalk.TreeWalk;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.platform.launcher.Launcher;
@@ -58,6 +61,8 @@ class NewAdapterTest {
 
         List<String> files = files(dir);
         assertEquals(List.of(
+                ".gitattributes",
+                ".gitignore",
                 "package/endpoints/orders-in.yaml",
                 "package/endpoints/partner.yaml",
                 "package/fixtures/order.xml",
@@ -80,6 +85,32 @@ class NewAdapterTest {
         assertTrue(Files.readString(dir.resolve(PATH + "AcmeComponent.java")).contains("public static final String SCHEME = \"acme\";"));
         assertTrue(Files.readString(dir.resolve("pom.xml")).contains("<groupId>org.acme.rail8.adapter</groupId>"));
         assertTrue(Files.readString(dir.resolve("package/endpoints/orders-in.yaml")).contains("scheme: acme"));
+        assertEquals("* -text\n", Files.readString(dir.resolve(".gitattributes")), "git keeps the bytes as written: no line ending changes");
+        assertEquals("target/\n", Files.readString(dir.resolve(".gitignore")), "the build's output is never committed");
+    }
+
+    /** The skeleton is a git repository on {@code main} with one commit, which holds every file written: nothing is left uncommitted. */
+    @Test
+    void theSkeletonIsAGitRepositoryWithOneCommitOfEveryFile() throws Exception {
+        Path dir = temp.resolve("acme-adapter");
+        Ran ran = run("new-adapter", dir.toString(), "--scheme", "acme", "--package", PACKAGE);
+        assertEquals(0, ran.exit(), ran.toString());
+
+        try (Git git = Git.open(dir.toFile())) {
+            assertEquals("main", git.getRepository().getBranch());
+            List<RevCommit> commits = new ArrayList<>();
+            git.log().call().forEach(commits::add);
+            assertEquals(1, commits.size(), "one commit: " + commits);
+            List<String> committed = new ArrayList<>();
+            try (TreeWalk walk = new TreeWalk(git.getRepository())) {
+                walk.addTree(commits.getFirst().getTree());
+                walk.setRecursive(true);
+                while (walk.next()) committed.add(walk.getPathString());
+            }
+            assertEquals(files(dir), committed.stream().sorted().toList(), "the commit holds every file written");
+            assertTrue(git.status().call().isClean(), "nothing is left uncommitted");
+            assertTrue(ran.out().contains(commits.getFirst().name()), "the commit is named: " + ran);
+        }
     }
 
     @Test
@@ -158,7 +189,7 @@ class NewAdapterTest {
     /** The regular files under {@code dir}, relative to it with '/', sorted. */
     static List<String> files(Path dir) throws IOException {
         try (Stream<Path> walk = Files.walk(dir)) {
-            return walk.filter(Files::isRegularFile).map(p -> dir.relativize(p).toString().replace('\\', '/')).sorted().toList();
+            return walk.filter(Files::isRegularFile).map(p -> dir.relativize(p).toString().replace('\\', '/')).filter(f -> !f.startsWith(".git/")).sorted().toList();
         }
     }
 

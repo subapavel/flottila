@@ -206,11 +206,29 @@ class ComposeStackTest {
         }
     }
 
+    /**
+     * The node's package repositories are this checkout, mounted read-only as the repository {@code rail8} under a {@code file://}
+     * base, whose package is the demo.
+     */
+    @Test
+    void theNodeReadsTheCheckoutAsTheRepositoryRail8() throws IOException {
+        JsonNode node = service("rail8");
+        Map<String, String> env = environment(node);
+        assertEquals("file:///repos/", env.get("RAIL8_GIT_BASE"));
+        assertEquals("examples/demo", env.get("RAIL8_GIT_PATH"));
+        Mount checkout = mounts(node).stream().filter(m -> m.target().equals("/repos/rail8")).findFirst().orElseThrow();
+        assertTrue(checkout.readOnly(), "the checkout is only read: " + checkout);
+        Path root = DIR.resolve(checkout.source()).normalize();
+        assertTrue(Files.isDirectory(root.resolve(".git")) || Files.isRegularFile(root.resolve(".git")), "the mount is the checkout's root: " + root);
+        assertTrue(Files.isRegularFile(root.resolve(env.get("RAIL8_GIT_PATH")).resolve("package.yaml")), "the path names the demo's package.yaml in it");
+    }
+
     @Test
     void theDeployServiceRunsRail8DeployAfterTheNodeIsHealthy() throws IOException {
         JsonNode deploy = service("deploy");
         String command = joined(deploy.path("command")) + " " + joined(deploy.path("entrypoint"));
-        assertTrue(command.contains("deploy") && command.contains("/packages/demo"), "deploy runs 'rail8 deploy /packages/demo': " + command);
+        assertTrue(command.contains(" deploy rail8 HEAD "), "deploy runs 'rail8 deploy rail8 HEAD': " + command);
+        assertEquals(List.of("/cli"), mounts(deploy).stream().map(Mount::target).toList(), "the one-shot mounts the CLI only: the node reads the commit");
         assertTrue(command.contains("http://rail8:8081"), "deploy targets the node's admin port: " + command);
         assertEquals("service_healthy", deploy.path("depends_on").path("rail8").path("condition").asText());
         assertEquals("no", deploy.path("restart").asText("no"), "a one-shot is not restarted");
@@ -454,10 +472,12 @@ class ComposeStackTest {
                 "the fingerprint is unknown until the key exists: it is not a fixed value of the compose file");
         List<Mount> mounted = mounts(node);
         // CORE-4c1 r1 (architect): the node's data directory is a named volume too, so a recreated container keeps its journal
-        assertEquals(List.of("sftp-fingerprint", "rail8-data"), mounted.stream().map(Mount::source).toList(),
-                "the node mounts the fingerprint volume and its data volume, no other (in particular none that holds a host key): " + mounted);
+        assertEquals(List.of("sftp-fingerprint", "rail8-data", "../.."), mounted.stream().map(Mount::source).toList(),
+                "the node mounts the fingerprint volume, its data volume and the checkout, no other (in particular none that holds a host key): "
+                        + mounted);
         assertTrue(mounted.get(0).readOnly(), "and only reads the fingerprint: " + mounted);
         assertEquals(new Mount("rail8-data", "/var/lib/rail8", false), mounted.get(1), "the data volume is the node's data directory, written");
+        assertEquals(new Mount("../..", "/repos/rail8", true), mounted.get(2), "the checkout is only read");
         assertTrue(new ObjectMapper(new YAMLFactory()).readTree(FILE.toFile()).path("volumes").has("rail8-data"), "rail8-data is a declared volume");
         String wrapper = script(node) + " " + environment(node);
         assertFalse(wrapper.contains("ssh_host"), "nothing the node runs names a host key file, public or private, of any type: " + wrapper);
@@ -500,6 +520,16 @@ class ComposeStackTest {
         assertTrue(script(node).contains("exec java -jar /opt/rail8/rail8-node.jar"), "the wrapper starts the jar the image builds: " + script(node));
         assertTrue(script(sftp).contains("demo:${RAIL8_SFTP_PASSWORD:-demo}:1001:100:inbox"), script(sftp));
         assertFalse(Files.readString(ROOT_FILE).contains("placeholder"), "no placeholder secret is left in the quickstart stack");
+    }
+
+    /** The quickstart's node reads the working folder, mounted read-only, as the base of its package repositories. */
+    @Test
+    void theQuickstartNodeReadsTheWorkingFolderAsItsPackageRepositories() throws IOException {
+        JsonNode node = serviceIn(ROOT_FILE, "rail8");
+        assertEquals("file:///workspace/", environment(node).get("RAIL8_GIT_BASE"));
+        assertFalse(environment(node).containsKey("RAIL8_GIT_PATH"), "each repository of the working folder is a package at its root");
+        assertEquals(java.util.Optional.of(new Mount("${HOME}/rail8-workspace", "/workspace", true)), mountOf(node, "${HOME}/rail8-workspace"),
+                "the quickstart's working folder, only read: " + mounts(node));
     }
 
     @Test

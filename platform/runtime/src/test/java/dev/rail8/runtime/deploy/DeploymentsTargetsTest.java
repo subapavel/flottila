@@ -59,6 +59,7 @@ class DeploymentsTargetsTest {
     static final Duration NEVER = Duration.ofHours(1);
 
     @TempDir Path tmp;
+    GitRepos repos;
 
     final FakeRuntime rt = FakeRuntime.create();
     final InMemoryMessageStore messages = new InMemoryMessageStore();
@@ -69,6 +70,7 @@ class DeploymentsTargetsTest {
 
     @BeforeEach
     void wire() {
+        repos = new GitRepos(tmp.resolve("repos"));
         queue = new CountingQueue(rt.clock());
     }
 
@@ -84,31 +86,36 @@ class DeploymentsTargetsTest {
 
     // --- fixture
 
-    /** One node: its data directory {@code <tmp>/<id>}, its Doors (naming targets by url), its Targets, its Deployments. */
+    /**
+     * One node: its data directory {@code <tmp>/<id>}, its Doors (naming targets by url), its Targets, its Deployments, its git base
+     * the package repositories every node shares.
+     */
     final class Peer {
         final Doors doors = new Doors();
         final Targets targets = new Targets(new Targets.Limit(16, NEVER), Map.of(PARTNER, new Targets.Limit(1, NEVER)), rt.timer());
         final Deployments deployments;
 
-        Peer(String id, DeploymentStore rows, ArchiveStore archives) {
+        Peer(String id, DeploymentStore rows) {
             doors.targets(cfg -> Optional.ofNullable(cfg.options().get("url")).map(String::valueOf));
             Map<String, String> e = new HashMap<>();
             e.put("RAIL8_ENV", "dev");
             e.put("RAIL8_NODE_ID", id);
             e.put("RAIL8_DATA_DIR", tmp.resolve(id).toString());
             e.put("RAIL8_STOP_DEADLINE", "PT37S");
+            e.put("RAIL8_GIT_BASE", repos.base().toString());
             Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
             // P2-16a (D-121 A6): no accept poll any more; the intake hands off to, or wakes, the node's workers
             dev.rail8.core.flow.Workers workers = new dev.rail8.core.flow.Workers();
             deployments = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(),
-                    messages, dlq, queue, () -> 0L, rows, archives, new SequentialIntake(messages, queue, workers, id), new InMemoryPollerLeases(rt.clock()),
+                    messages, dlq, queue, () -> 0L, rows, new SequentialIntake(messages, queue, workers, id), new InMemoryPollerLeases(rt.clock()),
                     targets, () -> true, workers);
             peers.add(this);
         }
 
+        /** Commits {@code p} to the repository of its name and deploys that commit. */
         DeployResult deploy(PackageDraft p) throws Exception {
-            Path archive = p.zipTo(tmp.resolve("uploads"));
-            return OnVirtualThread.call(() -> deployments.deploy(p.manifest().getString("name"), Optional.empty(), archive));
+            String commit = repos.commit(p);
+            return OnVirtualThread.call(() -> deployments.deploy(p.name(), commit, "test"));
         }
 
         /** The next send to the partner is held until the case ends or counts the latch down. */
@@ -125,7 +132,7 @@ class DeploymentsTargetsTest {
     }
 
     Peer node(String id) {
-        return new Peer(id, new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve(id + "-archives")));
+        return new Peer(id, new InMemoryDeploymentStore());
     }
 
     Envelope envelope(String flow) {
@@ -219,17 +226,16 @@ class DeploymentsTargetsTest {
     }
 
     /**
-     * Node 1 deploys a (sync, to {@link #PARTNER}) into the pool's rows and archive store; node 2 restores it. On node 2 the
+     * Node 1 deploys a (sync, to {@link #PARTNER}) into the pool's rows; node 2 restores it from its commit. On node 2 the
      * restored flow sends under node 2's limit: with one send held, the next waits in node 2's gauge — node 1's limit sees none
      * of it — and is sent once the first was answered.
      */
     @Test
     void aRestoredPackageUsesTheNodesTargets() throws Exception {
         Ledger rows = new Ledger(line -> {});
-        Shelf shelf = new Shelf(tmp.resolve("bucket"), tmp.resolve("shelf-reads"), line -> {});
-        Peer one = new Peer("node-1", rows, shelf);
+        Peer one = new Peer("node-1", rows);
         one.deploy(calling("a", "partner"));
-        Peer two = new Peer("node-2", rows, shelf);
+        Peer two = new Peer("node-2", rows);
         OnVirtualThread.call(() -> {
             two.deployments.restore();
             return null;

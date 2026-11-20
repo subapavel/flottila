@@ -1,6 +1,7 @@
 package dev.rail8.runtime.deploy;
 
 import io.vertx.core.Future;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.Promise;
 
 import java.util.List;
@@ -96,6 +97,11 @@ final class Ledger implements DeploymentStore {
         return rows.list().await();
     }
 
+    /** The audit rows written, oldest first. */
+    List<InMemoryDeploymentStore.Audited> audited() {
+        return rows.audited();
+    }
+
     /** Releases every hold: nothing a case held outlives it. */
     void releaseAll() {
         holds.forEach(Hold::release);
@@ -132,5 +138,10 @@ final class Ledger implements DeploymentStore {
     @Override
     public Future<List<DeploymentRecord>> list() {
         return rows.list();
+    }
+
+    @Override
+    public Future<Void> audit(String actor, String repository, JsonObject detail) {
+        return rows.audit(actor, repository, detail);
     }
 }

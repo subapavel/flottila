@@ -117,6 +117,7 @@ final class FakeGit implements PackageRepositoriesContract.Source {
         private final Set<String> reading = new HashSet<>();
         private boolean started;
         private boolean expired;
+        private Timer.Cancellable deadline;
 
         Session(String path, Optional<String> ref, boolean deployed, Duration timeout, long maxBytes, long maxPackageBytes, Timer timer,
                 Supplier<Set<String>> named) {
@@ -172,6 +173,11 @@ final class FakeGit implements PackageRepositoriesContract.Source {
             return new CachedCommit(repository, id);
         }
 
+        @Override
+        public void close() {
+            if (deadline != null) deadline.cancel();
+        }
+
         private static void complete(Map<String, FakeCommit> cached, String id, String repository, String target) throws GitFailure {
             for (String at = id; at != null; ) {
                 FakeCommit commit = cached.get(at);
@@ -197,7 +203,7 @@ final class FakeGit implements PackageRepositoriesContract.Source {
             if (done != null) return done;
             if (!started) {
                 started = true;
-                timer.schedule(timeout, () -> expired = true);
+                deadline = timer.schedule(timeout, () -> expired = true);
             }
             if (expired) throw new GitFailure(Reason.TIMED_OUT, repository, target);
             Repository at = source.get(repository);

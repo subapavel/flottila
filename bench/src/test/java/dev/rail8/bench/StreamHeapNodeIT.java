@@ -38,6 +38,7 @@ class StreamHeapNodeIT {
     static final SharedPostgres pg = SharedPostgres.database();
 
     @TempDir Path dir;
+    @TempDir Path repos;
 
     @BeforeAll
     static void start() {
@@ -54,7 +55,7 @@ class StreamHeapNodeIT {
         int admin = NodeBenchMain.freePort();
         StreamHeapMain.Options o = StreamHeapMain.options(new String[] {"--host", pg.getHost(), "--port", String.valueOf(pg.getMappedPort(5432)),
                 "--db", "x_bench", "--user", pg.getUsername(), "--password", pg.getPassword()});
-        Map<String, String> env = new HashMap<>(StreamHeapMain.nodeEnv(o, dir, admin, 0));
+        Map<String, String> env = new HashMap<>(StreamHeapMain.nodeEnv(o, dir, repos, admin, 0));
         env.put("RAIL8_PG_DATABASE", pg.getDatabaseName());
         Pipe in = Pipe.open();
         Pipe out = Pipe.open();
@@ -73,7 +74,7 @@ class StreamHeapNodeIT {
             NodeBenchMain.Harness h = new NodeBenchMain.Harness(StreamHeapMain.bench(o), vertx, null, client, Buffer.buffer(), 0, 0);
             assertTrue(LedgerMain.until(vertx, Duration.ofSeconds(60), () -> node.isDone() || LedgerMain.health(h, admin) == 200),
                     "the node served /health");
-            h.deploy(admin, StreamHeapMain.streamPackage(1024 * 1024, NodeBenchMain.freePort()));   // refused without stream-copy
+            h.deploy(admin, NodeBenchMain.commit(repos, StreamHeapMain.streamPackage(1024 * 1024, NodeBenchMain.freePort())));   // refused without stream-copy
 
             asks.write("heap\n".getBytes(StandardCharsets.UTF_8));
             asks.flush();

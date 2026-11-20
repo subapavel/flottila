@@ -1,6 +1,6 @@
 # The gate stack (GATE checks 1-2, D-085): Postgres, Valkey, SeaweedFS (S3) and an SFTP server beside one Rail8 node,
-# the demo's partner echo and a one-shot that deploys examples/demo; a one-shot (sftp-keys) makes the SFTP host key first. A demo stack, not production: the node runs RAIL8_ENV=dev
-# so the manual deploy and the http S3 endpoint are allowed. Kafka is the optional event-broker add-on (O-1), off by default: start it with --profile kafka; ClickHouse (--profile history) is present, not wired.
+# the demo's partner echo and a one-shot that deploys examples/demo as committed at the checkout's HEAD; a one-shot (sftp-keys) makes the SFTP host key first. A demo stack,
+# not production: the node runs RAIL8_ENV=dev so the manual deploy, the file:// package repository and the http S3 endpoint are allowed. Kafka is the optional event-broker add-on, off by default: start it with --profile kafka; ClickHouse (--profile history) is present, not wired.
 # Build the host jars first, from the repository's root: ./mvnw -B -ntp -q package -DskipTests -pl :rail8-node,:rail8-cli -am
 # Then:  RAIL8_ADMIN_TOKEN=<token> docker compose up -d --build        (see README.md)
 services:
@@ -162,6 +162,10 @@ services:
       RAIL8_ADMIN_TOKEN: "${RAIL8_ADMIN_TOKEN:?set RAIL8_ADMIN_TOKEN: the admin API on 0.0.0.0 needs a token}"
       # the demo's sftp-inbox names both as secret:// references (D-086); the host key's fingerprint is read below
       RAIL8_SECRET_SFTP_PASSWORD: "${RAIL8_SFTP_PASSWORD:-demo}"
+      # the package repositories: this Rail8 checkout, mounted below as the repository `rail8`, whose package is examples/demo;
+      # a deploy reads its commits, so the checkout needs its full history (no shallow clone, no worktree)
+      RAIL8_GIT_BASE: file:///repos/
+      RAIL8_GIT_PATH: examples/demo
     # the image's own command, behind a wrapper that reads the fingerprint `sftp-keys` wrote (public, unknown until the key exists)
     entrypoint:
       - sh
@@ -169,9 +173,11 @@ services:
       - 'RAIL8_SECRET_SFTP_HOST_KEY=$$(cat /sftp-fingerprint/host-key.fingerprint) && export RAIL8_SECRET_SFTP_HOST_KEY && exec java -jar /opt/rail8/rail8-node.jar'
     volumes:
       - sftp-fingerprint:/sftp-fingerprint:ro
-      # the node's data directory (the body journal with its NODE, segments and generated MASTER, the deployment archives) is a
-      # named volume: a recreated container finds its journal again; `docker compose down -v` removes it together with pg-data
+      # the node's data directory (the body journal with its NODE, segments and generated MASTER, the git cache and the packages'
+      # directories) is a named volume: a recreated container finds its journal again; `docker compose down -v` removes it together
+      # with pg-data
       - rail8-data:/var/lib/rail8
+      - ../..:/repos/rail8:ro
     depends_on:
       netns:
         condition: service_healthy
@@ -210,15 +216,15 @@ services:
       retries: 30
 
   deploy:
-    # one-shot: `rail8 deploy /packages/demo` with the host-built CLI jar, then exit 0 (no healthcheck, no restart)
+    # one-shot: `rail8 deploy rail8 HEAD` with the host-built CLI jar, then exit 0 (no healthcheck, no restart): the node deploys
+    # examples/demo as committed at the checkout's HEAD
     image: eclipse-temurin:25.0.4.1_1-jre-noble
     restart: "no"
     environment:
       RAIL8_ADMIN_TOKEN: "${RAIL8_ADMIN_TOKEN:?set RAIL8_ADMIN_TOKEN: the admin API on 0.0.0.0 needs a token}"
     volumes:
       - ../../platform/cli/target:/cli:ro
-      - ../../examples:/packages:ro
-    entrypoint: ["sh", "-c", "jar=$$(ls /cli/rail8-cli-*.jar | grep -v -E -- '-(sources|javadoc|tests)[.]jar$$' | head -n 1) && exec java -jar \"$$jar\" deploy /packages/demo --admin http://rail8:8081"]
+    entrypoint: ["sh", "-c", "jar=$$(ls /cli/rail8-cli-*.jar | grep -v -E -- '-(sources|javadoc|tests)[.]jar$$' | head -n 1) && exec java -jar \"$$jar\" deploy rail8 HEAD --admin http://rail8:8081"]
     depends_on:
       rail8:
         condition: service_healthy

@@ -1,6 +1,7 @@
 package dev.rail8.runtime;
 
 import dev.rail8.components.http.HttpComponent;
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
@@ -117,6 +118,7 @@ class NodePoolRolesIT {
     Map<String, String> env() throws Exception {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "ci");   // ci is no deployed environment: a plain-http endpoint is allowed
+        GitRepos.with(env);   // the test JVM's package repositories, which its deploys commit to
         env.put("RAIL8_NODE_ID", NODE);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
@@ -141,7 +143,7 @@ class NodePoolRolesIT {
         nodes.add(node);
         HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.response().setStatusCode(500).end("not expected")).listen(0, "127.0.0.1").await();
         servers.add(partner);
-        InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partner.actualPort())));
+        InvoiceAsyncIT.deploy(client, node, InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partner.actualPort()));
         return node;
     }
 

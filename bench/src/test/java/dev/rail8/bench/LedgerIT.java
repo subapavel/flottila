@@ -8,15 +8,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.localstack.LocalStackContainer;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
-import software.amazon.awssdk.services.s3.model.S3Object;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,18 +27,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The kill -9 ledger (P1-10b, GATE 9, ARCHITECTURE §11: sent = final-step rows, DLQ 0, work 0) on containers: Postgres and
- * LocalStack S3 for the package archive. {@link LedgerMain#run} starts node 1 as a child JVM (same classpath) with the
+ * the package's git repository, a folder of the run. {@link LedgerMain#run} starts node 1 as a child JVM (same classpath) with the
  * at-least-once bench package (its last step {@code to partner}, named {@code partner}, every step recorded), sends, kills node 1
  * with {@code destroyForcibly} (SIGKILL) after {@code --kill-after} ACKs, starts node 2 on an empty data directory — it restores
- * the package from the deployment record and S3, no PUT — re-sends every message whose 202 did not arrive until it is ACKed,
+ * the package from the deployment record's commit, no deploy — re-sends every message whose 202 did not arrive until it is ACKed,
  * sends the rest and waits, bounded, for the work queue to be empty: GATE 9 reads N/N over all N messages. Correctness only: no
- * timing thresholds (D-036). Every case runs on a database and an S3 prefix of its own.
+ * timing thresholds. Every case runs on a database of its own.
  *
  * <p>The record's fields: {@code messages}; {@code sent} (distinct messages sent at least once: {@code messages} when the run
  * ends); {@code resent} (POSTs beyond the first per message: a message is re-sent after every attempt without a 202);
@@ -65,8 +55,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LedgerIT {
 
     static final SharedPostgres pg = SharedPostgres.database();
-    static final LocalStackContainer localstack = new LocalStackContainer("localstack/localstack:4").withServices("s3");
-    static final String BUCKET = "rail8-ledger-it";
     static final AtomicInteger cases = new AtomicInteger();
     /** A final-step row: the bench flow's last step, {@code to partner}, recorded as done. */
     static final String FINAL = "step_name = 'partner' and outcome = 'ok'";
@@ -77,24 +65,16 @@ class LedgerIT {
     }
     /** Linux reports a child killed by signal 9 as 128 + 9. */
     static final int SIGKILLED = 137;
-    static S3Client s3;
 
     @TempDir Path dir;
 
     @BeforeAll
     static void start() {
         pg.start();
-        localstack.start();
-        s3 = S3Client.builder().endpointOverride(localstack.getEndpoint()).region(Region.of(localstack.getRegion()))
-                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.getAccessKey(), localstack.getSecretKey())))
-                .forcePathStyle(true).httpClientBuilder(UrlConnectionHttpClient.builder()).build();
-        s3.createBucket(CreateBucketRequest.builder().bucket(BUCKET).build());
     }
 
     @AfterAll
     static void stop() {
-        s3.close();
-        localstack.stop();
         pg.stop();
     }
 
@@ -155,13 +135,14 @@ class LedgerIT {
                 killedAt.toString(), killedAt.toString(), ackedIds, killedAt.toString());
         assertTrue(finishedByNode2 - unfinished <= rerun, "each id finished after the kill beyond the unfinished ones is a re-run that"
                 + " already had its final-step row: " + numbers + "; finished after the kill without a final-step row before it: " + firstFinishes);
-        // node 2 ran the package it restored: the deployment record is node 1's, written before the kill, not replaced by a PUT
-        long deployedBeforeKill = count(c.db, "select count(*) from deployments where package = 'bench' and deployed_at < ?::timestamptz", killedAt.toString());
-        assertEquals(1, deployedBeforeKill, "node 2 restored the bench package from its record, nothing re-deployed it");
-        assertFalse(archives(c.prefix).isEmpty(), "the package archive is in S3 under the case prefix: " + c.prefix);
-        // CORE-4c2 (D-105): the ledger holds with every body in the journal — no bodies row and no S3 object but the archive
+        // node 2 ran the package it restored: the deployment record is node 1's, written before the kill, not replaced by a deploy;
+        // node 2 read its commit from the run's repository into a git cache of its own
+        long deployedBeforeKill = count(c.db, "select count(*) from deployments where package = 'bench' and repository = 'bench'"
+                + " and commit ~ '^[0-9a-f]{40}$' and deployed_at < ?::timestamptz", killedAt.toString());
+        assertEquals(1, deployedBeforeKill, "node 2 restored the bench package from its record, a commit of the repository bench");
+        assertEquals(1, count(c.db, "select count(*) from deployments"), "nothing re-deployed it: one record");
+        // the ledger holds with every body in the journal: no bodies row
         assertEquals(0, count(c.db, "select count(*) from bodies"), "no bodies row: the bodies were in the journal, across the kill");
-        assertEquals(archives(c.prefix), objects(c.prefix), "the only S3 objects under the case prefix are the package archive's");
 
         // the ledger, checked in the database rather than in the record
         assertEquals(acked, ackedIds.size(), "one id per ACK: " + json.encode());
@@ -235,35 +216,22 @@ class LedgerIT {
 
     // --- fixtures
 
-    record Case(String db, String prefix) {}
+    record Case(String db) {}
 
-    /** A database of the case's own (its name contains "bench": the run truncates it) and an S3 prefix of its own. */
+    /** A database of the case's own (its name contains "bench": the run truncates it). */
     static Case newCase() throws SQLException {
         int n = cases.incrementAndGet();
         String db = "ledger_bench_" + n;
         try (Connection c = connect(pg.getDatabaseName()); Statement s = c.createStatement()) {
             s.execute("CREATE DATABASE \"" + db + "\"");
         }
-        return new Case(db, "ledger-it-" + n);
+        return new Case(db);
     }
 
     static String[] args(Case c, int messages, int killAfter, Path out) {
         return new String[] {"--host", pg.getHost(), "--port", String.valueOf(pg.getMappedPort(5432)), "--db", c.db,
                 "--user", pg.getUsername(), "--password", pg.getPassword(),
-                "--messages", String.valueOf(messages), "--kill-after", String.valueOf(killAfter), "--out", out.toString(), "--commit", "test",
-                "--s3-endpoint", localstack.getEndpoint().toString(), "--s3-region", localstack.getRegion(), "--s3-bucket", BUCKET,
-                "--s3-prefix", c.prefix, "--s3-access-key", localstack.getAccessKey(), "--s3-secret-key", localstack.getSecretKey()};
-    }
-
-    static List<String> archives(String prefix) {
-        return s3.listObjectsV2(ListObjectsV2Request.builder().bucket(BUCKET).prefix(prefix + "/archives/").build()).contents().stream()
-                .map(S3Object::key).toList();
-    }
-
-    /** Every S3 object key under the case prefix. */
-    static List<String> objects(String prefix) {
-        return s3.listObjectsV2(ListObjectsV2Request.builder().bucket(BUCKET).prefix(prefix + "/").build()).contents().stream()
-                .map(S3Object::key).toList();
+                "--messages", String.valueOf(messages), "--kill-after", String.valueOf(killAfter), "--out", out.toString(), "--commit", "test"};
     }
 
     static List<String> strings(JsonArray array) {

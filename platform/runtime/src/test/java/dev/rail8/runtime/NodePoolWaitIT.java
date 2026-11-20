@@ -4,6 +4,7 @@ import dev.rail8.components.http.HttpComponent;
 import dev.rail8.core.flow.FlowWorker;
 import dev.rail8.runtime.admin.AdminServer;
 import dev.rail8.runtime.db.Migrations;
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
@@ -160,6 +161,7 @@ class NodePoolWaitIT {
     Map<String, String> env(String... pairs) throws Exception {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "ci");
+        GitRepos.with(env);   // the test JVM's package repositories, which its deploys commit to
         env.put("RAIL8_NODE_ID", NODE);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
@@ -179,7 +181,7 @@ class NodePoolWaitIT {
     /** A node over {@code env} with invoice-async deployed at /http/in on its HTTP port, its partners a server no unparsable body reaches. */
     Node startDeployed(HttpClient client, Map<String, String> env) throws Exception {
         Node node = startNode(env);
-        deploy(client, node, asyncPackage(), new CopyOnWriteArrayList<>());
+        deploy(client, node, asyncDeploy(), new CopyOnWriteArrayList<>());
         return node;
     }
 
@@ -198,9 +200,13 @@ class NodePoolWaitIT {
         return node;
     }
 
-    /** The invoice-async package served at /http/in on the node's HTTP port, sending to the partner {@link #startNode} started. */
-    byte[] asyncPackage() throws IOException {
-        return NodeIT.zip(InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + servers.getFirst().actualPort()));
+    /**
+     * The body of the deploy of the invoice-async package, served at /http/in on the node's HTTP port and sending to the partner
+     * {@link #startNode} started: the package committed to the repository {@code demo}.
+     */
+    byte[] asyncDeploy() throws IOException {
+        String commit = GitRepos.shared().commit("demo", InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + servers.getFirst().actualPort()));
+        return NodeIT.deployBody("demo", commit);
     }
 
     /** The failure text of a pool's wait for a connection that elapsed, a connect included (vertx-sql-client 5.1.10 SqlConnectionPool). */
@@ -267,8 +273,8 @@ class NodePoolWaitIT {
 
     /**
      * A 503 whose error is the pool's refusal of the deploy record: retryable (D-133). Sending it again is sound: the refusal
-     * leaves no record, nothing listed and no listener; what it does leave — the archive, put before the save and keyed by its
-     * sha256 (a second send puts the same object), and its stopped worker's start claim, in flight until the pool frees it —
+     * leaves no record, nothing listed and no listener; what it does leave — the commit in the node's git cache, which a second
+     * send reads again, and its stopped worker's start claim, in flight until the pool frees it —
      * a second send does not meet (the claim finds no row of the flow in {@code work}: none was accepted).
      */
     static boolean refusedByThePool(HttpResponse<String> answer) {
@@ -281,14 +287,14 @@ class NodePoolWaitIT {
     }
 
     /**
-     * FIX-234: the package {@code zip} deployed as {@code demo}, sent again while the answer is the pool's refusal of its record —
+     * The deploy {@code body} of {@code demo}, sent again while the answer is the pool's refusal of its record —
      * the node's start-up work on the work pool (the retention's first run) is not awaited by {@code Node.start}, and under a
      * small pool or queue a first deploy can meet it — within {@link NodeIT#until}'s bound. Any other answer than 200 fails at
      * once with its body; the bound fails naming the last answer. Every answer is added to {@code answers}.
      */
-    static void deploy(HttpClient client, Node node, byte[] zip, List<HttpResponse<String>> answers) {
+    static void deploy(HttpClient client, Node node, byte[] body, List<HttpResponse<String>> answers) {
         try {
-            NodeIT.until(() -> !refusedByThePool(put(client, node, zip, answers)), "fixture: the package deploys once the pool takes its record");
+            NodeIT.until(() -> !refusedByThePool(post(client, node, body, answers)), "fixture: the package deploys once the pool takes its record");
         } catch (AssertionError bound) {
             HttpResponse<String> last = answers.getLast();
             throw new AssertionError("fixture: the package deploys: still refused by the pool when the bound passed, " + answers.size()
@@ -299,9 +305,9 @@ class NodePoolWaitIT {
         assertEquals(new JsonArray().add("demo/invoice-async"), new JsonObject(put.body()).getJsonArray("flows"), "fixture: " + put.body());
     }
 
-    static HttpResponse<String> put(HttpClient client, Node node, byte[] zip, List<HttpResponse<String>> answers) {
+    static HttpResponse<String> post(HttpClient client, Node node, byte[] body, List<HttpResponse<String>> answers) {
         try {
-            HttpResponse<String> answer = NodeIT.send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip, "application/zip");
+            HttpResponse<String> answer = NodeIT.send(client, "POST", node.adminPort(), "/admin/deploy", body, "application/json");
             answers.add(answer);
             return answer;
         } catch (IOException failed) {
@@ -635,7 +641,7 @@ class NodePoolWaitIT {
     }
 
     /**
-     * FIX-172b A3: {@code PUT /admin/packages/demo} (the deployed package again) under the work pool held by two parks, PT0.2S,
+     * {@code POST /admin/deploy} (the deployed package's commit again) under the work pool held by two parks, PT0.2S,
      * answers 503 with an {@code error} while the parks hold the pool — retryable, never 500; after the release the same deploy
      * answers 200.
      */
@@ -644,11 +650,11 @@ class NodePoolWaitIT {
         try (HttpClient client = NodeIT.http()) {
             Node node = startDeployed(client, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
             int httpPort = node.httpPort();
-            byte[] zip = asyncPackage();
+            byte[] body = asyncDeploy();
 
             PgConnection locker = lock("dlq");
             holdTheWorkPool(client, httpPort);
-            HttpResponse<String> refused = NodeIT.send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip, "application/zip");
+            HttpResponse<String> refused = NodeIT.send(client, "POST", node.adminPort(), "/admin/deploy", body, "application/json");
             assertEquals(503, refused.statusCode(), "a deploy the pool refused is retryable, 503, never 500: " + refused.body());
             String error = new JsonObject(refused.body()).getString("error");
             assertTrue(error != null && !error.isBlank(), "an error body {error, ..}: " + refused.body());
@@ -656,7 +662,7 @@ class NodePoolWaitIT {
 
             locker.query("rollback").execute().await();
             NodeIT.until(() -> count("select count(*) from dlq") == 2, "the parks go through once the lock is gone");
-            HttpResponse<String> deployed = NodeIT.send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip, "application/zip");
+            HttpResponse<String> deployed = NodeIT.send(client, "POST", node.adminPort(), "/admin/deploy", body, "application/json");
             assertEquals(200, deployed.statusCode(), "witness: the same deploy once the pool is free: " + deployed.body());
         }
     }
@@ -774,7 +780,7 @@ class NodePoolWaitIT {
      * (not refused: it takes the queue's one place) and the deploy's record, the third user, is refused at once: 503 with the
      * sighting's text. That refused first deploy leaves no record row, no listed package or flow, and its path answers 404 on the
      * node's HTTP port; it
-     * does leave its archive (put before the save, keyed by its sha256: a second send puts the same object) and its stopped
+     * does leave its commit in the node's git cache (a second send reads it again) and its stopped
      * worker's start claim, in flight in the queue's one place until the pool frees it — with no row of the flow in {@code work}
      * that claim claims nothing, so a second send is sound. The fixture's deploy, sent while the hold lasts, is refused too (its
      * worker's start claim refused by the queue that leftover claim fills) and sent again; once the lock goes it is accepted and
@@ -801,9 +807,9 @@ class NodePoolWaitIT {
             NodeIT.until(() -> waitingOnALock(WORK) == 1, "fixture: the retention's first batch holds the work pool's one connection, waiting on the locked messages");
             String holder = waitingStatements(WORK);
             assertTrue(holder.contains("delete from messages"), "the holder is the retention's messages batch: " + holder);
-            byte[] zip = asyncPackage();
+            byte[] body = asyncDeploy();
 
-            HttpResponse<String> first = NodeIT.send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip, "application/zip");
+            HttpResponse<String> first = NodeIT.send(client, "POST", node.adminPort(), "/admin/deploy", body, "application/json");
             assertEquals(503, first.statusCode(), "the first deploy meets the node's start-up work on the work pool: " + first.body());
             assertEquals(new JsonObject().put("error", UNRECORDED + "Connection pool reached max wait queue size of 1"), new JsonObject(first.body()),
                     "the sighting's refusal: the record is the third user of a pool of one connection and one place to wait");
@@ -811,7 +817,7 @@ class NodePoolWaitIT {
             assertEquals(1, waitingOnALock(WORK), "the refusal came while the retention's batch still held the connection");
 
             // what the refused first deploy leaves a second one does not meet: no record, nothing listed, no path served, no work row for
-            // its leftover start claim to take (its archive stays, keyed by its sha256: the second send puts the same object)
+            // its leftover start claim to take (its commit stays in the node's git cache: the second send reads it again)
             assertEquals(0, count("select count(*) from deployments"), "no deployment row");
             assertEquals(0, count("select count(*) from work"), "no work row: the stopped worker's start claim, still in flight, claims nothing");
             assertEquals(new JsonArray(), items(client, node, "/admin/packages"), "no package listed");
@@ -823,7 +829,7 @@ class NodePoolWaitIT {
             CompletableFuture<Void> deployed = new CompletableFuture<>();
             Thread.ofVirtual().name("fixture-deploy").start(() -> {
                 try {
-                    deploy(client, node, zip, answers);
+                    deploy(client, node, body, answers);
                     deployed.complete(null);
                 } catch (Throwable failed) {
                     deployed.completeExceptionally(failed);

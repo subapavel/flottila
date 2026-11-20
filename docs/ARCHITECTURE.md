@@ -10,7 +10,7 @@ has decided will come and is not built yet. Comparisons with SAP Process Orchest
 Integration Suite (CPI) are given where they help.
 
 Stack: Java 25 on virtual threads, Vert.x 5.1, PostgreSQL, a body journal on each node's local disk,
-Valkey (optional), S3 (package archives). Licence Apache 2.0.
+Valkey (optional), and git repositories the packages are deployed from. Licence Apache 2.0.
 
 ## 1. Overview and terms
 
@@ -209,7 +209,7 @@ Postgres holds everything whose loss would lose a message, and the message histo
 | `dlq` | parked messages, by reference |
 | `body_refs`, `journal_segments`, `journal_keys`, `journal_nodes`, `journal_losses` | where each durable body is, the journal files, their wrapped encryption keys, and losses an operator accepted |
 | `nodes` | node membership and leases |
-| `deployments` | which package revision is deployed, by archive hash |
+| `deployments` | which commit of which repository each package runs, its content digest and the pins of its dependencies |
 | `audit` | operator acts |
 | `bodies` | old bodies stored in the database; read only, kept as a fallback |
 
@@ -240,7 +240,8 @@ node that holds the body (see part 6).
 
 - **Valkey** is used only for poller leases (part 6). It is optional; a node without it warns that
   two nodes would both poll.
-- **S3** stores deployed package archives, by hash. It stores no bodies.
+- **S3** is not used: packages are deployed from git. The node still reads the `RAIL8_ARCHIVE_*` and
+  `RAIL8_S3_*` settings of the archive store it no longer writes to; they go with the archive code.
 - **ClickHouse** is in the compose file but not used by any code. Kafka likewise: a flow asking for a
   Kafka queue is refused.
 
@@ -411,7 +412,7 @@ CPI). A call needs no network, and the body is not copied on its way in. The moc
 `rail8 validate` checks a package against the schemas and builds every flow. `rail8 test` runs the
 `*.test.yaml` cases of each flow in process, with mock endpoints and a virtual clock, so a case with
 retries five minutes apart finishes in milliseconds. It deploys a copy of the package's folder and of
-each dependency's, made once before the first case, with no archive and no record, so an edit of the
+each dependency's, made once before the first case, with no commit and no record, so an edit of the
 folders during a run changes nothing in it. Both find the node's modules and load plugins
 as a node does (part 5), from `--plugins <dir>` or `RAIL8_PLUGINS`, and read no setting of theirs.
 `rail8 lock` writes `package.lock`: it finds each dependency by its manifest's name among the package
@@ -421,37 +422,47 @@ root of its working tree, or whose files differ from its `HEAD`, is refused. `ra
 `rail8 test` read each dependency's files from its pinned commit in that folder of repositories, through
 the git seam the node will use, and the package itself from its working folder. A node still resolves
 a dependency by its content among the packages it holds.
-`rail8 deploy` zips the package and sends it to a node's admin API. `rail8 new-adapter` writes the
-skeleton of a new adapter (part 5).
+`rail8 deploy <repository> <commit|ref> [--check]` asks a node's admin API to deploy that commit of
+that repository (`POST /admin/deploy`) and prints the node's answer; `--check` deploys nothing.
+`rail8 new-adapter` writes the skeleton of a new adapter as a git repository with a first commit
+(part 5).
 
 ### Deployment
 
-A node unpacks the archive into a folder, then deploys that folder: it checks the package, builds
-every flow and computes each flow's hash over its
-file, every file it read and its endpoints' options. The archive is stored by its hash (in S3, or a
-local folder in development), then the flows whose hash changed are stopped and started again; the
-others keep running. The commit point is a row in `deployments`. A failed start rolls back. A
-consumer that does not start again in the rollback, or when a node starts and picks up the deployed
-packages, is tried again by the node on its own (part 5); its flow is listed `FAILED` only when its
-consumer cannot be built at all, until the next deploy.
+One commit of a package's own git repository is what runs (`docs/DEPLOY-FROM-GIT.md`). A deploy
+names a repository and a commit: `POST /admin/deploy` with `{"repository", "commit"}`; in `dev` and
+`ci` the commit may also be a ref, such as `HEAD` or `main`, resolved at the fetch. A node reads the
+repositories under one base, `RAIL8_GIT_BASE` (a `file://` base only in `dev` and `ci`), each by its
+name, with the package at `RAIL8_GIT_PATH` in it, through a JGit cache in its data directory that is
+not state: a commit the cache lacks is fetched within `RAIL8_GIT_TIMEOUT`, and with `RAIL8_GIT_REF`
+set the commit must be reachable from that ref. A bad request, a deployed environment, a closing node
+and a deploy already running are refused before any fetch. The package's folder in the commit is
+written to `packages/<name>/<content hex>/` in the data directory, keyed by its content digest, and
+each dependency's from the repository and commit `package.lock` pins.
 
-Manual deploy is allowed only in the `dev` and `ci` environments. Other nodes pick up the deployed
-packages from `deployments` and the archive store when they start; a running node does not learn of a
-deploy made on another node.
+Then the node deploys that folder: it checks the package, builds every flow and computes each flow's
+hash over its file, every file it read and its endpoints' options. Every problem is one line of one
+answer (422), and nothing has stopped; with `?check=true` the node answers there and changes nothing
+but its cache. Then the flows whose hash changed are stopped and started again; the others keep
+running. The commit point is a row in `deployments`: the repository, the commit, the content digest
+and the pins. A failed start rolls back. A consumer that does not start again in the rollback, or
+when a node starts and picks up the deployed packages, is tried again by the node on its own (part 5);
+its flow is listed `FAILED` only when its consumer cannot be built at all, until the next deploy.
+Undeploy is `DELETE /admin/packages/{name}`; a package that pins it runs on from its pin's own commit.
+A rollback is a deploy of an earlier commit.
+
+Manual deploy is allowed only in the `dev` and `ci` environments. A node restores every record at its
+start, before its admin port opens: the commit is read from its git cache, or fetched, and the content
+checked against the record. A package that cannot be read, or whose content differs, is listed
+`FAILED` with the reason and the others run; once the git host cannot be reached, the restore fetches
+nothing more. A running node does not learn of a deploy made on another node.
 
 **Planned**
-- Deployment from git: one commit of a package's own git repository is what runs. The archive in S3
-  and the upload by command go away. Its design is agreed (`docs/DEPLOY-FROM-GIT.md`):
-  - every package has a repository of its own; a pool reads its repositories under one base set in the
-    node's configuration, through a JGit cache that is not state, and a deploy names a repository and a
-    commit (`POST /admin/deploy`, `rail8 deploy <repository> <commit>`);
-  - a deploy reads each dependency's files from the repository and commit `package.lock` pins;
-  - a deploy is checked whole before anything stops and applied through today's swap; its record names
-    the repository, the commit and the content digest; undeploy stays, rollback is an earlier commit;
-  - a node restores from its git cache, and the other nodes of a pool follow a deploy on a timer;
-  - the same commit moves from dev to test to prod, a deployed environment taking only commits
-    reachable from its ref; what differs per environment stays in the files' overlays and `secret://`
-    names.
+- Deployment from git, the rest of its design (`docs/DEPLOY-FROM-GIT.md`):
+  - the archive store, its settings and the AWS SDK are deleted;
+  - the other nodes of a pool follow a deploy on a timer, and a deployed environment then takes
+    deploys of commits reachable from its ref, so the same commit moves from dev to test to prod;
+    what differs per environment stays in the files' overlays and `secret://` names.
 - A graphical flow editor (React Flow). The flow file and the editor are two views of the same
   thing: an edit in either shows in the other. The flow file holds no layout. The editor shows a
   step's default name but never writes it, and an edit changes only the step edited, keeping the
@@ -668,15 +679,16 @@ Two tools start a new adapter and run it (`docs/ADAPTERS.md`):
 - **Template.** `rail8 new-adapter <dir> --scheme <scheme> [--package <package>]` writes the sample
   under the new scheme, Java package and class names: its build, the component with its settings
   description, the plugin, the contract tests of the component and of its mock, and a package that
-  uses it. It builds and passes the contract suite as written; the comments marked `HTTP:` are
-  where another protocol goes. The cli jar carries the sample's files, copied at build time. A
+  uses it, as a git repository on `main` with a first commit. It builds and passes the contract suite
+  as written; the comments marked `HTTP:` are where another protocol goes. The cli jar carries the sample's files, copied at build time. A
   scheme the node already has, `rail8`, a name that is not a valid scheme or Java package, and a
   folder that is not empty are refused.
 - **Local run.** `bin/run-adapter <dir>`, in a checkout with the platform built, builds the
   adapter's jar, starts an empty Postgres in Docker on a free port and a node of environment `dev`
   with the adapter's `target/plugin` as its plugins (admin API on `127.0.0.1:18081`, no token, its
   HTTP port on `127.0.0.1:18090`),
-  deploys the adapter's `package/`, starts a partner that echoes on `127.0.0.1:18091`, and runs the
+  deploys `package/` as the adapter's `HEAD` commit holds it (one line says so when the folder differs
+  from `HEAD`), starts a partner that echoes on `127.0.0.1:18091`, and runs the
   UI with the adapter's folder as its working folder, until Ctrl+C. A taken port or a missing tool
   stops it before it starts anything.
 
@@ -1072,7 +1084,7 @@ Bearer token; without one the API may only listen on loopback. There are no user
 | `GET /admin/work/stopped` | keys of ordered flows stopped behind a failed message |
 | `GET /admin/work/held`, `POST /admin/work/{seq}/release` | held items |
 | `GET /admin/work/lost`, `POST /admin/work/{seq}/discard` | items whose body was lost |
-| `PUT`, `DELETE /admin/packages/{name}`; `GET /admin/packages`, `GET /admin/flows` | deploy, undeploy, what runs (a `RESTARTING` flow with its failures, next attempt and cause) |
+| `POST /admin/deploy`, `DELETE /admin/packages/{name}`; `GET /admin/packages`, `GET /admin/flows` | deploy a commit (`?check=true`: check it only), undeploy, what runs (a `RESTARTING` flow with its failures, next attempt and cause) |
 | `GET /admin/targets`, `GET /admin/flows/{flow}/cpu` | limits per target system, CPU by step |
 | `GET /admin/components` | the components the node serves and their settings descriptions |
 | `GET /admin/steps` | the step types of the node's modules and plugins, each with its `configSchema`, sorted by type |
@@ -1105,7 +1117,8 @@ endpoints, and by default a synchronous Postgres standby).
 ### Running it
 
 `deploy/compose` starts a node with Postgres, Valkey, S3 (SeaweedFS), an SFTP server and a partner
-that echoes, and deploys `examples/demo`. The root `docker-compose.yml` is a smaller quickstart
+that echoes, and deploys `examples/demo` from the checkout's `HEAD`, the checkout mounted as the git
+repository `rail8`. The root `docker-compose.yml` is a smaller quickstart
 (`docs/QUICKSTART.md`).
 
 **Planned**

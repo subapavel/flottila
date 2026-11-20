@@ -7,13 +7,10 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -22,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * FIX-124: {@code --recording-level none|all} (default all, the flow as before) sets the bench flow's recording level; the
  * CORE-GATE cell runs with none. {@code --recording keep|metadata-only} stays the payload setting. The level is read where the
- * node reads it: the package the run PUTs, its {@code flows/bench.yaml} checked against the flow schema and parsed by
+ * node reads it: the package the run deploys, its {@code flows/bench.yaml} checked against the flow schema and parsed by
  * {@link FlowDefinition#from} as the node's deploy does — so a level the node does not know fails here, not on the node.
  */
 class NodeBenchMainRecordingLevelTest {
@@ -77,14 +74,11 @@ class NodeBenchMainRecordingLevelTest {
         return FlowDefinition.from(plain(flow)).recording();
     }
 
-    /** {@code flows/bench.yaml} of the package the run PUTs (the bench writes it as JSON, a YAML subset). */
+    /** {@code flows/bench.yaml} of the package the run deploys (the bench writes it as JSON, a YAML subset). */
     static JsonObject flowDocument(NodeBenchMain.Options o) throws IOException {
-        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(NodeBenchMain.benchPackage(o, 2)))) {
-            for (ZipEntry e = zip.getNextEntry(); e != null; e = zip.getNextEntry()) {
-                if (e.getName().equals("flows/bench.yaml")) return new JsonObject(new String(zip.readAllBytes(), StandardCharsets.UTF_8));
-            }
-        }
-        throw new AssertionError("no flows/bench.yaml in the bench package");
+        byte[] flow = NodeBenchMain.benchPackage(o, 2).get("flows/bench.yaml");
+        if (flow == null) throw new AssertionError("no flows/bench.yaml in the bench package");
+        return new JsonObject(new String(flow, StandardCharsets.UTF_8));
     }
 
     /** The document as plain maps and lists, the shape the node's deploy hands {@link FlowDefinition#from}. */

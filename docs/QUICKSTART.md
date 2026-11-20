@@ -12,7 +12,7 @@ repository root.
 | Maven | none | the repository's `./mvnw` wrapper fetches the Maven it needs (3.9.11) and builds everything |
 | Node.js | 22.12 or newer | with npm |
 | Docker | Compose v2 | Docker Engine on Linux, Docker Desktop on macOS and Windows |
-| `curl`, `zip` | | `zip` is optional: `deploy.sh` falls back to the JDK's `jar` |
+| `curl`, `git` | | `git` with your name and email set (`git config --global user.name`, `user.email`): you commit what you deploy |
 
 The scripts are shell scripts. On Windows run everything inside WSL 2, with Docker Desktop's WSL integration on and the
 repository cloned inside the WSL file system.
@@ -21,20 +21,26 @@ repository cloned inside the WSL file system.
 
 ```sh
 git clone https://github.com/subapavel/rail8.git && cd rail8
-./mvnw -B -ntp -q package -DskipTests -pl :rail8-node -am   # the node's jar, which the image copies
+./mvnw -B -ntp -q package -DskipTests -pl :rail8-node,:rail8-cli -am   # the node's jar, which the image copies, and bin/rail8
 (cd ui && npm ci)
+
+mkdir -p ~/rail8-workspace && cp -r examples/demo ~/rail8-workspace/demo   # once: the packages the endpoint forms edit
+cp -r mapping/corpus ~/rail8-workspace/mapping-corpus                     # once: the mappings the mapping studio edits
+(cd ~/rail8-workspace/demo && git init -q -b main && echo '* -text' > .gitattributes && git add -A && git commit -qm 'The demo')   # once
 
 export RAIL8_ADMIN_TOKEN=rail8-local               # the admin API's bearer token; any string will do, keep it for later shells
 docker compose up -d --build                       # the node, its Postgres and the partner echo
 until curl -sf localhost:8081/health >/dev/null; do sleep 2; done
-deploy/quickstart/deploy.sh examples/demo          # the demo flows, deployed to the node
+bin/rail8 deploy demo HEAD                         # the demo's last commit, deployed to the node
 ```
+
+The working folder `~/rail8-workspace` holds the packages as git repositories, each named as its folder: the demo is the
+repository `demo`. The node mounts the folder read-only and deploys a commit of a repository in it, never the files
+beside the commit, so a change is deployed once it is committed. The folder must exist before the first `up`.
 
 Then start the UI in the same terminal, where `RAIL8_ADMIN_TOKEN` is exported; it runs until Ctrl+C:
 
 ```sh
-mkdir -p ~/rail8-workspace && cp -r examples/demo ~/rail8-workspace/demo   # once: the packages the endpoint forms edit
-cp -r mapping/corpus ~/rail8-workspace/mapping-corpus                     # once: the mappings the mapping studio edits
 cd ui && RAIL8_WORKSPACE=$HOME/rail8-workspace npm run dev
 ```
 
@@ -50,7 +56,14 @@ need it running. With `RAIL8_READ_ONLY=true` the studio saves and creates nothin
 
 An endpoint's form is drawn from its component's settings description, which the node serves, so it needs the node
 running. It opens read-only; Edit, change a setting, Check, and Save writes the file in the working folder, changing only
-the lines of the settings you changed. Deploy the edited package with `deploy/quickstart/deploy.sh ~/rail8-workspace/demo`.
+the lines of the settings you changed. Commit the change and deploy it, from the repository root in another terminal
+where `RAIL8_ADMIN_TOKEN` is exported:
+
+```sh
+git -C ~/rail8-workspace/demo add -A && git -C ~/rail8-workspace/demo commit -qm 'An edit'
+bin/rail8 deploy demo HEAD
+```
+
 With `RAIL8_READ_ONLY=true` the forms only show the files, as on a server.
 
 To see the demo flows as pictures, open **Flows** and choose a flow, such as `invoice-sync`. Its tab draws the flow's
@@ -65,7 +78,7 @@ To edit a flow, open `invoice-sync` and choose Edit. The + on an edge adds a ste
 buttons, or, with the canvas focused, with the arrow keys and Delete; Undo (or Ctrl+Z) takes a change back. The
 problems are found again after every change; Check lists them, and they do not stop Save. Save writes
 `~/rail8-workspace/demo/flows/invoice-sync.yaml`, changing only the lines of what you changed and keeping its comments.
-Deploy it with `deploy/quickstart/deploy.sh ~/rail8-workspace/demo`. A flow written in a form the editor does not keep,
+Commit it and deploy it as above. A flow written in a form the editor does not keep,
 such as its steps on one line, opens read-only and says why.
 
 While a flow is edited, the rules of a `route` and the endpoints of a `to` by prop are tables: Add a row, change a row's
@@ -89,29 +102,28 @@ Stop the UI (Ctrl+C) and go back to the repository root (`cd ..`), then:
 
 ```sh
 git pull
-./mvnw -B -ntp -q package -DskipTests -pl :rail8-node -am
+./mvnw -B -ntp -q package -DskipTests -pl :rail8-node,:rail8-cli -am
 (cd ui && npm ci)
 export RAIL8_ADMIN_TOKEN=<the token of the first run>   # a new shell has none, and the node refuses to start without it
-docker compose up -d --build --force-recreate           # the node restores the deployed demo from its volume
-deploy/quickstart/deploy.sh examples/demo               # only when the demo itself changed
+docker compose up -d --build --force-recreate           # the node restores the deployed demo from its git cache
 ```
 
 A working copy of the mapping corpus made by an older checkout, `~/rail8-mapping-workspace`, is moved into the working
 folder once, which keeps its edits: `mv ~/rail8-mapping-workspace ~/rail8-workspace/mapping-corpus`. The studio then
 finds its mappings under `mapping-corpus/`, and nothing else reads the old folder.
 
-Then start the UI again in the same terminal, with the last command of the first run (not the copies, which are made
-once): `cd ui && RAIL8_WORKSPACE=$HOME/rail8-workspace npm run dev`.
+Then start the UI again in the same terminal, with the command of the first run:
+`cd ui && RAIL8_WORKSPACE=$HOME/rail8-workspace npm run dev`.
 
 If the node does not start after a pull, the database volume may be from an older checkout. `docker compose down -v`
-removes this stack's database and archives; start again from `docker compose up`, then deploy the demo again.
+removes this stack's database and the node's git cache; start again from `docker compose up`, then deploy the demo again.
 
 A package deployed by an older checkout can be listed FAILED after a pull when its endpoint files name an option the node
 no longer takes. For example, an `http` in endpoint now names its `address` (`/in`, served at `localhost:8080/http/in`),
-no longer a `host`, `port` or `path`. The node's restore keeps the package as it was deployed, so deploy it again from
-the checkout with `deploy/quickstart/deploy.sh examples/demo`. The UI's copy keeps the old files too: copy the changed
-ones over it, such as `cp examples/demo/endpoints/http-in*.yaml ~/rail8-workspace/demo/endpoints/`. This drops any edits
-of your own in those files.
+no longer a `host`, `port` or `path`. The node's restore keeps the package as it was deployed, and the working folder
+keeps the old files: copy the changed ones over them, such as
+`cp examples/demo/endpoints/http-in*.yaml ~/rail8-workspace/demo/endpoints/`, which drops any edits of your own in those
+files, then commit them and deploy `demo` again as above.
 
 ## Seeing it work
 
@@ -187,7 +199,7 @@ through the admin API: `curl -H "$auth" 'localhost:8081/admin/messages?flow=demo
 ## Stop
 
 ```sh
-docker compose down      # keeps the database and the archives in their volumes
+docker compose down      # keeps the database and the node's git cache in their volumes
 docker compose down -v   # also removes them: the next start is empty, deploy the demo again
 ```
 
@@ -195,8 +207,12 @@ Ctrl+C stops the UI.
 
 ## Notes
 
-`deploy/quickstart/deploy.sh` zips the directory, PUTs it to `/admin/packages/demo` with the token and prints the node's
-answer, or exits non-zero on a refusal; `RAIL8_ADMIN` (default `http://localhost:8081`) points it at another node.
+`bin/rail8 deploy <repository> <commit|ref>` asks the node to deploy that commit of the repository of that name in the
+working folder, which the node reads as `file:///workspace/`; it sends the token and prints the node's answer, or exits
+non-zero on a refusal. `--check` checks the commit and deploys nothing; `RAIL8_ADMIN` (default `http://localhost:8081`)
+points it at another node. A repository in the working folder is a full clone with its own `.git` folder: the node
+cannot read a git worktree, or a copy whose `.git` points outside the folder. The `.gitattributes` holding `* -text`
+keeps git from changing line endings, so the node deploys the bytes you saved.
 
 The `echo` service is the demo's partner: `deploy/quickstart/PartnerEcho.java` on `localhost:8090`, answering every path
 with the body it was sent. The `sftp` service is the SFTP server of `demo/sftp-invoice`; its `sftp-keys` one-shot makes the

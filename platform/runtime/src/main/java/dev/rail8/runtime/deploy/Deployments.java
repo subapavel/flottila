@@ -34,6 +34,10 @@ import dev.rail8.core.record.MessageStore;
 import dev.rail8.core.scope.MessageContext;
 import dev.rail8.ingress.SharedHttpPort;
 import dev.rail8.runtime.deploy.DeployRefusedException.Kind;
+import dev.rail8.runtime.git.Commit;
+import dev.rail8.runtime.git.GitCache;
+import dev.rail8.runtime.git.GitFailure;
+import dev.rail8.runtime.git.PackageRepositories;
 import dev.rail8.runtime.lease.InMemoryPollerLeases;
 import dev.rail8.runtime.lease.PollerLeases;
 import dev.rail8.runtime.node.NodeConfig;
@@ -47,11 +51,11 @@ import io.vertx.core.json.JsonObject;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Clock;
@@ -72,6 +76,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeoutException;
@@ -85,22 +90,28 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * The packages deployed on this node and their running flows. The listing lives in memory; each deploy
- * writes its package's {@link DeploymentRecord} and stores its archive (a deploy with no origin does neither), and {@link #restore}
- * installs what those name at the node's start. A deploy of a package that runs already is a redeploy: it swaps only the flows whose effective hash changed;
- * a deploy of a package listed {@link DeployedPackage.State#FAILED} (the restore could not install it) is a first deploy.
+ * The packages deployed on this node and their running flows. The listing lives in memory; each deploy from git writes its
+ * package's {@link DeploymentRecord} (a deploy with no origin writes none), and {@link #restore} installs what those name at the
+ * node's start. A deploy of a package that runs already is a redeploy: it swaps only the flows whose effective hash changed; a
+ * deploy of a package listed {@link DeployedPackage.State#FAILED} (the restore could not install it) is a first deploy.
  *
- * <p>{@link #deploy} blocks: call it on a virtual thread. Its order: a bad name or revision ({@link Kind#BAD_REQUEST}); a
- * deployed environment ({@link Kind#FORBIDDEN}: manual deploy is non-production only); a closing node
+ * <p>{@link #deploy(String, String, String)} blocks: call it on a virtual thread. Its order: a bad repository name or commit, or
+ * a ref in a deployed environment ({@link Kind#BAD_REQUEST}); a deployed environment ({@link Kind#FORBIDDEN}: manual deploy is
+ * non-production only), or a node without {@code RAIL8_GIT_BASE} ({@link Kind#FORBIDDEN}); a closing node
  * ({@link Kind#STOPPING}); another deploy holding the node's lock ({@link Kind#CONFLICT}: one deploy at a time per node, whatever
- * the package) — all of them before the archive is read. Then the archive is unpacked into a folder of {@code <dataDir>/.incoming}
- * (a refused archive is {@link Kind#BAD_REQUEST}), and the deploy goes on from that folder: the archive is the deploy's origin,
- * stored and named by its record below ({@link #deploy(String, Path)} deploys a folder with no origin). The folder is moved
- * atomically to {@code <dataDir>/packages/<name>/<sha256>/} (a directory an earlier node left there is replaced), unless that
- * directory is one this node keeps for the package (below) and holds the files recorded when it was written, path and SHA-256
- * alike: then it is used as it is and the folder is deleted. A kept directory whose files differ (one written into it, changed,
- * deleted, or one the node cannot read) is not trusted: the folder replaces it, and it stays kept whatever happens
- * next. Then the package is checked whole — {@code Package.problems()}, the
+ * the package) — all of them before anything is fetched. Then the commit is read through the node's {@link GitCache}
+ * ({@code <dataDir>/git}), fetched when the cache lacks it within {@code RAIL8_GIT_TIMEOUT} and, when {@code RAIL8_GIT_REF} is
+ * set, proved reachable from that ref: a commit or ref not found, not reachable or with an incomplete history is
+ * {@link Kind#INVALID}, any other failure of git (credentials refused, timed out, the cache full, the transport) is
+ * {@link Kind#FAILED}, each the failure's one line. The package's folder in the commit is written into a folder of
+ * {@code <dataDir>/.incoming} (a tree the seam refuses is {@link Kind#INVALID}), and its {@code package.yaml}'s name is checked
+ * against the package-name pattern ({@link Kind#INVALID}) before it names a directory; a package of that name recorded from
+ * another repository is {@link Kind#CONFLICT}. The folder is moved atomically to
+ * {@code <dataDir>/packages/<name>/<content hex>/}, the hex of its content digest ({@code Package.content}; a directory an
+ * earlier node left there is replaced), unless that directory is one this node keeps for the package (below) and holds the
+ * files recorded when it was written, path and SHA-256 alike: then it is used as it is and the folder is deleted. A kept
+ * directory whose files differ (one written into it, changed, deleted, or one the node cannot read) is not trusted: the folder
+ * replaces it, and it stays kept whatever happens next. Then the package is checked whole — {@code Package.problems()}, the
  * manifest's name, its dependencies ({@link #dependencies}), a component for every scheme, every endpoint's config (its environment's keys laid over it) against
  * its component's settings description ({@code Component.settings()}, or its {@code configSchema()} when it describes
  * nothing), no in endpoint setting {@code flow} or {@code maxBodyBytes}, one flow per in endpoint,
@@ -124,10 +135,9 @@ import java.util.stream.Stream;
  * untouched, with the stamps it was built with, and the new build is stopped with a zero deadline and closed), changed, or removed
  * (the package lists it, the new version has no such flow; a FAILED one has nothing to stop); a consumer is built for each added
  * and changed flow. Every problem is one line of one {@link Kind#INVALID}, and nothing running stops and nothing starts before
- * every check passed (a file the hash cannot read is the node's {@link IOException}). Then the archive is put in the
- * {@link ArchiveStore} under its SHA-256, before anything stops: a put that fails ({@link IOException}) is
- * {@link Kind#FAILED} "archive sha256:&lt;hex&gt; not stored: &lt;cause&gt;", the cleanup below runs and the version running
- * runs on. Nothing deletes an archive: the object of a deploy refused after its put stays.
+ * every check passed (a file the hash cannot read is the node's {@link IOException}). {@link #check} ends here: it answers what
+ * the deploy would do, stops and closes what it built, deletes the directories it wrote and changes nothing else; the commits it
+ * fetched stay in the cache.
  *
  * <p>Then the swap. Phase A stops every changed and removed flow at once ({@link #stop(Flow, Duration)}: its
  * worker first, then its delivery within the node's stop deadline and its consumer together, that consumer's stop bounded by the
@@ -138,12 +148,14 @@ import java.util.stream.Stream;
  * every flow of phase A has settled: a new flow on the in endpoint of an old one never meets the old consumer there. A removed
  * at-least-once flow, or one the new version runs otherwise, is asked for queue items again once its old worker drained: items
  * left are a WARNING naming it, never a delay of the answer. Then the deploy saves its {@link DeploymentRecord} (name, version,
- * revision, archive SHA-256, the package's {@code deployedAt} and the pins of its dependencies) and waits for it: the commit point. A save that fails
+ * repository, commit, content digest, the package's {@code deployedAt} and the pins of its dependencies) and waits for it: the
+ * commit point. A save that fails
  * refuses a first deploy ({@link Kind#FAILED} "the deploy record was not written: &lt;cause&gt;", the cleanup below) and rolls a
  * redeploy back as a failed start does (below), with that line as its first problem; when the node's Postgres pool refused the
  * save a connection ({@link PgTx#refusedByThePool}) the refusal is {@link Kind#BUSY} instead, retryable. Only once the record is written is the
- * listing replaced, and {@code packages/<name>/} is pruned to the current directory, the previous one (the last other archive the package ran: a deploy of the running archive
- * keeps it), every one a running flow was built from — the directories this node keeps — and every one a record pins (a
+ * listing replaced, and {@code packages/<name>/} is pruned to the current directory, the previous one (the last other content the
+ * package ran: a deploy of the running content keeps it), every one a running flow was built from — the directories this node
+ * keeps — and every one a record pins (a
  * package's record, FAILED ones included, or during a restore any row read); one that cannot be deleted is a WARNING. Each call of
  * the package's flows that no flow on the node serves, and each call of another package's flow to an address the replaced
  * version served and no flow serves now, is then a WARNING, never a refusal.
@@ -167,21 +179,25 @@ import java.util.stream.Stream;
  * what it built is stopped as below, every flow phase A stopped is listed FAILED, and the Error is a problem line and is added to
  * the refusal as suppressed.
  *
- * <p>Whatever refuses the deploy after the unpack began stops every flow it built and did not close yet (zero deadline), then
+ * <p>Every deploy that held the lock, refused or not ({@link #check} excepted), ends with one audit row
+ * ({@link DeploymentStore#audit}): the actor, the repository, the commit (its id once read, else as the deploy named it) and the
+ * outcome; a row that is not written is a WARNING and changes nothing of the deploy.
+ *
+ * <p>Whatever refuses the deploy after the write began stops every flow it built and did not close yet (zero deadline), then
  * closes their deliveries' producers and asks their workers to close theirs, a worker's once the items it still runs finished
  * — a flow that failed half way does the same for what it built of itself at once — and deletes the directories it
- * wrote, {@code packages/<name>/} too when nothing else is in it: nothing of it is started again, is listed or stays on disk, and
+ * wrote, each {@code packages/<name>/} too when nothing else is in it: nothing of it is started again, is listed or stays on disk, and
  * no producer stays open past the last item that sends. Every flow is stopped whatever another's stop does; a cleanup step that
  * fails does not replace the refusal: its failure is added to it as suppressed, and the steps after it run all the same.
  *
- * <p>{@link #restore} runs at the node's start, before the node's admin port opens, under the deploy lock: each record's archive
- * is fetched into {@code .incoming} and installed in restore mode — the record's SHA-256, revision and {@code deployedAt}; no
- * put, no record, no deployed-environment refusal; a flow whose consumer does not start runs, its consumer tried again (below),
- * one whose worker's start throws is FAILED, and the others run; a pin of the record
- * whose directory is absent is fetched from the archive store by its SHA-256 and unpacked under its package's name first, one
- * that cannot be fetched refusing the package — and a package refused
- * whole is listed FAILED with its problems (one whose consumer would listen where a package restored before it does, or that
- * serves an address one of those serves or closes a cycle of calls with them, included). {@link #health} is DEGRADED while anything is listed FAILED or RESTARTING, never DOWN.
+ * <p>{@link #restore} runs at the node's start, before the node's admin port opens, under the deploy lock: each record's commit
+ * is read from the git cache, fetched only when the cache lacks it and never checked for reachability, written into
+ * {@code .incoming}, its content checked against the record's, and installed in restore mode — the record's repository, commit
+ * and {@code deployedAt}; no record, no audit, no deployed-environment refusal; a flow whose consumer does not start runs, its
+ * consumer tried again (below), one whose worker's start throws is FAILED, and the others run; each pin of the record is read
+ * from its own repository and commit the same way — and a package refused whole is listed FAILED with its problems (one whose
+ * consumer would listen where a package restored before it does, or that serves an address one of those serves or closes a
+ * cycle of calls with them, included). {@link #health} is DEGRADED while anything is listed FAILED or RESTARTING, never DOWN.
  *
  * <p>Every consumer runs in a {@link RestartingConsumer}. Once its flow started, a consumer that breaks
  * ({@code Consumer.broken}) — or, at a restore or a rollback's start again, one that did not start — is stopped, and a fresh
@@ -194,8 +210,7 @@ import java.util.stream.Stream;
  * <p>{@link #undeploy} blocks too. Its order: a bad name ({@link Kind#BAD_REQUEST}); a deployed environment
  * ({@link Kind#FORBIDDEN}: manual undeploy is non-production only); the node's lock held by a deploy, an undeploy or a restore
  * ({@link Kind#CONFLICT}, or {@link Kind#STOPPING} while closing); a closing node ({@link Kind#STOPPING}); a package the node does
- * not list ({@link Kind#NOT_FOUND}); a package another listed package's record pins, a FAILED one included
- * ({@link Kind#CONFLICT} "&lt;name&gt;@&lt;version&gt; is in use by &lt;a&gt;, &lt;b&gt;", the dependents sorted); a running
+ * not list ({@link Kind#NOT_FOUND}); a running
  * at-least-once flow of it whose items the work queue holds ({@link Kind#CONFLICT}, a line per such flow: they would never run;
  * a queue that cannot answer is the node's {@link IOException}, and only when every question that failed was one the node's Postgres
  * pool refused a connection ({@link PgTx#refusedByThePool}) and no flow holds items {@link Kind#BUSY}, retryable). Then, under the lock, its record is deleted: the commit point. A delete
@@ -203,12 +218,13 @@ import java.util.stream.Stream;
  * Then every flow of it that runs stops and closes as phase A stops a flow (a stop that fails is a WARNING and counts as settled;
  * an at-least-once one is asked for queue items again once its worker drained, items that arrived meanwhile a WARNING),
  * the listing drops it, and {@code packages/<name>/} is pruned of every directory no remaining record pins and no remaining flow
- * reads (a failure is a WARNING, the undeploy stands). Its archives stay in the
- * {@link ArchiveStore}: deploying it again is the rollback. A restore after it does not install it: its record is gone.
+ * reads (a failure is a WARNING, the undeploy stands). A package that pins it runs on: its pin's directory stays while a record
+ * pins it, and a restore reads it from the pin's own commit. Deploying a commit of it again is the rollback. A restore after it
+ * does not install it: its record is gone.
  *
  * <p>A flow runs as {@code <package>/<flow>}: its snapshots, DLQ rows and queue items carry that id, and so does
  * the consumer option {@code flow}; the deploy also sets {@code maxBodyBytes}, the flow's limit. Every message carries the
- * versions {@code package=<name>@<version>} and, when the deploy names one, {@code revision}.
+ * versions {@code package=<name>@<version>} and, for a deploy from git, {@code commit}: the commit its flow was built from.
  *
  * <p>A consumer whose component says it polls ({@code Component.polls}, asked in the same try as the consumer's build: a throw
  * is that flow's problem line) runs under the endpoint's poller lease ({@link LeasedConsumer}): the key
@@ -239,7 +255,8 @@ public final class Deployments {
 
     private static final System.Logger LOG = System.getLogger(Deployments.class.getName());
     private static final Pattern NAME = Pattern.compile("[a-z][a-z0-9-]{0,63}");
-    private static final Pattern REVISION = Pattern.compile("[0-9A-Za-z._-]{1,64}");
+    /** The most packages one deploy's dependency closure holds. */
+    static final int MAX_CLOSURE = 100;
     private static final String AT_LEAST_ONCE = "at-least-once";
     /** The consumer options the deploy sets on every in endpoint: a package that sets one itself is refused. */
     private static final List<String> RESERVED = List.of("flow", "maxBodyBytes");
@@ -259,7 +276,8 @@ public final class Deployments {
     private final Intake intake;
     private final Meter meter;
     private final DeploymentStore records;
-    private final ArchiveStore archives;
+    /** The node's git cache over {@code RAIL8_GIT_*}; empty without {@code RAIL8_GIT_BASE}: no deploy from git, every record FAILED. */
+    private final Optional<GitCache> git;
     private final PollerLeases leases;
     private final Targets targets;
     private final Runs runs;   // every run of every flow deployed here, on the node's clock and timer
@@ -279,15 +297,16 @@ public final class Deployments {
     private volatile boolean closing;
     /** The rows a {@link #restore} installs, while it runs (under {@link #deploying}): what they pin is never pruned. */
     private List<DeploymentRecord> restoringRows = List.of();
-
     /**
-     * Deployments whose records live in memory and whose archives are stored in {@code RAIL8_ARCHIVE_DIR} (the dir store): dev
-     * and tests.
+     * Why a fetch of the running {@link #restore} could not reach the git host — the transport failed, or it timed out — once one
+     * did (under {@link #deploying}): the restore fetches nothing more. Null otherwise.
      */
+    private GitFailure.Reason unreachable;
+
+    /** Deployments whose records live in memory: dev, tests and the command line. */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter) {
-        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, new InMemoryDeploymentStore(),
-                new DirArchiveStore(config.archives().dir()));
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, new InMemoryDeploymentStore());
     }
 
     /**
@@ -296,15 +315,14 @@ public final class Deployments {
      * passes its Postgres intake.
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
-                       List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
-                       ArchiveStore archives) {
-        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, new Workers());
+                       List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, new Workers());
     }
 
     private Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                         List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
-                        ArchiveStore archives, Workers workers) {
-        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives,
+                        Workers workers) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records,
                 new SequentialIntake(messages, queue, workers, config.nodeId()), new InMemoryPollerLeases(clock),
                 new Targets(config.targets().defaults(), config.targets().overrides(), timer), () -> true, workers);
     }
@@ -312,8 +330,8 @@ public final class Deployments {
     /** Deployments whose poller leases are held in this process's memory, on {@code clock}: one node alone. */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
-                       ArchiveStore archives, Intake intake) {
-        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, intake,
+                       Intake intake) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, intake,
                 new InMemoryPollerLeases(clock));
     }
 
@@ -323,8 +341,8 @@ public final class Deployments {
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
-                       ArchiveStore archives, Intake intake, PollerLeases leases) {
-        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, intake, leases,
+                       Intake intake, PollerLeases leases) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, intake, leases,
                 new Targets(config.targets().defaults(), config.targets().overrides(), timer));
     }
 
@@ -333,8 +351,8 @@ public final class Deployments {
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
-                       ArchiveStore archives, Intake intake, PollerLeases leases, Targets targets) {
-        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, intake, leases, targets,
+                       Intake intake, PollerLeases leases, Targets targets) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, intake, leases, targets,
                 () -> true);
     }
 
@@ -344,8 +362,7 @@ public final class Deployments {
      * @param clock {@code deployedAt}, and the validity of a leased consumer's lease
      * @param timer the node's (the one the runtime carries): it bounds a consumer's start and stop by the node's stop deadline, and
      *              ticks every leased consumer
-     * @param records where a deploy writes its package's record, the deploy's commit point
-     * @param archives where a deploy stores its archive before anything stops
+     * @param records where a deploy writes its package's record, the deploy's commit point, and its audit row
      * @param intake the durable save of every at-least-once flow's delivery: body, ingress record and item, over the
      *               same stores as {@code messages} and {@code queue}
      * @param leases where the consumer of a polling endpoint holds its lease
@@ -357,8 +374,8 @@ public final class Deployments {
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
-                       ArchiveStore archives, Intake intake, PollerLeases leases, Targets targets, BooleanSupplier fence) {
-        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, intake, leases, targets, fence,
+                       Intake intake, PollerLeases leases, Targets targets, BooleanSupplier fence) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, intake, leases, targets, fence,
                 new Workers());
     }
 
@@ -368,8 +385,8 @@ public final class Deployments {
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
-                       ArchiveStore archives, Intake intake, PollerLeases leases, Targets targets, BooleanSupplier fence, Workers workers) {
-        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, intake, leases, targets, fence,
+                       Intake intake, PollerLeases leases, Targets targets, BooleanSupplier fence, Workers workers) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, intake, leases, targets, fence,
                 workers, WorkSignals.NONE);
     }
 
@@ -379,7 +396,7 @@ public final class Deployments {
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
-                       ArchiveStore archives, Intake intake, PollerLeases leases, Targets targets, BooleanSupplier fence, Workers workers,
+                       Intake intake, PollerLeases leases, Targets targets, BooleanSupplier fence, Workers workers,
                        WorkSignals signals) {
         this.workers = Objects.requireNonNull(workers, "workers");
         this.signals = Objects.requireNonNull(signals, "signals");
@@ -397,7 +414,8 @@ public final class Deployments {
         this.intake = Objects.requireNonNull(intake, "intake");
         this.meter = Objects.requireNonNull(meter, "meter");
         this.records = Objects.requireNonNull(records, "records");
-        this.archives = Objects.requireNonNull(archives, "archives");
+        this.git = config.git().map(settings -> new GitCache(settings, config.dataDir().resolve("git"), config.maxPackageBytes(), config.deployed(),
+                timer, this::named));
         this.leases = Objects.requireNonNull(leases, "leases");
         this.targets = Objects.requireNonNull(targets, "targets");
         this.fence = Objects.requireNonNull(fence, "fence");
@@ -414,12 +432,13 @@ public final class Deployments {
     }
 
     /**
-     * One flow as the deploy built it: {@code archive} names the directory it was built from ({@code packages/<name>/<archive>}) and
+     * One flow as the deploy built it: {@code dir} names the directory it was built from ({@code packages/<name>/<dir>}, the hex of
+     * its package's content digest) and
      * {@code recipe} what its build took, so a failed redeploy can build it again; {@code from} is its in endpoint as its
      * consumer gets it; {@code worker} is null unless the flow is at-least-once, and {@code consumer} is null until one is built for
      * it ({@link #with}). A {@link DeployedFlow.State#FAILED} flow ({@link #failed}) has no delivery, worker or consumer.
      */
-    private record Flow(DeployedFlow flow, String archive, Recipe recipe, Delivery delivery, FlowWorker worker, EndpointConfig from,
+    private record Flow(DeployedFlow flow, String dir, Recipe recipe, Delivery delivery, FlowWorker worker, EndpointConfig from,
                         RestartingConsumer consumer) {
         String id() {
             return flow.id();
@@ -431,21 +450,21 @@ public final class Deployments {
         }
 
         Flow with(RestartingConsumer built) {
-            return new Flow(flow, archive, recipe, delivery, worker, from, built);
+            return new Flow(flow, dir, recipe, delivery, worker, from, built);
         }
 
         /** Its record as listed now: {@link DeployedFlow.State#RESTARTING} while its consumer waits for its next attempt. */
         DeployedFlow listed() {
             if (consumer == null || consumer.waiting().isEmpty()) return flow;
             DeployedFlow f = flow;
-            return new DeployedFlow(f.id(), f.pkg(), f.packageVersion(), f.revision(), f.flowVersion(), f.delivery(), f.hash(), DeployedFlow.State.RESTARTING);
+            return new DeployedFlow(f.id(), f.pkg(), f.packageVersion(), f.commit(), f.flowVersion(), f.delivery(), f.hash(), DeployedFlow.State.RESTARTING);
         }
 
         /** This flow as a failed redeploy lists it when it cannot run it again: its record, FAILED; nothing of it built. */
         Flow failed() {
             DeployedFlow f = flow;
-            return new Flow(new DeployedFlow(f.id(), f.pkg(), f.packageVersion(), f.revision(), f.flowVersion(), f.delivery(), f.hash(), DeployedFlow.State.FAILED),
-                    archive, recipe, null, null, from, null);
+            return new Flow(new DeployedFlow(f.id(), f.pkg(), f.packageVersion(), f.commit(), f.flowVersion(), f.delivery(), f.hash(), DeployedFlow.State.FAILED),
+                    dir, recipe, null, null, from, null);
         }
 
         /**
@@ -484,9 +503,9 @@ public final class Deployments {
     private record Resolved(Visible visible, List<DeploymentRecord.Pin> pins, List<DeployedPackage.Dependency> listed) {}
 
     /**
-     * A package deployed: its record, its flows, the directories this node keeps for it — current, previous and in use —
-     * by name, each with the files unpacked into it (path and SHA-256, as {@link DeployedPackage#files()}), and {@code previous},
-     * the directory of the last other archive the package ran (null when there was none).
+     * A package deployed: its listing, its flows, the directories this node keeps for it — current, previous and in use —
+     * by name, each with the files written into it (path and SHA-256, as {@link DeployedPackage#files()}), {@code previous},
+     * the directory of the last other content the package ran (null when there was none), and the pins of its record.
      */
     private record Deployed(DeployedPackage pkg, List<Flow> flows, Map<String, List<DeployedPackage.PackageFile>> kept, String previous,
                             List<DeploymentRecord.Pin> pins) {}
@@ -512,18 +531,25 @@ public final class Deployments {
     /** Where {@code holder} — a flow and its in endpoint, or the node's admin API — listens. */
     private record Listener(String holder, InetSocketAddress at) {}
 
+    /** The repository and the commit a package's folder was written from. */
+    private record Origin(String repository, String commit) {}
+
+    /** A version an off-node validate holds: its manifest's name and version, its content digest, and its folder. */
+    private record Held(String name, String version, String content, Path dir) {}
+
+    /** Reads the commit a record or a pin names: a deploy's checks it is reachable, a restore's reads the cache first. */
+    @FunctionalInterface
+    private interface Commits {
+        Commit read(String repository, String commit) throws GitFailure;
+    }
+
     /** A cleanup or housekeeping step that may fail. */
     @FunctionalInterface
     private interface Cleanup {
         void run() throws IOException;
     }
 
-    /** {@code RAIL8_MAX_PACKAGE_BYTES}: the largest archive the admin API takes; it may inflate to four times that. */
-    public long maxPackageBytes() {
-        return config.maxPackageBytes();
-    }
-
-    /** {@code <dataDir>/.incoming}: uploads and unpacks land here, on the file system of the packages, so the move is atomic. */
+    /** {@code <dataDir>/.incoming}: commits and copies are written here, on the file system of the packages, so the move is atomic. */
     public Path incomingDir() {
         return config.dataDir().resolve(".incoming");
     }
@@ -602,46 +628,166 @@ public final class Deployments {
     }
 
     /**
-     * Deploys the package archive {@code archive} as {@code name}, or redeploys it when the package runs already; see the class
-     * comment for the order. Blocking: on a virtual thread.
+     * Deploys the package at {@code commitOrRef} of {@code repository}, or redeploys it when the package runs already; see the class
+     * comment for the order. In {@code dev} and {@code ci} the commit may be a ref ({@code HEAD}, a branch or tag name, or a full name
+     * under {@code refs/heads/} or {@code refs/tags/}), resolved in the repository at the fetch. Blocking: on a virtual thread.
      *
+     * @param actor who deploys, as the audit row names them
      * @return the package deployed and the flows added, swapped and removed
      * @throws DeployRefusedException what the admin API answers with its own status
-     * @throws IOException the data directory cannot be written or the archive read: the node's failure, not the package's
+     * @throws IOException the data directory or the git cache cannot be written: the node's failure, not the package's
      */
-    public DeployResult deploy(String name, Optional<String> revision, Path archive) throws DeployRefusedException, IOException {
-        Objects.requireNonNull(archive, "archive");
-        if (!NAME.matcher(name).matches()) throw badName(name);
-        if (revision.isPresent() && !REVISION.matcher(revision.get()).matches()) {
-            throw refused(Kind.BAD_REQUEST, "the revision '" + revision.get() + "' must be 1 to 64 letters, digits, dots, underscores and dashes");
+    public DeployResult deploy(String repository, String commitOrRef, String actor) throws DeployRefusedException, IOException {
+        return fromGit(repository, commitOrRef, Objects.requireNonNull(actor, "actor"));
+    }
+
+    /**
+     * What {@link #deploy(String, String, String)} of {@code commitOrRef} of {@code repository} would do, with every problem: the
+     * same refusals, fetch, write, dependencies and checks, then the flows it built are stopped and closed and the directories it
+     * wrote deleted. Nothing that runs changes, no record and no audit row is written; the commits fetched stay in the git cache.
+     * Blocking: on a virtual thread.
+     *
+     * @return the package as the deploy would list it, and the flows it would add, swap and remove
+     * @throws DeployRefusedException as {@link #deploy(String, String, String)}
+     * @throws IOException as {@link #deploy(String, String, String)}
+     */
+    public DeployResult check(String repository, String commitOrRef) throws DeployRefusedException, IOException {
+        return fromGit(repository, commitOrRef, null);
+    }
+
+    /** A deploy from git ({@code actor} given) or its check ({@code actor} null). */
+    private DeployResult fromGit(String repository, String commitOrRef, String actor) throws DeployRefusedException, IOException {
+        try {
+            PackageRepositories.checkNames(repository, commitOrRef, config.deployed());
+        } catch (IllegalArgumentException refused) {
+            throw refused(Kind.BAD_REQUEST, refused.getMessage());
         }
         if (config.deployed()) throw refused(Kind.FORBIDDEN, "manual deploy is non-production only (ARCHITECTURE §9)");
+        GitCache cache = git.orElseThrow(() -> refused(Kind.FORBIDDEN, "the node has no RAIL8_GIT_BASE: it deploys nothing"));
         // closing is read where the lock decides: a close that holds the lock (stopping) or took it before this deploy (closed)
         // has set it first, so no deploy starts a flow after close stopped them all
         if (!deploying.tryLock()) throw busy();
         try {
             if (closing) throw stopping();
-            String sha256 = FlowHash.sha256(archive);
-            Path folder = unpacked(archive);
-            return installed(folder, () -> install(name, revision, folder, sha256, archive, null));
+            String[] read = {commitOrRef};   // the commit's id once it is read: what the audit row names
+            try (PackageRepositories repos = cache.open()) {
+                DeployResult result = fromCommit(repos, repository, commitOrRef, read, actor == null);
+                if (actor != null) audit(actor, repository, read[0], new JsonObject().put("outcome", "deployed").put("package", result.pkg().name())
+                        .put("version", result.pkg().version()));
+                return result;
+            } catch (DeployRefusedException refused) {
+                if (actor != null) audit(actor, repository, read[0], new JsonObject().put("outcome", "refused").put("error", refused.error()));
+                throw refused;
+            } catch (IOException | RuntimeException failed) {
+                if (actor != null) audit(actor, repository, read[0], new JsonObject().put("outcome", "failed").put("error", reason(failed)));
+                throw failed;
+            }
         } finally {
             deploying.unlock();
         }
     }
 
     /**
+     * Reads {@code commitOrRef} of {@code repository} through {@code repos}, writes its package folder into {@code .incoming}, checks
+     * its manifest's name and the repository the package is recorded from, then installs it ({@link #install}) with its pins read
+     * through {@code repos} too; {@code read[0]} is set to the commit's id once it is read.
+     */
+    private DeployResult fromCommit(PackageRepositories repos, String repository, String commitOrRef, String[] read, boolean check)
+            throws DeployRefusedException, IOException {
+        Commit commit;
+        try {
+            commit = repos.forDeploy(repository, commitOrRef);
+        } catch (GitFailure failed) {
+            throw refused(failed, "");
+        }
+        read[0] = commit.id();
+        Path folder = checkout(commit, "");
+        return installed(folder, () -> {
+            String name = named(folder, commit);
+            Deployed listed = deployed.get(name);
+            Optional<String> recorded = listed == null ? Optional.empty() : listed.pkg().repository();
+            if (recorded.isPresent() && !recorded.get().equals(repository)) {
+                throw refused(Kind.CONFLICT, "package '" + name + "' is deployed from the repository '" + recorded.get() + "', not '" + repository
+                        + "': a package comes from one repository; undeploy it first to deploy it from another");
+            }
+            return install(name, Optional.of(new Origin(repository, commit.id())), folder, hex(Package.content(folder)), repos::forDeploy, repos, null, check);
+        });
+    }
+
+    /**
+     * The name {@code package.yaml} of the folder written from {@code commit} gives the package, once it is a package's name: a lower-case
+     * letter, then at most 63 lower-case letters, digits and dashes. Checked before the name names a directory; a manifest that does
+     * not read, or a name that is not one, is {@link Kind#INVALID}.
+     */
+    private static String named(Path folder, Commit commit) throws DeployRefusedException, IOException {
+        Object name;
+        try {
+            name = Package.load(folder).manifest().getValue("name");
+        } catch (IllegalArgumentException unreadable) {
+            throw new DeployRefusedException(Kind.INVALID, "the package of " + commit.repository() + " at " + commit.id() + " cannot be read",
+                    List.of(unreadable.getMessage()));
+        }
+        if (!(name instanceof String n) || !NAME.matcher(n).matches()) {
+            throw refused(Kind.INVALID, "the package.yaml of " + commit.repository() + " at " + commit.id() + " names the package '" + name
+                    + "': a package name is a lower-case letter, then at most 63 lower-case letters, digits and dashes");
+        }
+        return n;
+    }
+
+    /**
+     * The package folder of {@code commit} written into a fresh folder of {@code .incoming}, the caller's to move or delete; a tree the
+     * seam refuses is {@link Kind#INVALID} and a cache that lacks one of its objects the refusal of its {@link GitFailure}, each after
+     * {@code of} ({@code ""}, or the dependency it is); whatever stops the write deletes what it wrote.
+     */
+    private Path checkout(Commit commit, String of) throws DeployRefusedException, IOException {
+        return written(Files.createTempDirectory(Files.createDirectories(incomingDir()), "commit-"), into -> {
+            try {
+                commit.write(into);
+            } catch (GitFailure failed) {
+                throw refused(failed, of);
+            } catch (IllegalArgumentException refused) {
+                throw refused(Kind.INVALID, of + commit.repository() + " at " + commit.id() + " is refused: " + refused.getMessage());
+            } catch (UncheckedIOException disk) {
+                throw disk.getCause();
+            }
+        });
+    }
+
+    /**
+     * The refusal of a git failure, its one line after {@code of}: a commit or ref not found, not reachable from the pool's ref or
+     * with an incomplete history is the deploy's {@link Kind#INVALID}; credentials refused, a timeout, a full cache or a failed
+     * transport are the node's {@link Kind#FAILED}.
+     */
+    private static DeployRefusedException refused(GitFailure failed, String of) {
+        Kind kind = switch (failed.reason()) {
+            case NOT_FOUND, NOT_REACHABLE, HISTORY_INCOMPLETE -> Kind.INVALID;
+            case CREDENTIALS_REFUSED, TIMED_OUT, CACHE_FULL, TRANSPORT_FAILED -> Kind.FAILED;
+        };
+        return refused(kind, of + failed.getMessage());
+    }
+
+    /** Writes the audit row of a deploy; one that is not written is a WARNING. */
+    private void audit(String actor, String repository, String commit, JsonObject outcome) {
+        JsonObject detail = new JsonObject().put("repository", repository).put("commit", commit).mergeIn(outcome);
+        Future<Void> written = Future.future(done -> records.audit(actor, repository, detail).onComplete(done));
+        written.otherwiseEmpty().await();
+        if (written.failed()) LOG.log(System.Logger.Level.WARNING, "the audit row of a deploy of " + repository + " at " + commit + " was not written: "
+                + reason(written.cause()), written.cause());
+    }
+
+    /**
      * Deploys the package folder {@code folder} as {@code name} with no origin: {@code rail8 test}'s deploy, the only one that uses
      * it. The deploy works on a copy of the folder, made once the lock is held, and never writes into {@code folder}: an edit of it
-     * while the deploy or its flows run changes nothing of them. No archive is stored and no record is written, so a restore never
-     * installs it; the package's directory under {@code packages/<name>/} is named by the hex of its content digest
-     * ({@code Package.content}), and so is its {@link DeployedPackage#archiveSha256()}. Otherwise its order is the one of
-     * {@link #deploy(String, Optional, Path)}: a bad name ({@link Kind#BAD_REQUEST}); a deployed environment ({@link Kind#FORBIDDEN}:
+     * while the deploy or its flows run changes nothing of them. No record and no audit row is written, so a restore never installs
+     * it, and the package lists no repository and no commit. Its dependencies are read only from the directories the node has
+     * with the content their lock pins: nothing is fetched. Otherwise its order is the one of
+     * {@link #deploy(String, String, String)}: a bad name ({@link Kind#BAD_REQUEST}); a deployed environment ({@link Kind#FORBIDDEN}:
      * a deploy with no origin is dev and ci only); a closing node ({@link Kind#STOPPING}); another deploy holding the lock
      * ({@link Kind#CONFLICT}); then the copy, in which anything but a regular file or a directory is {@link Kind#BAD_REQUEST}; then
      * the checks, the build and the swap. Blocking: on a virtual thread.
      *
      * @return the package deployed and the flows added, swapped and removed
-     * @throws DeployRefusedException as {@link #deploy(String, Optional, Path)}
+     * @throws DeployRefusedException as {@link #deploy(String, String, String)}
      * @throws IOException {@code folder} cannot be read or the data directory written: the caller's or the node's failure
      */
     public DeployResult deploy(String name, Path folder) throws DeployRefusedException, IOException {
@@ -652,7 +798,7 @@ public final class Deployments {
         try {
             if (closing) throw stopping();
             Path copy = copied(folder);
-            return installed(copy, () -> install(name, Optional.empty(), copy, Package.content(copy).substring("sha256:".length()), null, null));
+            return installed(copy, () -> install(name, Optional.empty(), copy, hex(Package.content(copy)), null, null, null, false));
         } finally {
             deploying.unlock();
         }
@@ -698,8 +844,6 @@ public final class Deployments {
             Deployed listed = deployed.get(name);
             if (listed == null) throw refused(Kind.NOT_FOUND, "no package '" + name + "' is deployed");
             String version = listed.pkg().version();
-            List<String> dependents = dependents(name);
-            if (!dependents.isEmpty()) throw refused(Kind.CONFLICT, name + "@" + version + " is in use by " + String.join(", ", dependents));
             List<Flow> running = listed.flows().stream().filter(Flow::runs).toList();
             Set<String> leaving = queued(running);
             // the commit point: the record is deleted before anything stops; a delete that fails changes nothing else
@@ -731,12 +875,13 @@ public final class Deployments {
      * The dry run of a deploy of the package directory {@code dir} as {@code name}: the document checks
      * ({@code Package.problems()} and the package-level ones), each endpoint's config in this node's environment against its
      * component's schema, and the dry build of every flow with this node's steps — against the flows the node runs — then stop
-     * and close whatever was built. Nothing is unpacked, locked, stored, recorded, enqueued or started, no consumer is built, and the
-     * listing stays as it was. Blocking: on a virtual thread.
+     * and close whatever was built. Nothing is fetched, written, locked, recorded, enqueued or started, no consumer is built, and the
+     * listing stays as it was; a dependency is read only from a directory the node has with the content its lock pins. Blocking: on
+     * a virtual thread.
      *
-     * <p>It reports what the load, the check and the build refuse. It does not reach what only {@link #deploy} and its install
-     * check: the package name's pattern, the non-production-only rule, the archive's unpack and its size against
-     * {@link #maxPackageBytes}, the consumer of each flow (its component may still refuse it), the store of the archive, the start
+     * <p>It reports what the load, the check and the build refuse. It does not reach what only {@link #deploy(String, String, String)}
+     * and its install check: the package name's pattern, the non-production-only rule, the fetch and the write of the commit with
+     * their limits, the dependencies a deploy would fetch, the consumer of each flow (its component may still refuse it), the start
      * of each flow and the write of its record. An empty list is no promise that a deploy succeeds.
      *
      * @return the problems the load, the check and the build find, each path in it from the package root; empty when they find none
@@ -744,7 +889,7 @@ public final class Deployments {
      *                     refused the question included): the node's failure
      */
     public List<String> validate(String name, Path dir) throws IOException {
-        return validate(name, dir, Map.of());
+        return validate(name, dir, List.of());
     }
 
     /**
@@ -755,7 +900,7 @@ public final class Deployments {
      * version) and in the build, which reads a {@code <dep>:<path>} from the folder. In the call checks each held package other
      * than {@code name} stands in for the version of it the node runs ({@link #others}): its flows' endpoints are asked which
      * node-local addresses they serve and call, as a deploy of it would ask them, and what of it does not check is left out
-     * silently. Nothing of a held folder is deployed, unpacked, stored, recorded, built, started or listed, in any environment (no
+     * silently. Nothing of a held folder is deployed, written, recorded, built, started or listed, in any environment (no
      * {@link Kind#FORBIDDEN}: nothing is deployed), and after the call nothing of it is visible. Blocking: on a virtual thread.
      *
      * @param held the closure's package folders, each a package that loads with a name and a version
@@ -765,23 +910,17 @@ public final class Deployments {
      * @throws IllegalArgumentException a file of a held folder does not parse ({@code Package.load})
      */
     public List<String> validate(String name, Path dir, List<Path> held) throws IOException {
-        Map<DeploymentRecord.Pin, Path> versions = new LinkedHashMap<>();
+        List<Held> versions = new ArrayList<>();
         for (Path folder : held) {
             JsonObject manifest = Package.load(folder).manifest();
-            // a key no archive has: a held version is never stored, fetched or recorded; dirOf maps it to its folder
-            versions.put(new DeploymentRecord.Pin(manifest.getString("name"), manifest.getString("version"), "held-" + versions.size()), folder);
+            versions.add(new Held(manifest.getString("name"), manifest.getString("version"), Package.content(folder), folder));
         }
-        return validate(name, dir, versions);
-    }
-
-    /** {@link #validate(String, Path)} with {@code held} versions available besides the node's own, each pin to its folder. */
-    private List<String> validate(String name, Path dir, Map<DeploymentRecord.Pin, Path> held) throws IOException {
         Deployed listed = deployed.get(name);
         List<Flow> before = listed == null ? List.of() : listed.flows();   // a package listed FAILED lists no flows (restore)
         List<Flow> built = new ArrayList<>();
         try {
             Package pkg = load(name, dir);
-            Checked checked = check(name, pkg, dir, before, null, held);
+            Checked checked = check(name, pkg, dir, before, versions, null, new ArrayList<>());
             return build(name, Optional.empty(), pkg.manifest().getString("version"), "validate", pkg, dir, checked, built);
         } catch (DeployRefusedException refused) {
             if (refused.kind() == Kind.BUSY) throw new IOException(refused.error(), refused);   // a pool refusal lists no problem: the node's failure
@@ -828,19 +967,22 @@ public final class Deployments {
     /**
      * Installs, at the node's start, every package the pool's records name, one at a time in name order, under the deploy
      * lock — a deploy meanwhile is {@link Kind#CONFLICT} — and returns once each one is installed or listed FAILED. Each record's
-     * archive is fetched from the {@link ArchiveStore} into a temporary file in {@link #incomingDir()}, deleted whatever comes of
-     * it; its SHA-256 must be the record's; it is unpacked into a folder of {@code .incoming}, and that folder is installed in
-     * restore mode ({@link #install}): no deployed-environment refusal, no
-     * put and no record written; {@code revision} and {@code deployedAt} are the record's; a flow that does not start is listed
-     * {@link DeployedFlow.State#FAILED} and the others run. A package refused whole — its fetch failed (the archive store down
-     * included: no retry, recovery is a restart or a deploy), its SHA-256 differs, its unpack is refused, it has problems — is
-     * listed {@link DeployedPackage.State#FAILED} with its record's version, revision, archive and {@code deployedAt}, its problems
-     * and no flows or files, with an ERROR log naming it; the next one is restored all the same — a package that serves an address a
-     * package restored before it serves, or whose calls close a cycle with those, among them. Once every record is in, each call of a
-     * running flow that no running flow serves is a WARNING. Blocking: on a virtual thread.
+     * commit is read from the git cache, and fetched only when the cache lacks it, with no check of reachability: a warm cache
+     * restores with git unreachable. Its package folder is written into a folder of {@link #incomingDir()}, its content checked
+     * against the record's, and installed in restore mode ({@link #install}): no deployed-environment refusal, no record and no audit
+     * row written; repository, commit and {@code deployedAt} are the record's; each pin is read from its own repository and commit
+     * the same way and checked against the pin; a flow that does not start is listed {@link DeployedFlow.State#FAILED} and the
+     * others run. A package refused whole — a commit that cannot be read (the node has no {@code RAIL8_GIT_BASE}, or git fails), a
+     * content other than its record's (a node configured with another base or path), a tree the seam refuses, problems — is listed
+     * {@link DeployedPackage.State#FAILED} with its record's version, repository, commit and {@code deployedAt}, its problems and no
+     * flows or files, with an ERROR log naming it; the next one is restored all the same — a package that serves an address a
+     * package restored before it serves, or whose calls close a cycle with those, among them. Once a fetch fails because the git
+     * host could not be reached (the transport failed) or timed out, the restore fetches nothing more: every commit the cache lacks
+     * fails at once with that reason, so the admin port is not held back for a timeout per record. Once every record is in, each
+     * call of a running flow that no running flow serves is a WARNING. Blocking: on a virtual thread.
      *
-     * @throws IOException the data directory cannot be written or an archive fetched into it read: the node's failure, not a
-     *                     package's (the packages restored so far run on until {@link #close})
+     * @throws IOException the data directory cannot be written or a folder written into it read: the node's failure, not a package's
+     *                     (the packages restored so far run on until {@link #close})
      * @throws IllegalStateException the node lists a package already (a deploy or a restore installed one) or {@link #close} began:
      *                               a restore runs at the node's start, before anything else
      */
@@ -849,13 +991,13 @@ public final class Deployments {
         try {
             if (closing || !deployed.isEmpty()) throw new IllegalStateException("a restore runs at the node's start, before anything is deployed and before close");
             List<DeploymentRecord> rows = records.list().await();   // rows that cannot be read: the node does not start
-            Path incoming = incomingDir();
-            Files.createDirectories(incoming);
+            Files.createDirectories(incomingDir());
             restoringRows = rows;
-            for (DeploymentRecord row : rows) restore(row, incoming);
+            for (DeploymentRecord row : rows) restore(row);
             warnUnserved((f, a) -> true);   // once every package is in: a callee restored after its caller is no false warning
         } finally {
             restoringRows = List.of();
+            unreachable = null;
             deploying.unlock();
         }
     }
@@ -880,108 +1022,88 @@ public final class Deployments {
     }
 
     /** One record of {@link #restore()}: installed, or listed FAILED when refused; only an IOException of the data directory throws. */
-    private void restore(DeploymentRecord row, Path incoming) throws IOException {
-        Path fetched = Files.createTempFile(incoming, "restore-", ".zip");
+    private void restore(DeploymentRecord row) throws IOException {
         Path folder = null;
         try {
-            fetch(row, fetched);
-            String sha256 = FlowHash.sha256(fetched);
-            if (!sha256.equals(row.archiveSha256())) {   // other bytes under the record's key: nothing of them runs
-                throw refused(Kind.FAILED, "archive sha256:" + row.archiveSha256() + " differs from what the archive store holds under its key, whose "
-                        + "SHA-256 is " + sha256);
+            GitCache cache = git.orElseThrow(() -> refused(Kind.FAILED, "the node has no RAIL8_GIT_BASE: it reads no commit"));
+            try (PackageRepositories repos = cache.open()) {
+                Commits commits = (repository, commit) -> restored(cache, repos, repository, commit);
+                Commit commit;
+                try {
+                    commit = commits.read(row.repository(), row.commit());
+                } catch (GitFailure failed) {
+                    throw refused(Kind.FAILED, failed.getMessage());
+                }
+                folder = checkout(commit, "");
+                String content = Package.content(folder);
+                if (!content.equals(row.content())) {   // other files under the record's commit: nothing of them runs
+                    throw refused(Kind.FAILED, row.repository() + " at " + row.commit() + " holds the content " + content + ", its record " + row.content()
+                            + ": the node reads another RAIL8_GIT_BASE or RAIL8_GIT_PATH than the deploy did");
+                }
+                install(row.name(), Optional.of(new Origin(row.repository(), row.commit())), folder, hex(content), commits, repos, row, false);
             }
-            folder = unpacked(fetched);
-            install(row.name(), row.revision(), folder, sha256, null, row);
         } catch (DeployRefusedException refused) {
             List<String> problems = Stream.concat(Stream.of(refused.error()), refused.problems().stream()).toList();
-            LOG.log(System.Logger.Level.ERROR, "package '" + row.name() + "' (archive sha256:" + row.archiveSha256() + ") could not be restored; it is listed "
+            LOG.log(System.Logger.Level.ERROR, "package '" + row.name() + "' (" + row.repository() + " at " + row.commit() + ") could not be restored; it is listed "
                     + "FAILED until a deploy of it: " + problems);
-            deployed.put(row.name(), new Deployed(new DeployedPackage(row.name(), row.version(), row.revision(), row.archiveSha256(), List.of(), row.deployedAt(),
-                    List.of(), List.of(), List.of(), DeployedPackage.State.FAILED, problems, null, List.of()), List.of(), Map.of(), null, row.dependencies()));
+            deployed.put(row.name(), new Deployed(new DeployedPackage(row.name(), row.version(), Optional.of(row.repository()), Optional.of(row.commit()), List.of(),
+                    row.deployedAt(), List.of(), List.of(), List.of(), DeployedPackage.State.FAILED, problems, null, List.of()), List.of(), Map.of(), null,
+                    row.dependencies()));
         } finally {
-            Files.deleteIfExists(fetched);   // fetched whole, half or not at all: nothing of it stays in .incoming
-            Path left = folder;   // moved into packages/ by now, unless the package was refused
+            Path left = folder;   // moved into packages/ by now, unless the package was refused or a kept directory served
             if (left != null) quietly("the folder " + left.getFileName() + " of .incoming could not be deleted", () -> deleteTree(left));
         }
     }
 
-    /** Fetches the archive of {@code row} into {@code target} ({@link #fetch(String, String, Path)}). */
-    private void fetch(DeploymentRecord row, Path target) throws DeployRefusedException {
-        fetch("", row.archiveSha256(), target);
-    }
-
     /**
-     * Fetches the archive {@code sha256} into {@code target}; a fetch that fails refuses the package ({@link Kind#FAILED}, naming the
-     * archive after {@code of}): "not in the archive store" when nothing is stored under its key, else "could not be fetched" with
-     * the cause.
+     * A commit a restore reads: from the cache, fetched through {@code repos} when the cache lacks it — unless a fetch of this
+     * restore could not reach the git host already ({@link #unreachable}): then one the cache lacks fails at once with that reason.
+     * A fetch that fails because the transport failed or timed out sets it.
      */
-    private void fetch(String of, String sha256, Path target) throws DeployRefusedException {
-        try {
-            archives.fetch(sha256, target);
-        } catch (NoSuchFileException missing) {
-            throw refused(Kind.FAILED, of + "archive sha256:" + sha256 + " is not in the archive store: " + reason(missing));
-        } catch (IOException failed) {
-            throw refused(Kind.FAILED, of + "archive sha256:" + sha256 + " could not be fetched: " + reason(failed));
-        }
-    }
-
-    /**
-     * A pin of the record a restore installs, unpacked under {@code packages/<name>/<sha256>/} unless its directory is there:
-     * fetched from the archive store by its SHA-256 into a temporary file of {@code incoming}, deleted whatever comes of it, then
-     * unpacked and moved there; a fetch that fails, or bytes whose SHA-256 is not the pin's, refuse the package naming the pin. The unpack's directory goes on
-     * {@code written} (a refusal deletes it); the pin's directory does not: a record pins it.
-     */
-    private void installPin(DeploymentRecord.Pin pin, Path incoming, List<Path> written) throws DeployRefusedException, IOException {
-        Path pinned = config.dataDir().resolve("packages").resolve(pin.name()).resolve(pin.archiveSha256());
-        if (Files.isDirectory(pinned)) return;
-        Path fetched = Files.createTempFile(incoming, "pin-", ".zip");
-        try {
-            String of = "dependency " + pin.name() + "@" + pin.version() + ": ";
-            fetch(of, pin.archiveSha256(), fetched);
-            String sha256 = FlowHash.sha256(fetched);
-            if (!sha256.equals(pin.archiveSha256())) {   // other bytes under the pin's key: nothing of them is unpacked
-                throw refused(Kind.FAILED, of + "archive sha256:" + pin.archiveSha256() + " differs from what the archive store holds under its key, "
-                        + "whose SHA-256 is " + sha256);
+    private Commit restored(GitCache cache, PackageRepositories repos, String repository, String commit) throws GitFailure {
+        if (unreachable != null) {
+            try (PackageRepositories cached = cache.cached(unreachable)) {
+                return cached.recorded(repository, commit);
             }
-            Path unpacked = Files.createTempDirectory(incoming, "unpack-");
-            written.add(unpacked);
-            unpack(fetched, unpacked);
-            Files.createDirectories(pinned.getParent());
-            Files.move(unpacked, pinned, StandardCopyOption.ATOMIC_MOVE);
-        } finally {
-            Files.deleteIfExists(fetched);
+        }
+        try {
+            return repos.recorded(repository, commit);
+        } catch (GitFailure failed) {
+            if (failed.reason() == GitFailure.Reason.TRANSPORT_FAILED || failed.reason() == GitFailure.Reason.TIMED_OUT) unreachable = failed.reason();
+            throw failed;
         }
     }
 
     // --- one deploy, under the lock
 
     /**
-     * Moves the folder in place (or reuses a kept directory that holds what was written into it), checks, builds, stores the archive,
-     * classifies,
-     * swaps, saves the record, then replaces the package's listing and prunes — or, when phase B does not start every flow of a
+     * Moves the folder in place (or reuses a kept directory that holds what was written into it), resolves the dependencies,
+     * checks, builds, classifies, swaps, saves the record, then replaces the package's listing and prunes — or, for a check, stops
+     * what it built and deletes what it wrote once it classified — or, when phase B does not start every flow of a
      * redeploy or its record is not written, rolls back; whatever refuses it
      * stops what it built and did not close yet and deletes what it wrote, unchecked failures included. It writes {@code deployed}
      * once: the new version as it returns, or — thrown once phase A stopped flows — the version before with each of those listed
      * FAILED unless the rollback runs it again ({@link #afterFailure}); {@code deployed.get(name)} is {@code running} until then.
      * A package listed {@link DeployedPackage.State#FAILED} runs nothing: a deploy over it is a first deploy.
      *
-     * <p>{@code folder} holds the package's files in {@code .incoming}: the install moves it under {@code packages/<name>/<sha256>/}
-     * or leaves it to the caller to delete. {@code origin} is the archive the folder was unpacked from: put in the archive store under
-     * {@code sha256} and named by the record; null for a deploy with no origin and for a restore, which put nothing and write no
-     * record. {@code restoring} is null for a deploy; for a restore ({@link #restore}) it is the package's record, and the install
-     * runs in restore mode: nothing is put and no record is written, {@code deployedAt} is the record's, and a flow that does not start is stopped, closed and listed
+     * <p>{@code folder} holds the package's files in {@code .incoming}: the install moves it under {@code packages/<name>/<hex>/},
+     * {@code hex} the hex of its content digest, or leaves it to the caller to delete. {@code origin} is the repository and commit the
+     * folder was written from, named by the record and the listing; empty for a deploy with no origin, which writes no record.
+     * {@code commits} reads the commits the dependencies' pins name: a deploy's checks reachability, a restore's reads the cache
+     * first; null for a deploy with no origin, which fetches nothing. {@code fetching} is the git session {@code commits} reads
+     * through, closed once the pins are read so its deadline bounds the fetches only; null when nothing is fetched. {@code restoring} is null for a deploy; for a restore
+     * ({@link #restore}) it is the package's record, and the install runs in restore mode: no record is written,
+     * {@code deployedAt} is the record's, and a flow that does not start is stopped, closed and listed
      * {@link DeployedFlow.State#FAILED} while the others run — the package is installed all the same.
      */
-    private DeployResult install(String name, Optional<String> revision, Path folder, String sha256, Path origin, DeploymentRecord restoring)
-            throws DeployRefusedException, IOException {
+    private DeployResult install(String name, Optional<Origin> origin, Path folder, String hex, Commits commits, PackageRepositories fetching,
+                                 DeploymentRecord restoring, boolean check) throws DeployRefusedException, IOException {
         Deployed listed = deployed.get(name);
         Deployed running = listed == null || listed.pkg().state() == DeployedPackage.State.FAILED ? null : listed;   // a FAILED package runs nothing
         List<Flow> before = running == null ? List.of() : running.flows();
-        List<DeployedPackage.PackageFile> unpackedInto = running == null ? null : running.kept().get(sha256);   // null: no kept directory
-        Path incoming = incomingDir();
+        List<DeployedPackage.PackageFile> writtenInto = running == null ? null : running.kept().get(hex);   // null: no kept directory
         Path packageDir = config.dataDir().resolve("packages").resolve(name);
-        Path dir = packageDir.resolve(sha256);
-        Files.createDirectories(incoming);
+        Path dir = packageDir.resolve(hex);
         Files.createDirectories(packageDir);
         List<Path> written = new ArrayList<>();   // what this deploy wrote: a refusal deletes it
         List<Flow> built = new ArrayList<>();     // every flow built and neither run nor closed yet: a refusal stops and closes them
@@ -990,20 +1112,19 @@ public final class Deployments {
         Deployed next;
         DeployResult result;
         try {
-            if (unpackedInto == null || !holds(dir, unpackedInto)) {   // a kept directory is reused only as it was unpacked
+            if (writtenInto == null || !holds(dir, writtenInto)) {   // a kept directory is reused only as it was written
                 // a kept directory written afresh stays whatever happens: it runs or ran; so does a pinned one, a record pins it,
                 // and one a listed flow reads as a dependency
-                if (unpackedInto == null && !pinned(name).contains(sha256) && !read(name).contains(sha256)) written.add(dir);
+                if (writtenInto == null && !pinned(name).contains(hex) && !read(name).contains(hex)) written.add(dir);
                 deleteTree(dir);   // what an earlier node left there, or a kept directory's changed files, is replaced, never merged
                 Files.move(folder, dir, StandardCopyOption.ATOMIC_MOVE);
             }
-            if (restoring != null) {
-                for (DeploymentRecord.Pin pin : restoring.dependencies()) installPin(pin, incoming, written);
-            }
             Package pkg = load(name, dir);
-            Checked checked = check(name, pkg, dir, before, restoring, Map.of());
+            Checked checked = check(name, pkg, dir, before, List.of(), commits, written);
+            if (fetching != null) fetching.close();   // every pin is read: the fetches' deadline ends before a flow starts
             String version = pkg.manifest().getString("version");
-            List<String> problems = build(name, revision, version, sha256, pkg, dir, checked, built);
+            Optional<String> commit = origin.map(Origin::commit);
+            List<String> problems = build(name, commit, version, hex, pkg, dir, checked, built);
 
             Map<String, Flow> gone = new LinkedHashMap<>();   // by id: the flows listed that the new version has not classified yet
             before.forEach(f -> gone.put(f.id(), f));
@@ -1031,13 +1152,21 @@ public final class Deployments {
             discard(List.of(), spare);
             List<Flow> starting = consumers(built, problems);   // added and changed, each with its consumer, none started
             if (!problems.isEmpty()) throw invalid(name, problems);
-            if (origin != null) store(sha256, origin);   // before anything stops: a failed put refuses the deploy and the running version runs on
             now.addAll(starting);
             now.sort(Comparator.comparing(Flow::id));
             Instant deployedAt = restoring == null ? clock.instant() : restoring.deployedAt();
-            DeployedPackage deployedPackage = new DeployedPackage(name, version, revision, sha256, now.stream().map(Flow::id).toList(), deployedAt, files(dir),
-                    pkg.folders(), pkg.artifacts(), DeployedPackage.State.RUNNING, List.of(), Package.content(dir), checked.dependencies().listed());
+            DeployedPackage deployedPackage = new DeployedPackage(name, version, origin.map(Origin::repository), commit, now.stream().map(Flow::id).toList(),
+                    deployedAt, files(dir), pkg.folders(), pkg.artifacts(), DeployedPackage.State.RUNNING, List.of(), Package.content(dir),
+                    checked.dependencies().listed());
             List<DeploymentRecord.Pin> pins = checked.dependencies().pins();
+            if (check) {   // a check ends here: what it built stops and closes, what it wrote goes, and nothing that runs changed
+                Throwable unstopped = discard(List.of(), built);
+                if (unstopped != null) LOG.log(System.Logger.Level.WARNING, "package '" + name + "': a flow its check built did not stop cleanly: " + unstopped, unstopped);
+                built.clear();
+                for (Path p : written) quietly("package '" + name + "': the directory " + p.getFileName() + " its check wrote could not be deleted", () -> deleteWritten(p));
+                quietly("package '" + name + "': its directory could not be deleted after its check", () -> deleteIfEmpty(packageDir));
+                return new DeployResult(deployedPackage, added, swapped, List.copyOf(gone.keySet()));
+            }
             retire(retiring, checked.leaving(), "the redeploy replaced or removed it; the redeploy goes on");   // phase A, settled when it returns; it never throws
             stopped = retiring;
             built.clear();
@@ -1049,9 +1178,11 @@ public final class Deployments {
                 if (restoring == null) throw rollBack(Kind.FAILED, version, "did not start", List.of(), running, retiring, started, packageDir, built, again);
                 unstarted(name, failed, now);   // a restore: those are listed FAILED, the others run
             }
-            if (origin != null) {   // a restore writes no record: it installs the one it read; a deploy with no origin has none to write
+            if (restoring == null && origin.isPresent()) {   // a restore installs the record it read; a deploy with no origin has none to write
                 // the commit point: the package's record, written once every flow started; the listing and the pruning follow it
-                Future<Void> saved = Future.future(done -> records.save(new DeploymentRecord(name, version, revision, sha256, deployedAt, pins)).onComplete(done));
+                DeploymentRecord record = new DeploymentRecord(name, version, origin.get().repository(), origin.get().commit(), deployedPackage.content(),
+                        deployedAt, pins);
+                Future<Void> saved = Future.future(done -> records.save(record).onComplete(done));
                 saved.otherwiseEmpty().await();
                 if (saved.failed()) {
                     String unrecorded = "the deploy record was not written: " + reason(saved.cause());
@@ -1060,12 +1191,15 @@ public final class Deployments {
                     throw rollBack(unwritten, version, "was not recorded", List.of(unrecorded), running, retiring, started, packageDir, built, again);
                 }
             }
-            String previous = null;   // the directory of the last other archive the package ran: none on a first deploy
-            if (running != null) previous = sha256.equals(running.pkg().archiveSha256()) ? running.previous() : running.pkg().archiveSha256();
+            String previous = null;   // the directory of the last other content the package ran: none on a first deploy
+            if (running != null) {
+                String current = hex(running.pkg().content());
+                previous = hex.equals(current) ? running.previous() : current;
+            }
             Map<String, List<DeployedPackage.PackageFile>> kept = new HashMap<>();
-            kept.put(sha256, deployedPackage.files());
+            kept.put(hex, deployedPackage.files());
             if (previous != null) kept.put(previous, running.kept().get(previous));
-            now.forEach(f -> kept.computeIfAbsent(f.archive(), a -> running.kept().get(a)));   // in use: an old flow's was kept with it
+            now.forEach(f -> kept.computeIfAbsent(f.dir(), d -> running.kept().get(d)));   // in use: an old flow's was kept with it
             next = new Deployed(deployedPackage, List.copyOf(now), Map.copyOf(kept), previous, pins);
             result = new DeployResult(deployedPackage, added, swapped, List.copyOf(gone.keySet()));
         } catch (Throwable failure) {
@@ -1074,7 +1208,7 @@ public final class Deployments {
                 Throwable unstopped = discard(List.of(), built);
                 if (unstopped != null) failure.addSuppressed(unstopped);
             });
-            for (Path p : written) cleanUp(failure, () -> deleteTree(p));
+            for (Path p : written) cleanUp(failure, () -> deleteWritten(p));
             cleanUp(failure, () -> deleteIfEmpty(packageDir));   // packages/<name>/ goes with a refused first deploy; an earlier node's leftovers stay
             throw failure;
         }
@@ -1193,9 +1327,9 @@ public final class Deployments {
      */
     private Flow rebuild(Flow ran, Path packageDir, List<String> problems) {
         DeployedFlow f = ran.flow();
-        Path dir = packageDir.resolve(ran.archive());
+        Path dir = packageDir.resolve(ran.dir());
         try {
-            return flow(builder(f.pkg(), f.packageVersion(), f.revision(), ran.recipe().endpoints()), f.pkg(), f.packageVersion(), f.revision(), ran.archive(),
+            return flow(builder(f.pkg(), f.packageVersion(), f.commit(), ran.recipe().endpoints()), f.pkg(), f.packageVersion(), f.commit(), ran.dir(),
                     ran.recipe(), dir);
         } catch (IOException | RuntimeException refused) {
             problems.add("flow '" + local(f) + "' does not build again: " + fromRoot(reason(refused), dir, ran.recipe().dependencies()));
@@ -1220,23 +1354,6 @@ public final class Deployments {
         Map<String, Flow> byId = new HashMap<>();
         flows.forEach(f -> byId.put(f.id(), f));
         return new Deployed(d.pkg(), d.flows().stream().map(f -> byId.getOrDefault(f.id(), f)).toList(), d.kept(), d.previous(), d.pins());
-    }
-
-    /** Puts the archive in the archive store under its SHA-256; a put that fails is the deploy's {@link Kind#FAILED} naming both. */
-    private void store(String sha256, Path archive) throws DeployRefusedException {
-        try {
-            archives.put(sha256, archive);
-        } catch (IOException failed) {
-            throw refused(Kind.FAILED, "archive sha256:" + sha256 + " not stored: " + reason(failed));
-        }
-    }
-
-    /**
-     * The archive unpacked into a fresh folder of {@code .incoming}, with {@link PackageArchive}'s checks (a refusal is
-     * {@link Kind#BAD_REQUEST}); the folder is the caller's to move or delete. Whatever stops the unpack deletes what it wrote.
-     */
-    private Path unpacked(Path archive) throws DeployRefusedException, IOException {
-        return written(Files.createTempDirectory(Files.createDirectories(incomingDir()), "unpack-"), into -> unpack(archive, into));
     }
 
     /**
@@ -1282,15 +1399,7 @@ public final class Deployments {
         }
     }
 
-    private void unpack(Path archive, Path into) throws DeployRefusedException, IOException {
-        try {
-            PackageArchive.unpack(archive, into, config.maxPackageBytes());
-        } catch (IllegalArgumentException refused) {
-            throw refused(Kind.BAD_REQUEST, "the archive is refused: " + refused.getMessage());
-        }
-    }
-
-    /** The package as unpacked; a file that does not parse stops the load, and the 422 names it (package-relative). */
+    /** The package as written; a file that does not parse stops the load, and the 422 names it (package-relative). */
     private static Package load(String name, Path dir) throws DeployRefusedException, IOException {
         try {
             return Package.load(dir);
@@ -1328,14 +1437,15 @@ public final class Deployments {
      * {@link Kind#BUSY} with the last such line instead (a real failure outranks a refusal in any flow order) —
      * unless there are problems: then they are the answer. Against the flows the node runs, each flow's consumer is asked where it
      * listens ({@link #listeners}), and each flow which node-local addresses it serves and calls ({@link #links}): one flow per address
-     * and no cycle of calls ({@link Calls#check}, against {@link #others}). {@code restoring} is the record a restore installs, null for a
-     * deploy or a validate; {@code held} the versions an off-node validate holds, each pin to its folder, empty otherwise.
+     * and no cycle of calls ({@link Calls#check}, against {@link #others}). {@code held} holds the versions an off-node validate
+     * holds, empty otherwise; {@code commits} and {@code written} are as {@link #dependencies} takes them.
      */
-    private Checked check(String name, Package pkg, Path dir, List<Flow> running, DeploymentRecord restoring, Map<DeploymentRecord.Pin, Path> held) throws DeployRefusedException, IOException {
+    private Checked check(String name, Package pkg, Path dir, List<Flow> running, List<Held> held, Commits commits, List<Path> written)
+            throws DeployRefusedException, IOException {
         List<String> problems = new ArrayList<>(pkg.problems());
         JsonObject manifest = pkg.manifest();
         if (!name.equals(manifest.getValue("name"))) problems.add("package.yaml names the package '" + manifest.getValue("name") + "', the deploy '" + name + "'");
-        Resolved dependencies = dependencies(name, pkg, dir, restoring, held, problems);
+        Resolved dependencies = dependencies(name, pkg, dir, held, commits, written, problems);
         Map<String, String> schemes = new LinkedHashMap<>();
         Map<String, JsonObject> configs = new LinkedHashMap<>();
         Map<String, JsonObject> resolved = new LinkedHashMap<>();   // as the components get them: every secret:// reference resolved
@@ -1438,39 +1548,40 @@ public final class Deployments {
     }
 
     /**
-     * The package's dependencies resolved against what this node holds, every problem one line added to {@code problems}
-     * (a line {@code pkg}'s own problems hold already is not added again). Each entry of its {@code package.lock} must be a version
-     * {@link #available} with the content the lock pins ({@code Package.content} of its directory), and so must each entry of that
-     * version's own lock, to the closure; a name met again on the way is a cycle ({@code dependency cycle: a -> b -> a}). Then each
+     * The package's dependencies resolved, every problem one line added to {@code problems} (a line {@code pkg}'s own problems hold
+     * already is not added again). Each entry of its {@code package.lock} is resolved to a directory that holds the content the entry
+     * pins ({@link #located}), and so is each entry of that version's own lock, to the closure, which holds at most
+     * {@value #MAX_CLOSURE} packages; a name met again on the way is a cycle ({@code dependency cycle: a -> b -> a}). Then each
      * step's {@code stylesheet} or {@code schema} naming a resolved direct dependency, {@code <dep>:<path>}, must be a file of it.
-     * The versions {@code held} are available besides the node's own, each read from its folder ({@link #dirOf}).
+     * {@code held} are the versions an off-node validate holds; {@code commits} reads the commits the pins name, null when nothing is
+     * fetched; every directory this resolution writes that the node did not keep goes on {@code written}.
      *
-     * @throws IOException a directory of the node cannot be read
+     * @throws IOException a directory of the node cannot be read or written
      */
-    private Resolved dependencies(String name, Package pkg, Path dir, DeploymentRecord restoring, Map<DeploymentRecord.Pin, Path> held, List<String> problems)
+    private Resolved dependencies(String name, Package pkg, Path dir, List<Held> held, Commits commits, List<Path> written, List<String> problems)
             throws IOException {
         Set<String> lines = new LinkedHashSet<>();
-        Map<DeploymentRecord.Pin, String> closure = new LinkedHashMap<>();   // each pin to its content, in the order resolved
+        Map<DeploymentRecord.Pin, Path> closure = new LinkedHashMap<>();   // each pin to its directory, in the order resolved
         Set<DeploymentRecord.Pin> direct = new HashSet<>();
         Map<String, Path> dirs = new LinkedHashMap<>();
         Map<String, String> versions = new LinkedHashMap<>();
         List<String> path = new ArrayList<>(List.of(name));
-        resolve(pkg.lock(), path, available(restoring, held), held, closure, direct, lines);
+        resolve(pkg.lock(), path, held, commits, written, closure, direct, lines);
         for (DeploymentRecord.Pin p : direct) {
-            dirs.put(p.name(), dirOf(p, held));
+            dirs.put(p.name(), closure.get(p));
             versions.put(p.name(), p.version());
         }
         pkg.flows().forEach((id, flow) -> {
             if (!Schemas.FLOW.validate(flow).valid()) return;   // its schema problems are listed
-            for (Package.WrittenStep written : Package.writtenSteps(flow)) {
-                JsonObject step = written.entry();
+            for (Package.WrittenStep step : Package.writtenSteps(flow)) {
+                JsonObject entry = step.entry();
                 for (String key : List.of("stylesheet", "schema")) {
-                    if (!(step.getValue(key) instanceof String reference)) continue;
+                    if (!(entry.getValue(key) instanceof String reference)) continue;
                     Optional<String> dep = Package.dependencyOf(reference);
                     Path root = dep.map(dirs::get).orElse(null);   // null: a path from the package root, or a dependency not resolved
                     if (root != null && !Files.isRegularFile(root.resolve(reference.substring(dep.get().length() + 1)).normalize())) {
                         lines.add(dir.relativize(pkg.flowFile(id)).toString().replace(File.separatorChar, '/') + ": flow '" + id + "' "
-                                + written.label() + " " + key + " '" + reference + "' does not exist in " + dep.get() + "@" + versions.get(dep.get()));
+                                + step.label() + " " + key + " '" + reference + "' does not exist in " + dep.get() + "@" + versions.get(dep.get()));
                     }
                 }
             }
@@ -1478,85 +1589,127 @@ public final class Deployments {
         lines.removeAll(problems);   // a package depending on itself: its own problems name the cycle
         problems.addAll(lines);
         List<DeployedPackage.Dependency> listed = new ArrayList<>();
-        closure.forEach((p, content) -> listed.add(new DeployedPackage.Dependency(p.name(), p.version(), content, p.archiveSha256(), direct.contains(p))));
+        closure.keySet().forEach(p -> listed.add(new DeployedPackage.Dependency(p.name(), p.version(), p.content(), p.repository(), p.commit(), direct.contains(p))));
         return new Resolved(new Visible(Map.copyOf(dirs), Map.copyOf(versions)), List.copyOf(closure.keySet()), List.copyOf(listed));
     }
 
     /**
-     * Resolves each of {@code entries} — the lock of the last package on {@code path} — to a pin of {@code available} with the
-     * content it pins, adds it to {@code closure} ({@code direct} when {@code path} holds the deployed package alone), then follows
-     * that version's own lock with its name on {@code path}; a name {@code path} holds already is a cycle, not followed. Every
-     * problem is a line of {@code lines}.
+     * Resolves each of {@code entries} — the lock of the last package on {@code path} — to its directory ({@link #located}), adds its
+     * pin to {@code closure} ({@code direct} when {@code path} holds the deployed package alone), then follows that version's own lock
+     * with its name on {@code path}; a name {@code path} holds already is a cycle, not followed, and a closure that would pass
+     * {@value #MAX_CLOSURE} packages stops. Every problem is a line of {@code lines}.
      */
-    private void resolve(List<Package.Locked> entries, List<String> path, List<DeploymentRecord.Pin> available, Map<DeploymentRecord.Pin, Path> held,
-                         Map<DeploymentRecord.Pin, String> closure, Set<DeploymentRecord.Pin> direct, Set<String> lines) throws IOException {
+    private void resolve(List<Package.Locked> entries, List<String> path, List<Held> held, Commits commits, List<Path> written,
+                         Map<DeploymentRecord.Pin, Path> closure, Set<DeploymentRecord.Pin> direct, Set<String> lines) throws IOException {
         for (Package.Locked entry : entries) {
             if (path.contains(entry.name())) {
                 lines.add("dependency cycle: " + String.join(" -> ", path) + " -> " + entry.name());
                 continue;
             }
-            String dependency = entry.name() + "@" + entry.version();
-            List<DeploymentRecord.Pin> candidates = available.stream().filter(p -> p.name().equals(entry.name()) && p.version().equals(entry.version())).toList();
-            if (candidates.isEmpty()) {
-                lines.add("dependency " + dependency + " is not deployed on this node (" + held(entry.name(), available) + ")");
+            DeploymentRecord.Pin pin = new DeploymentRecord.Pin(entry.name(), entry.version(), entry.content(), entry.repository(), entry.commit());
+            if (!closure.containsKey(pin) && closure.size() >= MAX_CLOSURE) {
+                lines.add("the dependency closure holds more than " + MAX_CLOSURE + " packages");
+                return;
+            }
+            Path at = located(pin, held, commits, written, lines);
+            if (at == null) continue;
+            Package dependency;
+            try {
+                dependency = Package.load(at);
+            } catch (IllegalArgumentException unreadable) {
+                lines.add("dependency " + pin.name() + "@" + pin.version() + " cannot be read: " + unreadable.getMessage());
                 continue;
             }
-            DeploymentRecord.Pin match = null;
-            List<String> contents = new ArrayList<>();
-            for (DeploymentRecord.Pin candidate : candidates) {
-                String content = Package.content(dirOf(candidate, held));
-                contents.add(content);
-                if (content.equals(entry.content())) match = candidate;
-            }
-            if (match == null) {
-                lines.add("dependency " + dependency + " has content " + String.join(", ", contents) + " on this node, package.lock pins " + entry.content());
-                continue;
-            }
-            closure.put(match, entry.content());
-            if (path.size() == 1) direct.add(match);
+            closure.put(pin, at);
+            if (path.size() == 1) direct.add(pin);
             path.add(entry.name());
-            resolve(Package.load(dirOf(match, held)).lock(), path, available, held, closure, direct, lines);
+            resolve(dependency.lock(), path, held, commits, written, closure, direct, lines);
             path.removeLast();
         }
     }
 
     /**
-     * What this node holds of the package {@code name} for a dependency line: its versions available, sorted, or none (a package
-     * listed FAILED holds none).
+     * The directory the version {@code pin} names is read from, or null with a line added to {@code lines}: a folder {@code held}
+     * with its name, version and content; else {@code packages/<name>/<content hex>/} when it holds that content (a directory the
+     * node keeps is used as it is); else, when {@code commits} is given, the pin's commit read through it and written into
+     * {@code .incoming}, its manifest's name and version and its content checked against the pin, then moved there — on
+     * {@code written} unless the node keeps that directory. Without {@code commits} nothing is fetched.
      */
-    private static String held(String name, List<DeploymentRecord.Pin> available) {
-        List<String> versions = available.stream().filter(p -> p.name().equals(name)).map(DeploymentRecord.Pin::version).distinct().sorted().toList();
-        return versions.isEmpty() ? "no package " + name : "it has " + name + " " + String.join(", ", versions);
+    private Path located(DeploymentRecord.Pin pin, List<Held> held, Commits commits, List<Path> written, Set<String> lines) throws IOException {
+        for (Held h : held) {
+            if (h.name().equals(pin.name()) && h.version().equals(pin.version()) && h.content().equals(pin.content())) return h.dir();
+        }
+        Path dir = pinDir(pin);
+        if (holds(dir, pin.content())) return dir;
+        String dependency = "dependency " + pin.name() + "@" + pin.version();
+        if (commits == null) {
+            lines.add(unheld(pin, held));
+            return null;
+        }
+        Path folder = null;
+        try {
+            folder = checkout(commits.read(pin.repository(), pin.commit()), dependency + ": ");
+            String at = pin.repository() + " at " + pin.commit();
+            JsonObject manifest = Package.load(folder).manifest();
+            if (!pin.name().equals(manifest.getValue("name")) || !pin.version().equals(manifest.getValue("version"))) {
+                lines.add(dependency + ": " + at + " holds " + manifest.getValue("name") + "@" + manifest.getValue("version"));
+                return null;
+            }
+            String content = Package.content(folder);
+            if (!content.equals(pin.content())) {
+                lines.add(dependency + ": " + at + " has content " + content + ", package.lock pins " + pin.content());
+                return null;
+            }
+            if (!keeps(pin.name(), hex(pin.content()))) written.add(dir);
+            deleteTree(dir);   // what an earlier node left there, or a kept directory's changed files, is replaced, never merged
+            Files.createDirectories(dir.getParent());
+            Files.move(folder, dir, StandardCopyOption.ATOMIC_MOVE);
+            return dir;
+        } catch (GitFailure failed) {
+            lines.add(dependency + ": " + failed.getMessage());
+            return null;
+        } catch (DeployRefusedException refused) {
+            lines.add(refused.error());
+            return null;
+        } catch (IllegalArgumentException unreadable) {
+            lines.add(dependency + " cannot be read: " + unreadable.getMessage());
+            return null;
+        } finally {
+            Path left = folder;   // moved by now, unless it was refused
+            if (left != null) deleteTree(left);
+        }
     }
 
     /**
-     * The package versions this node holds for a deploy's dependencies, as pins: each RUNNING package's current version and
-     * every version its record pins, and the pins of the record {@code restoring} installs (fetched before its check). A package
-     * listed FAILED holds none: its version may not be on disk, nor what its record pins. Then the versions an off-node validate
-     * holds.
+     * The line of a dependency that nothing on the node holds with the content its pin names, for a resolution that fetches
+     * nothing: the contents the node and {@code held} have of its version, or the versions they have of it. A package listed FAILED
+     * has none: its directory may not be on disk, nor what its record pins.
      */
-    private List<DeploymentRecord.Pin> available(DeploymentRecord restoring, Map<DeploymentRecord.Pin, Path> held) {
-        List<DeploymentRecord.Pin> available = new ArrayList<>();
+    private String unheld(DeploymentRecord.Pin pin, List<Held> held) {
+        Map<String, Set<String>> contents = new TreeMap<>();   // each version of the dependency to its contents
+        held.stream().filter(h -> h.name().equals(pin.name())).forEach(h -> contents.computeIfAbsent(h.version(), v -> new TreeSet<>()).add(h.content()));
         for (Deployed d : deployed.values()) {
             if (d.pkg().state() == DeployedPackage.State.FAILED) continue;
-            available.add(new DeploymentRecord.Pin(d.pkg().name(), d.pkg().version(), d.pkg().archiveSha256()));
-            available.addAll(d.pins());
+            if (d.pkg().name().equals(pin.name())) contents.computeIfAbsent(d.pkg().version(), v -> new TreeSet<>()).add(d.pkg().content());
+            d.pins().stream().filter(p -> p.name().equals(pin.name())).forEach(p -> contents.computeIfAbsent(p.version(), v -> new TreeSet<>()).add(p.content()));
         }
-        if (restoring != null) available.addAll(restoring.dependencies());
-        available.addAll(held.keySet());
-        return available;
+        String dependency = "dependency " + pin.name() + "@" + pin.version();
+        Set<String> found = contents.get(pin.version());
+        if (found != null) return dependency + " has content " + String.join(", ", found) + " on this node, package.lock pins " + pin.content();
+        return dependency + " is not deployed on this node (" + (contents.isEmpty() ? "no package " + pin.name() : "it has " + pin.name() + " "
+                + String.join(", ", contents.keySet())) + ")";
     }
 
-    /** The archive SHA-256s of {@code name} that a record pins — the listing's, FAILED packages included, and a restore's rows'. */
+    /** The content hexes of {@code name} that a record pins — the listing's, FAILED packages included, and a restore's rows'. */
     private Set<String> pinned(String name) {
         Set<String> pinned = new HashSet<>();
         Stream.concat(deployed.values().stream().flatMap(d -> d.pins().stream()), restoringRows.stream().flatMap(r -> r.dependencies().stream()))
-                .filter(p -> p.name().equals(name)).forEach(p -> pinned.add(p.archiveSha256()));
+                .filter(p -> p.name().equals(name)).forEach(p -> pinned.add(hex(p.content())));
         return pinned;
     }
 
     /**
-     * The archive SHA-256s of {@code name} whose directories a listed flow's recipe reads as a dependency: a flow kept by
+     * The content hexes of {@code name} whose directories a listed flow's recipe reads as a dependency: a flow kept by
      * hash across a lock bump reads the directory it was built from, and a rollback builds it from there again.
      */
     private Set<String> read(String name) {
@@ -1570,14 +1723,32 @@ public final class Deployments {
         return read;
     }
 
-    /** Where the version of {@code pin} is read: its held folder, else {@link #pinDir}. */
-    private Path dirOf(DeploymentRecord.Pin pin, Map<DeploymentRecord.Pin, Path> held) {
-        return held.getOrDefault(pin, pinDir(pin));
+    /** Whether the node keeps {@code packages/<name>/<hex>/}: the package's own (current, previous, in use), pinned or read. */
+    private boolean keeps(String name, String hex) {
+        Deployed listed = deployed.get(name);
+        return listed != null && listed.kept().containsKey(hex) || pinned(name).contains(hex) || read(name).contains(hex);
     }
 
-    /** {@code packages/<name>/<sha256>/} of a pin: where its version is unpacked. */
+    /**
+     * The repositories a record names, its own or a pin's — the listing's, FAILED packages included, and a restore's rows' — which
+     * the git cache keeps when it is full.
+     */
+    private Set<String> named() {
+        Set<String> named = new HashSet<>();
+        for (Deployed d : deployed.values()) {
+            d.pkg().repository().ifPresent(named::add);
+            d.pins().forEach(p -> named.add(p.repository()));
+        }
+        for (DeploymentRecord r : restoringRows) {
+            named.add(r.repository());
+            r.dependencies().forEach(p -> named.add(p.repository()));
+        }
+        return named;
+    }
+
+    /** {@code packages/<name>/<content hex>/} of a pin: where its version is written. */
     private Path pinDir(DeploymentRecord.Pin pin) {
-        return config.dataDir().resolve("packages").resolve(pin.name()).resolve(pin.archiveSha256());
+        return config.dataDir().resolve("packages").resolve(pin.name()).resolve(hex(pin.content()));
     }
 
     /**
@@ -1734,16 +1905,16 @@ public final class Deployments {
      * {@code name} the deploy replaces — but for a package an off-node validate holds, the flows of the held version instead
      * ({@link #heldNodes}).
      */
-    private List<Calls.Node> others(String name, Map<DeploymentRecord.Pin, Path> held) throws IOException {
+    private List<Calls.Node> others(String name, List<Held> held) throws IOException {
         Set<String> standIns = new HashSet<>();
-        held.keySet().forEach(pin -> standIns.add(pin.name()));
+        held.forEach(h -> standIns.add(h.name()));
         List<Calls.Node> others = new ArrayList<>();
         for (Deployed d : deployed.values()) {
             if (d.pkg().name().equals(name) || standIns.contains(d.pkg().name())) continue;
             d.flows().stream().filter(Flow::runs).map(Deployments::node).forEach(others::add);
         }
-        for (Map.Entry<DeploymentRecord.Pin, Path> h : held.entrySet()) {
-            if (!h.getKey().name().equals(name)) others.addAll(heldNodes(h.getKey().name(), h.getValue()));
+        for (Held h : held) {
+            if (!h.name().equals(name)) others.addAll(heldNodes(h.name(), h.dir()));
         }
         return others;
     }
@@ -1880,7 +2051,7 @@ public final class Deployments {
      * each added to {@code flows} as soon as it is built; returns every failure as one problem line, the flows that built in
      * {@code flows} all the same.
      */
-    private List<String> build(String name, Optional<String> revision, String version, String archive, Package pkg, Path dir, Checked checked,
+    private List<String> build(String name, Optional<String> commit, String version, String hex, Package pkg, Path dir, Checked checked,
                                List<Flow> flows) throws IOException {
         Map<String, EndpointConfig> endpoints = new LinkedHashMap<>();   // as the components get them, references resolved
         Map<String, EndpointConfig> written = new LinkedHashMap<>();     // as the package writes them: what the hash covers
@@ -1888,12 +2059,12 @@ public final class Deployments {
             endpoints.put(id, endpoint(id, checked.schemes().get(id), checked.resolved().get(id)));
             written.put(id, endpoint(id, checked.schemes().get(id), cfg));
         });
-        FlowBuilder builder = builder(name, version, revision, endpoints);
+        FlowBuilder builder = builder(name, version, commit, endpoints);
         List<String> problems = new ArrayList<>();
         for (Map.Entry<String, FlowDefinition> each : checked.flows().entrySet()) {
             String id = each.getKey();
             try {
-                flows.add(flow(builder, name, version, revision, archive,
+                flows.add(flow(builder, name, version, commit, hex,
                         new Recipe(each.getValue(), pkg.flowFile(id), Map.copyOf(endpoints), Map.copyOf(written),
                                 Optional.ofNullable(checked.listening().get(id)), Optional.ofNullable(checked.paths().get(id)), checked.calls().get(id),
                                 checked.dependencies().visible()), dir));
@@ -1905,17 +2076,17 @@ public final class Deployments {
     }
 
     /**
-     * A builder over {@code endpoints} that stamps every message with {@code package=<name>@<version>} and, when given, {@code revision};
+     * A builder over {@code endpoints} that stamps every message with {@code package=<name>@<version>} and, when given, {@code commit};
      * it marks the steps with StepEvents only when the node samples CPU time, and its {@code to}
      * steps send under the node's {@link Targets}; its at-least-once workers retry under the node's default schedule
      * ({@code RAIL8_RETRIES_*}) when a flow names no {@code delivery.retries}. Its steps' secrets are the node's
      * ({@link NodeConfig#secrets()}), and the steps of one type share the node's cache with that type's steps in the package's
      * other flows and versions.
      */
-    private FlowBuilder builder(String name, String version, Optional<String> revision, Map<String, EndpointConfig> endpoints) {
+    private FlowBuilder builder(String name, String version, Optional<String> commit, Map<String, EndpointConfig> endpoints) {
         Map<String, String> versions = new HashMap<>();
         versions.put("package", name + "@" + version);
-        revision.ifPresent(r -> versions.put("revision", r));
+        commit.ifPresent(c -> versions.put("commit", c));
         return new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).intake(intake).versions(versions)
                 .stepEvents(config.cpuSampling().isPresent()).targets(targets).fence(fence).workers(workers).signals(signals).retries(config.retries())
                 .runs(runs).secrets(this::secret).caches(stepType -> caches.scope(MessageContext.DEFAULT_TENANT, name, stepType));
@@ -1932,7 +2103,7 @@ public final class Deployments {
     }
 
     /**
-     * One flow built from {@code recipe}, its package unpacked in {@code dir}: its delivery, its worker
+     * One flow built from {@code recipe}, its package in {@code dir} (whose name is {@code hex}): its delivery, its worker
      * (at-least-once), its effective hash ({@link FlowHash}: the
      * files those builds read, its endpoints as its consumer and its producers get them); its consumer comes later
      * ({@link #consumers}). A flow that fails after
@@ -1941,7 +2112,7 @@ public final class Deployments {
      *
      * @throws IOException a file the build read cannot be hashed: the node's failure
      */
-    private Flow flow(FlowBuilder builder, String name, String version, Optional<String> revision, String archive, Recipe recipe, Path dir) throws IOException {
+    private Flow flow(FlowBuilder builder, String name, String version, Optional<String> commit, String hex, Recipe recipe, Path dir) throws IOException {
         FlowDefinition def = recipe.def();
         Map<String, EndpointConfig> endpoints = recipe.endpoints();
         Set<Path> reads = ConcurrentHashMap.newKeySet();   // the stages keep the sink: thread-safe, each path once
@@ -1957,8 +2128,8 @@ public final class Deployments {
             String hash = FlowHash.of(dir, recipe.dependencies().dirs(), recipe.flowFile(), reads, consumed(written.get(def.fromEndpoint()), def),
                     def.referencedEndpoints().stream().map(written::get).toList());
             built = true;
-            return new Flow(new DeployedFlow(def.id(), name, version, revision, def.version(), def.deliveryMode(), hash, DeployedFlow.State.RUNNING),
-                    archive, recipe, delivery, worker, consumed, null);
+            return new Flow(new DeployedFlow(def.id(), name, version, commit, def.version(), def.deliveryMode(), hash, DeployedFlow.State.RUNNING),
+                    hex, recipe, delivery, worker, consumed, null);
         } finally {
             if (!built) {
                 delivery.stop(Duration.ZERO);   // nothing was delivered yet: the stop completes at once, and the close after it
@@ -2271,11 +2442,6 @@ public final class Deployments {
         return queued;
     }
 
-    /** The packages whose record pins a version of {@code name}, FAILED ones included, sorted by name, each once. */
-    private List<String> dependents(String name) {
-        return deployed.values().stream().filter(d -> d.pins().stream().anyMatch(p -> p.name().equals(name))).map(d -> d.pkg().name()).toList();
-    }
-
     private static DeployRefusedException invalid(String name, List<String> problems) {
         return new DeployRefusedException(Kind.INVALID, "package '" + name + "' is invalid: " + problems.size() + " problem(s)", problems);
     }
@@ -2368,8 +2534,29 @@ public final class Deployments {
         }
     }
 
-    /** Deletes the directory {@code dir} when nothing is in it. */
+    /** Whether {@code dir} holds the content {@code content} ({@link Package#content}); no directory, or one unread, does not. */
+    private static boolean holds(Path dir, String content) {
+        try {
+            return Files.isDirectory(dir) && Package.content(dir).equals(content);
+        } catch (IOException | UncheckedIOException unreadable) {
+            return false;
+        }
+    }
+
+    /** The hex of a content digest, {@code sha256:<hex>}: the name of the directory its package is written into. */
+    static String hex(String content) {
+        return content.substring(content.indexOf(':') + 1);
+    }
+
+    /** Deletes {@code packages/<name>/<hex>/} with everything below it, then {@code packages/<name>/} when nothing is left in it. */
+    private static void deleteWritten(Path dir) throws IOException {
+        deleteTree(dir);
+        deleteIfEmpty(dir.getParent());
+    }
+
+    /** Deletes the directory {@code dir} when nothing is in it; nothing when it does not exist. */
     private static void deleteIfEmpty(Path dir) throws IOException {
+        if (Files.notExists(dir, LinkOption.NOFOLLOW_LINKS)) return;
         boolean empty;
         try (Stream<Path> left = Files.list(dir)) {
             empty = left.findAny().isEmpty();

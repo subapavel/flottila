@@ -14,6 +14,7 @@ import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.runtime.deploy.DeployRefusedException.Kind;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
+import dev.rail8.schemas.Package;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -75,7 +76,10 @@ class DeploymentsRedeployEdgeTest {
 
     @TempDir Path tmp;
     Path data;
-    Path archives;
+    Path folders;
+    GitRepos repos;
+    /** The commit each labelled deploy deployed, by its label. */
+    final Map<String, String> commits = new HashMap<>();
 
     final FakeRuntime rt = FakeRuntime.create();
     final Doors doors = new Doors();
@@ -118,7 +122,8 @@ class DeploymentsRedeployEdgeTest {
     @BeforeEach
     void wire() {
         data = tmp.resolve("data");
-        archives = tmp.resolve("archives");
+        folders = tmp.resolve("folders");
+        repos = new GitRepos(tmp.resolve("repos"));
         counting = new CountingQueue(rt.clock());
         deployments = deployments(List.of());
         capture.setLevel(Level.ALL);
@@ -136,7 +141,7 @@ class DeploymentsRedeployEdgeTest {
         env.put("RAIL8_DATA_DIR", data.toString());
         env.put("RAIL8_BLOB_DURABLE_MAX", "4096");
         Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
-        return new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), timer, steps, List.of(),
+        return new Deployments(NodeConfig.from(repos.env(env)), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), timer, steps, List.of(),
                 new InMemoryMessageStore(), new InMemoryDlq(), new Faulty(), () -> 0L);
     }
 
@@ -147,12 +152,35 @@ class DeploymentsRedeployEdgeTest {
     }
 
     DeployResult deploy(PackageDraft p) throws Exception {
-        Path archive = p.zipTo(archives);
-        return OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), archive));
+        return deploy("shop", p.folderIn(folders));
     }
 
-    Path packageDir(String sha256) {
-        return data.resolve("packages").resolve("shop").resolve(sha256);
+    /** Commits the files of {@code folder} to the repository {@code name} and deploys that commit. */
+    DeployResult deploy(String name, Path folder) throws Exception {
+        return deploy(name, null, folder);
+    }
+
+    /** As {@link #deploy(String, Path)}, {@code label} (or null) naming the commit. */
+    DeployResult deploy(String name, String label, Path folder) throws Exception {
+        String id = repos.commit(name, folder);
+        if (label != null) commits.put(label, id);
+        return OnVirtualThread.call(() -> deployments.deploy(name, id, "test"));
+    }
+
+    /** The commit the deploy labelled {@code label} deployed. */
+    String commit(String label) {
+        String id = commits.get(label);
+        if (id == null) throw new AssertionError("fixture: no deploy labelled " + label);
+        return id;
+    }
+
+    /** The directory of shop's version whose content digest has the hex {@code hex}. */
+    Path packageDir(String hex) {
+        return data.resolve("packages").resolve("shop").resolve(hex);
+    }
+
+    static String hex(String content) {
+        return content.substring("sha256:".length());
     }
 
     List<LogRecord> warnings(String... words) {
@@ -171,8 +199,8 @@ class DeploymentsRedeployEdgeTest {
 
     @Test
     void aDirectoryThePruneCannotDeleteIsAWarningAndTheDeployStands() throws Exception {
-        String sha1 = deploy(one("v1")).pkg().archiveSha256();
-        String sha2 = deploy(one("v2")).pkg().archiveSha256();
+        String sha1 = hex(deploy(one("v1")).pkg().content());
+        String sha2 = hex(deploy(one("v2")).pkg().content());
         Path dir1 = packageDir(sha1);
         assertTrue(Files.isDirectory(dir1), "fixture: v1's directory is kept as the previous one");
         Path work = Files.createDirectories(tmp.resolve("w"));
@@ -187,7 +215,7 @@ class DeploymentsRedeployEdgeTest {
             assertTrue(Files.exists(dir1.resolve("deep")), "fixture: the prune could not delete v1's directory");
             assertEquals(1, warnings(sha1, "could not be deleted").size(), "one WARNING names the directory: "
                     + logged.stream().map(DeploymentsProducersTest::texts).toList());
-            assertTrue(Files.isDirectory(packageDir(sha2)) && Files.isDirectory(packageDir(r3.pkg().archiveSha256())), "previous and current stay");
+            assertTrue(Files.isDirectory(packageDir(sha2)) && Files.isDirectory(packageDir(hex(r3.pkg().content()))), "previous and current stay");
         } finally {
             Path deep = dir1.resolve("deep");
             if (Files.exists(deep, LinkOption.NOFOLLOW_LINKS)) dismantle(deep, work);
@@ -200,7 +228,7 @@ class DeploymentsRedeployEdgeTest {
         Files.createDirectories(leftover.getParent());
         Files.writeString(leftover, "left by an earlier node");
 
-        String sha = deploy(one("v1")).pkg().archiveSha256();
+        String sha = hex(deploy(one("v1")).pkg().content());
 
         assertEquals(List.of(sha), children(data.resolve("packages").resolve("shop")), "the leftover is neither current, previous nor in use");
     }
@@ -208,13 +236,13 @@ class DeploymentsRedeployEdgeTest {
     /** A redeploy that changes no flow (the package's version only): every flow runs on from v1's directory, v2's is kept all the same. */
     @Test
     void aRedeployThatChangesNoFlowKeepsItsOwnDirectory() throws Exception {
-        String sha1 = deploy(shop()).pkg().archiveSha256();
+        String sha1 = hex(deploy(shop()).pkg().content());
         PackageDraft v2 = shop();
         v2.manifest().put("version", "1.0.1");
 
         DeployResult r = deploy(v2);
 
-        String sha2 = r.pkg().archiveSha256();
+        String sha2 = hex(r.pkg().content());
         assertEquals(List.of(List.of(), List.of(), List.of()), List.of(r.added(), r.swapped(), r.removed()), "no flow changed: " + r);
         assertEquals("1.0.1", r.pkg().version(), "the package record is v2's");
         assertEquals(Stream.of(sha1, sha2).sorted().toList(), children(data.resolve("packages").resolve("shop")),
@@ -225,10 +253,10 @@ class DeploymentsRedeployEdgeTest {
     @Test
     void aRefusedRedeployThatReusedAKeptDirectoryLeavesItInPlace() throws Exception {
         PackageDraft v1 = shop();
-        byte[] zip1 = v1.zip();
-        String sha1 = OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), PackageDraft.write(archives, zip1))).pkg().archiveSha256();
+        Path folder1 = v1.folderIn(folders);
+        String sha1 = hex(deploy("shop", folder1).pkg().content());
         PackageDraft v2 = shop().endpoint("relay-in", "in", new JsonObject().put("path", "/relay")).flow("relay", "1.0.0", "at-least-once", "relay-in", 1024, to("archive"));
-        String sha2 = deploy(v2).pkg().archiveSha256();
+        String sha2 = hex(deploy(v2).pkg().content());
         Path dir1 = packageDir(sha1);
         Object key1 = fileKey(dir1);
         List<String> files1 = regularFiles(dir1);
@@ -237,7 +265,7 @@ class DeploymentsRedeployEdgeTest {
         List<DeployedPackage> packagesBefore = deployments.packages();
 
         DeployRefusedException refused = assertThrows(DeployRefusedException.class,
-                () -> OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), PackageDraft.write(archives, zip1))), "v1 again removes relay, which has an item");
+                () -> deploy("shop", folder1), "v1 again removes relay, which has an item");
 
         assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
         assertTrue(refused.problems().stream().anyMatch(l -> l.contains("relay")), "a problem names relay: " + refused.problems());
@@ -249,7 +277,7 @@ class DeploymentsRedeployEdgeTest {
         assertEquals(List.of(), children(deployments.incomingDir()));
 
         counting.drop(counting.rows().get(0).seq());
-        DeployResult again = OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), PackageDraft.write(archives, zip1)));
+        DeployResult again = deploy("shop", folder1);
         assertEquals(List.of("shop/relay"), again.removed(), "witness: without the item v1 deploys again: " + again);
         assertEquals(key1, fileKey(dir1), "from the same directory");
     }
@@ -261,10 +289,10 @@ class DeploymentsRedeployEdgeTest {
     @Test
     void aRefusedRedeployThatUnpackedAKeptDirectoryAfreshLeavesItInPlace() throws Exception {
         PackageDraft v1 = shop();
-        byte[] zip1 = v1.zip();
-        String sha1 = OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), PackageDraft.write(archives, zip1))).pkg().archiveSha256();
+        Path folder1 = v1.folderIn(folders);
+        String sha1 = hex(deploy("shop", folder1).pkg().content());
         PackageDraft v2 = shop().endpoint("relay-in", "in", new JsonObject().put("path", "/relay")).flow("relay", "1.0.0", "at-least-once", "relay-in", 1024, to("archive"));
-        String sha2 = deploy(v2).pkg().archiveSha256();
+        String sha2 = hex(deploy(v2).pkg().content());
         Path dir1 = packageDir(sha1);
         List<String> files1 = regularFiles(dir1);
         Files.writeString(dir1.resolve("written.txt"), "written after the deploy");
@@ -272,7 +300,7 @@ class DeploymentsRedeployEdgeTest {
         List<DeployedFlow> flowsBefore = deployments.flows();
 
         DeployRefusedException refused = assertThrows(DeployRefusedException.class,
-                () -> OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), PackageDraft.write(archives, zip1))), "v1 again removes relay, which has an item");
+                () -> deploy("shop", folder1), "v1 again removes relay, which has an item");
 
         assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
         assertEquals(files1, regularFiles(dir1), "v1's directory stays, unpacked afresh: v1's files and nothing written after them");
@@ -290,14 +318,14 @@ class DeploymentsRedeployEdgeTest {
         Map<String, String> modes = new LinkedHashMap<>();
         modes.put("a", "sync");
         modes.put("b", "sync");
-        byte[] zip1 = DeploymentsTest.flows("shop", modes).zip();
-        String sha1 = OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), PackageDraft.write(archives, zip1))).pkg().archiveSha256();
+        Path folder1 = DeploymentsTest.flows("shop", modes).folderIn(folders);
+        String sha1 = hex(deploy("shop", folder1).pkg().content());
         deploy(changed(DeploymentsTest.flows("shop", modes), "a", "v2"));
         deploy(changed(DeploymentsTest.flows("shop", modes), "a", "v3"));
         Path dir1 = packageDir(sha1);
         Object key1 = fileKey(dir1);
 
-        DeployResult again = OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), PackageDraft.write(archives, zip1)));
+        DeployResult again = deploy("shop", folder1);
 
         assertEquals(List.of("shop/a"), again.swapped(), "a runs v1's yaml again, b runs on: " + again);
         assertEquals(key1, fileKey(dir1), "v1's directory, kept as in use only, is reused as it was unpacked");
@@ -307,15 +335,15 @@ class DeploymentsRedeployEdgeTest {
     @Test
     void aKeptDirectoryDeletedFromDiskIsUnpackedAfresh() throws Exception {
         PackageDraft v1 = shop();
-        byte[] zip = v1.zip();
-        String sha = OnVirtualThread.call(() -> deployments.deploy("shop", Optional.of("r1"), PackageDraft.write(archives, zip))).pkg().archiveSha256();
+        Path folder = v1.folderIn(folders);
+        String sha = hex(deploy("shop", "r1", folder).pkg().content());
         List<String> files = regularFiles(packageDir(sha));
         List<DeployedFlow> flowsBefore = deployments.flows();
         try (Stream<Path> walk = Files.walk(packageDir(sha))) {
             for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) Files.delete(p);
         }
 
-        DeployResult again = OnVirtualThread.call(() -> deployments.deploy("shop", Optional.of("r2"), PackageDraft.write(archives, zip)));
+        DeployResult again = deploy("shop", "r2", folder);
 
         assertEquals(List.of(List.of(), List.of(), List.of()), List.of(again.added(), again.swapped(), again.removed()), "no flow changed: " + again);
         assertEquals(files, regularFiles(packageDir(sha)), "the directory is back, fresh from the archive");
@@ -341,9 +369,9 @@ class DeploymentsRedeployEdgeTest {
         };
         Deployments d = deployments(List.of(), timer);
         doors.failStart(2, "orders does not start");
-        Path archive = shop().zipTo(archives);
+        Path folder = shop().folderIn(folders);
 
-        DeployRefusedException refused = assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> d.deploy("shop", Optional.empty(), archive)));
+        DeployRefusedException refused = assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> d.deploy("shop", repos.commit("shop", folder), "test")));
 
         assertEquals(Kind.FAILED, refused.kind(), refused.error());
         assertEquals(1, thrown.get(), "fixture: audit's worker started and its stop threw, in the cleanup");
@@ -405,10 +433,10 @@ class DeploymentsRedeployEdgeTest {
         List<DeployedPackage> packagesBefore = deployments.packages();
         failHasItemsFrom = 1;
         PackageDraft v2 = removed(shop(), "audit").without("endpoints/archive.yaml");
-        Path archive = v2.zipTo(archives);
+        Path folder = v2.folderIn(folders);
         int events = doors.events().size();
 
-        Exception failed = assertThrows(Exception.class, () -> OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), archive)));
+        Exception failed = assertThrows(Exception.class, () -> deploy("shop", folder));
 
         assertFalse(failed instanceof DeployRefusedException, "the queue's failure is the node's, not a refusal of the package: " + failed);
         List<String> chain = new ArrayList<>();
@@ -418,7 +446,7 @@ class DeploymentsRedeployEdgeTest {
         assertFalse(audit.stopped());
         assertEquals(flowsBefore, deployments.flows());
         assertEquals(packagesBefore, deployments.packages());
-        assertFalse(Files.exists(packageDir(PackageDraft.sha256(archive))), "the new directory is deleted");
+        assertFalse(Files.exists(packageDir(hex(Package.content(folder)))), "the new directory is deleted");
         assertEquals(List.of(), children(deployments.incomingDir()));
     }
 
@@ -446,9 +474,9 @@ class DeploymentsRedeployEdgeTest {
         Deployments d = deployments(List.of(new Unreadable()));
         PackageDraft p = shop();
         p.flowDoc("audit").put("steps", new JsonArray().add(new JsonObject().put("type", "unreadable").put("name", "u")).addAll(to("archive")));
-        Path archive = p.zipTo(archives);
+        Path folder = p.folderIn(folders);
 
-        IOException failed = assertThrows(IOException.class, () -> OnVirtualThread.call(() -> d.deploy("shop", Optional.empty(), archive)),
+        IOException failed = assertThrows(IOException.class, () -> OnVirtualThread.call(() -> d.deploy("shop", repos.commit("shop", folder), "test")),
                 "a file the hash cannot read is the node's failure");
 
         assertTrue(doors.producers().stream().anyMatch(o -> o.endpoint().equals("archive")), "fixture: audit's worker was built: " + doors.producers() + " " + failed);

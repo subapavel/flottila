@@ -53,12 +53,13 @@ class LedgerMainPartsTest {
     void bothNodesShareTheArchiveDirectoryWithoutS3OptionsAndUseThePathStyleS3StoreWithThem() {
         LedgerMain.Options dir = LedgerMain.options(new String[] {"--db", "x_bench", "--host", "db.local", "--port", "6543", "--user", "u", "--password", "p"});
         assertEquals(Map.of(), dir.s3(), "no --s3-* option: the dir store");
-        Map<String, String> env = new java.util.HashMap<>(LedgerMain.nodeEnv(dir, "ledger-node-2", Path.of("/data/n2"), Path.of("/data/archives"), 0));
+        Map<String, String> env = new java.util.HashMap<>(LedgerMain.nodeEnv(dir, "ledger-node-2", Path.of("/data/n2"), Path.of("/data/repos"), Path.of("/data/archives"), 0));
         env.put("RAIL8_PG_SSL_MODE", "disable");   // FIX-146: a remote host (db.local) defaults to verify-full, refused without a CA
         NodeConfig node = NodeConfig.from(env);
         assertEquals(NodeConfig.Archives.Store.DIR, node.archives().store());
         assertEquals(Path.of("/data/archives"), node.archives().dir(), "the archive directory both nodes are given, not one under a data directory");
         assertEquals(Path.of("/data/n2"), node.dataDir());
+        assertEquals(URI.create("file:///data/repos/"), node.git().orElseThrow().base(), "the package repositories both nodes are given");
         assertEquals("ledger-node-2", node.nodeId());
         assertEquals(0, node.admin().port());
         assertEquals(0, node.peer().port(), "the peer link on any free port: two nodes on one host");
@@ -67,10 +68,10 @@ class LedgerMainPartsTest {
 
         LedgerMain.Options s3 = LedgerMain.options(new String[] {"--db", "x_bench", "--s3-endpoint", "http://127.0.0.1:4566", "--s3-region", "eu-west-1",
                 "--s3-bucket", "b", "--s3-prefix", "pre", "--s3-access-key", "ak", "--s3-secret-key", "sk"});
-        NodeConfig.S3 store = NodeConfig.from(LedgerMain.nodeEnv(s3, "ledger-node-1", Path.of("/data/n1"), Path.of("/data/archives"), 7001)).s3().orElseThrow();
+        NodeConfig.S3 store = NodeConfig.from(LedgerMain.nodeEnv(s3, "ledger-node-1", Path.of("/data/n1"), Path.of("/data/repos"), Path.of("/data/archives"), 7001)).s3().orElseThrow();
         assertEquals(new NodeConfig.S3("b", "eu-west-1", Optional.of(URI.create("http://127.0.0.1:4566")), true, "pre",
                 Optional.of("ak"), Optional.of("sk")), store, "every --s3-* option reaches the node, path-style");
-        assertEquals("s3", LedgerMain.nodeEnv(s3, "n", Path.of("/d"), Path.of("/a"), 0).get("RAIL8_ARCHIVE_STORE"));
+        assertEquals("s3", LedgerMain.nodeEnv(s3, "n", Path.of("/d"), Path.of("/r"), Path.of("/a"), 0).get("RAIL8_ARCHIVE_STORE"));
     }
 
     @Test

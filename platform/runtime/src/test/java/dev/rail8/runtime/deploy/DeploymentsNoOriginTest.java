@@ -54,7 +54,7 @@ class DeploymentsNoOriginTest {
         vars.put("RAIL8_BLOB_DURABLE_MAX", "4096");
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
         return new Deployments(NodeConfig.from(vars), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(),
-                new InMemoryMessageStore(), new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, records, new DirArchiveStore(tmp.resolve("archives")));
+                new InMemoryMessageStore(), new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, records);
     }
 
     static List<String> under(Path dir) throws Exception {
@@ -91,7 +91,6 @@ class DeploymentsNoOriginTest {
         assertEquals(List.of("shop/audit", "shop/orders", "shop/ping"), deployed.added());
         assertEquals(content, deployed.pkg().content());
         String hex = content.substring("sha256:".length());
-        assertEquals(hex, deployed.pkg().archiveSha256(), "its directory is named by its content digest");
         assertTrue(node.flows().stream().allMatch(f -> f.state() == DeployedFlow.State.RUNNING), node.flows().toString());
         assertEquals(List.of(), records.list().await(), "no record");
         assertEquals(List.of(), under(tmp.resolve("archives")), "no archive stored");

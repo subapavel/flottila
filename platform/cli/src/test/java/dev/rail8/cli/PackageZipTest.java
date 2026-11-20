@@ -1,8 +1,5 @@
 package dev.rail8.cli;
 
-import dev.rail8.cli.CliRuns.Ran;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -29,42 +26,26 @@ import java.util.zip.ZipInputStream;
 
 import static dev.rail8.cli.CliRuns.DEMO;
 import static dev.rail8.cli.CliRuns.FIXTURES;
-import static dev.rail8.cli.CliRuns.run;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * P2-03a (D-079): the archive {@code rail8 deploy} PUTs is deterministic — built with java.util.zip, one entry per regular file
+ * The archive {@link Deploy#zip} builds is deterministic — built with java.util.zip, one entry per regular file
  * at its {@code /}-separated path from the package root (so {@code package.yaml} at the archive root), entries sorted by that path,
  * no directory entries, one fixed modification time — so the same directory gives the same bytes, hence the same SHA-256 (the
  * node's archive key, D-070), whatever the files' mtimes, the directory's place or the order the files were written in. Its layout
- * is deploy.sh's ({@code zip -r -D} / {@code jar --no-manifest} of the directory's contents, directory entries aside). The zip
- * is observed as it arrives at a {@link StubAdmin}.
+ * is deploy.sh's ({@code zip -r -D} / {@code jar --no-manifest} of the directory's contents, directory entries aside).
+ * {@code rail8 deploy} sends a repository and a commit now; nothing sends the zip any more.
  */
 class PackageZipTest {
 
     @TempDir Path tmp;
-    StubAdmin admin;
 
-    @BeforeEach
-    void startTheStub() throws IOException {
-        admin = new StubAdmin();
-    }
-
-    @AfterEach
-    void stopTheStub() {
-        admin.close();
-    }
-
-    /** The bytes {@code rail8 deploy <dir>} PUT. */
-    byte[] zipOf(Path dir) {
-        int before = admin.requests().size();
-        Ran ran = run(Map.of(), "deploy", dir.toString(), "--admin", admin.url());
-        assertEquals(0, ran.exit(), "fixture: the deploy to the stub succeeds: " + ran);
-        assertEquals(before + 1, admin.requests().size(), "fixture: one PUT");
-        return admin.requests().getLast().body();
+    /** The zip of the package directory {@code dir}. */
+    static byte[] zipOf(Path dir) throws IOException {
+        return Deploy.zip(dir);
     }
 
     static String sha256(byte[] bytes) throws Exception {

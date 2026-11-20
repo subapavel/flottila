@@ -38,7 +38,7 @@ import java.util.stream.Stream;
  *       consumer gets it ({@code flow} and {@code maxBodyBytes} included), then every endpoint the flow sends to, by id — each
  *       with this environment's overlay laid over its config, each {@code secret://} reference as written, never its value.</li>
  * </ol>
- * Nothing else: package.yaml, the package's version, the deploy's revision, the archive, its directory, other environments'
+ * Nothing else: package.yaml, the package's version, the deploy's repository and commit, its directory, other environments'
  * overlays and files no build read are not part of it, so the same content hashes the same on any node; a stylesheet or schema
  * served from its step factory's compile cache reports the files its compile read, as a compile would. Known gap: what a
  * stylesheet reads at run time ({@code doc()}, {@code unparsed-text()}) is not covered.

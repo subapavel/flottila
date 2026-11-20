@@ -1,6 +1,7 @@
 package dev.rail8.runtime;
 
 import dev.rail8.components.http.HttpComponent;
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
@@ -275,6 +276,7 @@ class PgPromotionLedgerIT {
         String id = "ledger-" + (++nodesStarted);
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "ci");
+        GitRepos.with(env);   // the test JVM's package repositories, which its deploys commit to
         env.put("RAIL8_NODE_ID", id);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
@@ -321,7 +323,7 @@ class PgPromotionLedgerIT {
         HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b ->
                 req.response().putHeader("content-type", "application/xml").end(ack))).listen(0, "127.0.0.1").await();
         servers.add(partner);
-        InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partner.actualPort())));
+        InvoiceAsyncIT.deploy(client, node, InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partner.actualPort()));
         return node.httpPort();
     }
 

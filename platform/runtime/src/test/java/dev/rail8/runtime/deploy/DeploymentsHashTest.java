@@ -17,6 +17,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -49,7 +50,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * over its yaml's bytes, every package file its build read (through {@code StepResources.file} / {@code resolve}: the file a step
  * names and what that file includes or imports — an at-least-once flow's files are read by its worker's build) and its {@code from}
  * and {@code to} endpoints' config with this node's environment laid over it, key order aside. package.yaml, the package version,
- * the deploy's revision, the archive's bytes and directory, other environments' overlays and files no build read are not part of it.
+ * the commit it was deployed from, the node's directory, other environments' overlays and files no build read are not part of it.
  *
  * <p>A redeploy of the same name is still refused here (it comes with P1-09d2b), so each variant of the package is deployed on a
  * node of its own — its own data directory, its own {@link Doors}, its own xslt and xsd step factories (their compile caches are
@@ -73,6 +74,12 @@ class DeploymentsHashTest {
     @TempDir Path tmp;
     final FakeRuntime rt = FakeRuntime.create();
     final List<Deployments> nodes = new ArrayList<>();
+    GitRepos repos;
+
+    @BeforeEach
+    void repositories() {
+        repos = new GitRepos(tmp.resolve("repos"));
+    }
 
     @AfterEach
     void closeNodes() throws Exception {
@@ -97,6 +104,7 @@ class DeploymentsHashTest {
         env.put("RAIL8_STOP_DEADLINE", "PT5S");
         env.put("RAIL8_BLOB_DURABLE_MAX", "4096");
         env.put("RAIL8_MAX_PACKAGE_BYTES", Long.toString(2L * 1024 * 1024));
+        env.put("RAIL8_GIT_BASE", repos.base().toString());
         Doors doors = new Doors();
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
         Deployments d = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), steps, xml.languages(),
@@ -159,10 +167,11 @@ class DeploymentsHashTest {
         return shop("shop");
     }
 
-    /** Deploys {@code zip} as {@code name} with {@code revision} on {@code node}; every flow's hash by its qualified id, each checked for its form. */
-    Map<String, String> deploy(Deployments node, String name, byte[] zip, String revision) throws Exception {
-        Path archive = PackageDraft.write(tmp.resolve("archives"), zip);
-        OnVirtualThread.call(() -> node.deploy(name, Optional.of(revision), archive));
+    /** Deploys {@code p} on {@code node} from a commit of its own; every flow's hash by its qualified id, each checked for its form. */
+    Map<String, String> deploy(Deployments node, PackageDraft p) throws Exception {
+        String name = p.name();
+        String commit = repos.commit(p);
+        OnVirtualThread.call(() -> node.deploy(name, commit, "test"));
         Map<String, String> hashes = new TreeMap<>();
         for (DeployedFlow f : node.flows()) {
             if (!f.pkg().equals(name)) continue;
@@ -172,9 +181,9 @@ class DeploymentsHashTest {
         return hashes;
     }
 
-    /** {@code p} deployed as {@code shop}, revision {@code r1}, on a node of its own. */
+    /** {@code p} deployed on a node of its own. */
     Map<String, String> hashes(PackageDraft p) throws Exception {
-        return deploy(node(), "shop", p.zip(), "r1");
+        return deploy(node(), p);
     }
 
     /** The flows whose hash differs between {@code base} and {@code variant}. */
@@ -189,16 +198,14 @@ class DeploymentsHashTest {
     void sameContentSameHash() throws Exception {
         Deployments one = node();
         Deployments two = node();
-        Map<String, String> first = deploy(one, "shop", shop().zip(), "r1");
+        Map<String, String> first = deploy(one, shop());
         rt.clock().advance(Duration.ofHours(1));
-        Map<String, String> second = deploy(two, "shop", shop().zipWithDirectories(List.of("flows/", "flows/xsl/", "flows/xsd/", "notes/")), "r2");
+        Map<String, String> second = deploy(two, shop());
 
         assertEquals(Set.of(AUDIT, ORDERS, PING), first.keySet(), "fixture: every flow deployed");
-        assertNotEquals(one.packages().get(0).archiveSha256(), two.packages().get(0).archiveSha256(),
-                "fixture: the second archive's bytes differ (directory entries), so it unpacks to another <sha256> directory");
+        assertNotEquals(one.packages().get(0).commit(), two.packages().get(0).commit(), "fixture: deployed from two commits");
         assertEquals(3, new HashSet<>(first.values()).size(), "each flow has a hash of its own: " + first);
-        assertEquals(first, second, "the same content has the same hash on another node, from other archive bytes in another directory,"
-                + " under another revision and deploy time");
+        assertEquals(first, second, "the same content has the same hash on another node, from another commit, at another deploy time");
     }
 
     @Test
@@ -229,9 +236,9 @@ class DeploymentsHashTest {
         PackageDraft bumped = shop();
         bumped.manifest().put("version", "1.0.1").put("description", "bumped");
         Deployments node = node();
-        Map<String, String> bumpedHashes = deploy(node, "shop", bumped.zip(), "r9");
+        Map<String, String> bumpedHashes = deploy(node, bumped);
         assertEquals("1.0.1", node.flows().get(0).packageVersion(), "fixture: the bumped version is deployed");
-        assertEquals(Set.of(), changed(base, bumpedHashes), "package.yaml, the package's version and the deploy's revision are in no flow's hash");
+        assertEquals(Set.of(), changed(base, bumpedHashes), "package.yaml, the package's version and the commit are in no flow's hash");
 
         // witness: the same edit to the same file counts once a build reads it
         String including = mainXsl("<xsl:include href=\"unused.xsl\"/>");
@@ -266,7 +273,7 @@ class DeploymentsHashTest {
 
         // another node for the renamed package: on the same node its identical main.xsl would come from the compile cache, its
         // include unread (FIX-17), and the hashes would differ for that reason alone
-        Map<String, String> renamed = deploy(node(), "shop-b", shop("shop-b").zip(), "r1");
+        Map<String, String> renamed = deploy(node(), shop("shop-b"));
         assertNotEquals(base.get(ORDERS), renamed.get("shop-b/orders"),
                 "the from endpoint as the consumer gets it, the 'flow' option the deploy sets included: the same files under another package name");
         assertNotEquals(base.get(PING), renamed.get("shop-b/ping"), "the same for a flow that reads no file: only the 'flow' option differs");
@@ -342,11 +349,11 @@ class DeploymentsHashTest {
     @Test
     void aCacheHitGivesTheSameHashAsAFreshCompile() throws Exception {
         Shared shared = Shared.create();
-        Map<String, String> fresh = deploy(node(shared.steps(), shared.xml()), "shop", shop().zip(), "r1");
+        Map<String, String> fresh = deploy(node(shared.steps(), shared.xml()), shop());
         assertEquals(1, shared.stylesheets(), "fixture: the first node compiled main.xsl");
         assertEquals(1, shared.schemas(), "fixture: the first node compiled order.xsd");
 
-        Map<String, String> hit = deploy(node(shared.steps(), shared.xml()), "shop", shop().zip(), "r1");
+        Map<String, String> hit = deploy(node(shared.steps(), shared.xml()), shop());
 
         assertEquals(1, shared.stylesheets(), "fixture: the second node's build of the same files hit the shared cache");
         assertEquals(1, shared.schemas(), "fixture: the same for the schema");
@@ -356,14 +363,14 @@ class DeploymentsHashTest {
     @Test
     void aChangedIncludeOnASharedFactoryChangesOnlyItsReaders() throws Exception {
         Shared shared = Shared.create();
-        Map<String, String> base = deploy(node(shared.steps(), shared.xml()), "shop", shop().zip(), "r1");
+        Map<String, String> base = deploy(node(shared.steps(), shared.xml()), shop());
 
-        Map<String, String> lib = deploy(node(shared.steps(), shared.xml()), "shop", shop().file("flows/xsl/lib.xsl", template("lib", "lib v2")).zip(), "r1");
+        Map<String, String> lib = deploy(node(shared.steps(), shared.xml()), shop().file("flows/xsl/lib.xsl", template("lib", "lib v2")));
         assertEquals(Set.of(ORDERS), changed(base, lib), "the stylesheet's include changed: its reader only, the schema's reader hit the cache unchanged");
         assertEquals(2, shared.stylesheets(), "the same main.xsl over another include compiled again, not served from the cache");
         assertEquals(1, shared.schemas(), "the unchanged schema was served from the cache");
 
-        Map<String, String> types = deploy(node(shared.steps(), shared.xml()), "shop", shop().file("flows/xsd/types.xsd", typesXsd(4)).zip(), "r1");
+        Map<String, String> types = deploy(node(shared.steps(), shared.xml()), shop().file("flows/xsd/types.xsd", typesXsd(4)));
         assertEquals(Set.of(AUDIT), changed(base, types), "the schema's include changed: its reader only, the stylesheet's reader hit the cache unchanged");
         assertEquals(2, shared.schemas(), "the same order.xsd over another include compiled again, not served from the cache");
     }
@@ -376,7 +383,7 @@ class DeploymentsHashTest {
                 rt.blobs(), new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(node));
         try (HttpClient http = HttpClient.newBuilder().proxy(HttpClient.Builder.NO_PROXY).connectTimeout(Duration.ofSeconds(5)).build()) {
             int port = admin.start(vertx).await(10, TimeUnit.SECONDS);
-            deploy(node, "shop", shop().zip(), "r1");
+            deploy(node, shop());
 
             HttpResponse<String> answer = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/admin/flows"))
                     .header("Authorization", "Bearer " + TOKEN).timeout(Duration.ofSeconds(20)).GET().build(), HttpResponse.BodyHandlers.ofString());

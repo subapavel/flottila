@@ -16,6 +16,7 @@ import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.steps.validate.XsdValidate;
 import dev.rail8.steps.xslt.SaxonXml;
 import dev.rail8.runtime.pg.PoolRefusedException;
+import dev.rail8.schemas.Package;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Future;
 import io.vertx.core.VertxException;
@@ -81,7 +82,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  * of A settled, phase B starts every changed and added flow: consumer start, then worker start. An invalid version, or one that
  * removes an at-least-once flow (or makes it non-at-least-once) while the queue holds items of it, is 422 before anything stops.
  * A removed at-least-once flow is checked again once its worker drained: items left are a WARNING, never a delay. The kept
- * directory of the running archive is reused; the data directory keeps the current, the previous, and every directory a
+ * directory of the running content is reused; the data directory keeps the current, the previous, and every directory a
  * running flow was built from.
  *
  * <p>One log at the SPI and timer boundary orders it all ({@link #log}): the {@link Doors} events ({@code consumer|start|stop
@@ -90,7 +91,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  * cancels it. The {@link CountingQueue} records the items each claim handed out and every {@code hasItems} call with the rows
  * of that flow at the call. Everything runs in memory on a fake clock: nothing waits on wall time.
  *
- * <p>The shape assumed (P1-09d2b test-author): {@code Deployments.deploy(String, Optional<String>, Path)} returns
+ * <p>Each package is committed to a {@link GitRepos} repository of its name and deployed at that commit; a deploy returns
  * {@code DeployResult(DeployedPackage pkg, List<String> added, List<String> swapped, List<String> removed)}, a record in this
  * package, each list sorted by qualified flow id; a refusal is {@link Kind#INVALID} (422) for the new problems and keeps a
  * cleanup failure as a suppressed exception ({@code DeployRefusedException} enables suppression, FIX-32).
@@ -127,7 +128,10 @@ class DeploymentsRedeployTest {
 
     @TempDir Path tmp;
     Path data;
-    Path archives;
+    Path folders;
+    GitRepos repos;
+    /** The commit each labelled deploy deployed, by its label. */
+    final Map<String, String> commits = new HashMap<>();
 
     final FakeRuntime rt = FakeRuntime.create();
     final Doors doors = new Doors();
@@ -151,7 +155,8 @@ class DeploymentsRedeployTest {
     @BeforeEach
     void wire() {
         data = tmp.resolve("data");
-        archives = tmp.resolve("archives");
+        folders = tmp.resolve("folders");
+        repos = new GitRepos(tmp.resolve("repos"));
         timer = new TracingTimer(rt.timer()).trace(log::add);
         queue = new CountingQueue(rt.clock());
         doors.trace(log::add);
@@ -165,8 +170,8 @@ class DeploymentsRedeployTest {
         SaxonXml xml = new SaxonXml();
         List<StepFactory> steps = Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList();
         Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
-        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), timer, steps, xml.languages(), messages, dlq,
-                queue, () -> 0L);
+        deployments = new Deployments(NodeConfig.from(repos.env(env)), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), timer, steps, xml.languages(),
+                messages, dlq, queue, () -> 0L);
         capture.setLevel(Level.ALL);
         rail8.addHandler(capture);
     }
@@ -210,27 +215,50 @@ class DeploymentsRedeployTest {
         return p.manifest().getString("name");
     }
 
-    Path packageDir(String sha256) {
-        return data.resolve("packages").resolve("shop").resolve(sha256);
+    /** The directory of shop's version whose content digest has the hex {@code hex}. */
+    Path packageDir(String hex) {
+        return data.resolve("packages").resolve("shop").resolve(hex);
+    }
+
+    static String hex(String content) {
+        return content.substring("sha256:".length());
+    }
+
+    /** The commit the deploy labelled {@code label} deployed. */
+    String commit(String label) {
+        String id = commits.get(label);
+        if (id == null) throw new AssertionError("fixture: no deploy labelled " + label);
+        return id;
     }
 
     // --- fixture: deploys
 
     DeployResult deploy(PackageDraft p) throws Exception {
-        return deploy(name(p), Optional.empty(), p.zipTo(archives));
+        return deploy(name(p), p.folderIn(folders));
     }
 
-    DeployResult deploy(PackageDraft p, String revision) throws Exception {
-        return deploy(name(p), Optional.of(revision), p.zipTo(archives));
+    DeployResult deploy(PackageDraft p, String label) throws Exception {
+        return deploy(name(p), label, p.folderIn(folders));
     }
 
-    DeployResult deploy(String name, Optional<String> revision, Path archive) throws Exception {
-        return OnVirtualThread.call(() -> deployments.deploy(name, revision, archive));
+    /** Commits the files of {@code folder} to the repository {@code name} and deploys that commit. */
+    DeployResult deploy(String name, Path folder) throws Exception {
+        return OnVirtualThread.join(deploying(name, null, folder));
+    }
+
+    DeployResult deploy(String name, String label, Path folder) throws Exception {
+        return OnVirtualThread.join(deploying(name, label, folder));
     }
 
     OnVirtualThread.Call<DeployResult> deploying(PackageDraft p) {
-        Path archive = p.zipTo(archives);
-        return OnVirtualThread.start(() -> deployments.deploy(name(p), Optional.empty(), archive));
+        return deploying(name(p), null, p.folderIn(folders));
+    }
+
+    /** Commits the files of {@code folder} to the repository {@code name}, {@code label} (or null) naming the commit; its deploy, started. */
+    OnVirtualThread.Call<DeployResult> deploying(String name, String label, Path folder) {
+        String id = repos.commit(name, folder);
+        if (label != null) commits.put(label, id);
+        return OnVirtualThread.start(() -> deployments.deploy(name, id, "test"));
     }
 
     /**
@@ -255,9 +283,8 @@ class DeploymentsRedeployTest {
         }
     }
 
-    DeployRefusedException refused(String name, Path archive) {
-        return assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> deployments.deploy(name, Optional.empty(), archive)),
-                "the deploy of " + name + " is refused");
+    DeployRefusedException refused(String name, Path folder) throws Exception {
+        return DeploymentsTest.joinRefused(deploying(name, null, folder), "the deploy of " + name + " is refused");
     }
 
     static void assertResult(List<String> added, List<String> swapped, List<String> removed, DeployResult r) {
@@ -399,7 +426,7 @@ class DeploymentsRedeployTest {
         DeployedPackage v1 = deploy(shop(), "r1").pkg();
         Doors.Door orders = doors.door("shop/orders");
         Doors.Door audit = doors.door("shop/audit");
-        Path v1Dir = packageDir(v1.archiveSha256());
+        Path v1Dir = packageDir(hex(v1.content()));
         List<String> v1Files = regularFiles(v1Dir);
         List<DeployedFlow> flowsBefore = deployments.flows();
         List<DeployedPackage> packagesBefore = deployments.packages();
@@ -422,7 +449,7 @@ class DeploymentsRedeployTest {
             }
             default -> throw new IllegalArgumentException(why);
         };
-        Path archive = v2.zipTo(archives);
+        Path folder = v2.folderIn(folders);
         // d2c r3 (D-063 "Listing"): what flows() and packages() answer each time v2's deploy, holding the lock, builds a consumer
         List<String> listedWhileBuilding = new CopyOnWriteArrayList<>();
         AtomicBoolean listingMoved = new AtomicBoolean();
@@ -434,7 +461,7 @@ class DeploymentsRedeployTest {
         });
         int mark = mark();
 
-        DeployRefusedException refused = refused("shop", archive);
+        DeployRefusedException refused = refused("shop", folder);
 
         assertEquals(Kind.INVALID, refused.kind(), why + ": " + refused.error() + " " + refused.problems());
         assertTrue(refused.problems().stream().anyMatch(l -> words.stream().allMatch(l::contains)), why + ": a problem names " + words + ": " + refused.problems());
@@ -445,17 +472,17 @@ class DeploymentsRedeployTest {
             assertFalse(listedWhileBuilding.isEmpty(), "fixture: v2 builds a consumer (audit's) before it is refused: " + during);
         }
         assertFalse(listingMoved.get(), "while v2's deploy runs, the flows and the package record are listed as before it: " + listedWhileBuilding);
-        assertEquals(flowsBefore, deployments.flows(), "v1's flows are listed as they were: versions, revision, hash, state");
+        assertEquals(flowsBefore, deployments.flows(), "v1's flows are listed as they were: versions, commit, hash, state");
         assertEquals(packagesBefore, deployments.packages(), "the package record is v1's");
         assertEquals(v1Files, regularFiles(v1Dir), "v1's directory is untouched");
-        assertFalse(Files.exists(packageDir(PackageDraft.sha256(archive))), "v2's directory is deleted");
+        assertFalse(Files.exists(packageDir(hex(Package.content(folder)))), "v2's directory is deleted");
         assertEquals(List.of(), children(deployments.incomingDir()), "nothing is left in .incoming");
         assertEquals(v1Producers, doors.openProducers(), "every producer v2's build opened is closed, v1's are not: " + doors.producers());
         assertNothingClosedTwice();
 
         Sent sync = send(orders);
         assertInstanceOf(Ack.Reply.class, within(sync.answer(), "v1's sync answer"), "v1's sync flow still serves");
-        assertEquals(Map.of("flow", "shop/orders@2.1.0", "package", "shop@1.0.0", "revision", "r1"), versions(sync.id()), "on v1");
+        assertEquals(Map.of("flow", "shop/orders@2.1.0", "package", "shop@1.0.0", "commit", commit("r1")), versions(sync.id()), "on v1");
         Sent alo = send(audit);
         assertEquals(new Ack.Accepted(alo.id()), within(alo.answer(), "v1's at-least-once answer"), "v1's at-least-once flow still accepts");
         assertTrue(v1Producers.contains(producerOf(alo)), "and its v1 worker sends it on");
@@ -638,8 +665,8 @@ class DeploymentsRedeployTest {
     }
 
     /**
-     * v2 bumps the version, carries another revision and changes {@code orders} only. {@code audit} and {@code ping} keep their
-     * consumer, worker and producers and their {@code DeployedFlow} as it was — package version 1.0.0, revision r1, hash — and
+     * v2 bumps the version, carries another commit and changes {@code orders} only. {@code audit} and {@code ping} keep their
+     * consumer, worker and producers and their {@code DeployedFlow} as it was — package version 1.0.0, commit r1, hash — and
      * their messages keep carrying those; v2's build of them is closed and its audit worker never polls. {@code orders} and the
      * package record carry v2's.
      */
@@ -663,14 +690,14 @@ class DeploymentsRedeployTest {
 
         assertResult(List.of(), List.of("shop/orders"), List.of(), r);
         Map<String, DeployedFlow> after = byId(deployments.flows());
-        assertEquals(before.get("shop/ping"), after.get("shop/ping"), "ping is listed as it was: shop@1.0.0, revision r1, its hash");
+        assertEquals(before.get("shop/ping"), after.get("shop/ping"), "ping is listed as it was: shop@1.0.0, commit r1, its hash");
         assertEquals(before.get("shop/audit"), after.get("shop/audit"), "audit is listed as it was");
         DeployedFlow orders = after.get("shop/orders");
         assertEquals("1.0.1", orders.packageVersion(), "the swapped flow carries v2's version");
-        assertEquals(Optional.of("r2"), orders.revision(), "and v2's revision");
+        assertEquals(Optional.of(commit("r2")), orders.commit(), "and v2's commit");
         assertNotEquals(before.get("shop/orders").hash(), orders.hash());
         assertEquals("1.0.1", r.pkg().version());
-        assertEquals(Optional.of("r2"), r.pkg().revision());
+        assertEquals(Optional.of(commit("r2")), r.pkg().commit());
         assertEquals(rt.clock().instant(), r.pkg().deployedAt());
         assertEquals(List.of(r.pkg()), deployments.packages(), "the package record is v2's");
         assertEquals(List.of("consumer shop/orders", "stop shop/orders", "start shop/orders"), consumerEvents(since(mark)),
@@ -679,11 +706,11 @@ class DeploymentsRedeployTest {
         Sent ping = send(pingDoor);
         assertInstanceOf(Ack.Accepted.class, within(ping.answer(), "ping's answer"));
         assertEquals(pingV1, producerOf(ping), "ping sends through its v1 producer");
-        assertEquals(Map.of("flow", "shop/ping@0.0.1", "package", "shop@1.0.0", "revision", "r1"), versions(ping.id()),
+        assertEquals(Map.of("flow", "shop/ping@0.0.1", "package", "shop@1.0.0", "commit", commit("r1")), versions(ping.id()),
                 "an unchanged flow's messages keep the stamps it was built with");
         Sent sync = send("shop/orders");
         assertInstanceOf(Ack.Reply.class, within(sync.answer(), "orders' answer"));
-        assertEquals(Map.of("flow", "shop/orders@2.1.0", "package", "shop@1.0.1", "revision", "r2"), versions(sync.id()), "the swapped flow's carry v2's");
+        assertEquals(Map.of("flow", "shop/orders@2.1.0", "package", "shop@1.0.1", "commit", commit("r2")), versions(sync.id()), "the swapped flow's carry v2's");
         Doors.Out ordersV2 = producerOf(sync);
         Sent alo = send(auditDoor);
         assertInstanceOf(Ack.Accepted.class, within(alo.answer(), "audit's answer"));
@@ -876,7 +903,7 @@ class DeploymentsRedeployTest {
 
     /**
      * A row of the at-least-once {@code audit} is in the queue — queued, leased, held or stopped — and v2 removes the flow: 422 naming it,
-     * before anything stops; v1 keeps serving. Witness: once the row is gone the same archive deploys and removes audit.
+     * before anything stops; v1 keeps serving. Witness: once the row is gone the same package deploys and removes audit.
      */
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {"queued", "leased", "held"})
@@ -887,10 +914,10 @@ class DeploymentsRedeployTest {
         List<DeployedFlow> flowsBefore = deployments.flows();
         List<DeployedPackage> packagesBefore = deployments.packages();
         long seq = rowOfAudit(state);
-        Path archive = removed(shop(), "audit").without("endpoints/archive.yaml").zipTo(archives);
+        Path folder = removed(shop(), "audit").without("endpoints/archive.yaml").folderIn(folders);
         int mark = mark();
 
-        DeployRefusedException refused = refused("shop", archive);
+        DeployRefusedException refused = refused("shop", folder);
 
         assertEquals(Kind.INVALID, refused.kind(), state + ": " + refused.error() + " " + refused.problems());
         assertTrue(refused.problems().stream().anyMatch(l -> l.contains("audit")), state + ": a problem names the flow: " + refused.problems());
@@ -902,7 +929,7 @@ class DeploymentsRedeployTest {
         assertEquals(1, queue.rows().size(), "the row is still there");
 
         queue.drop(seq);
-        assertResult(List.of(), List.of(), List.of("shop/audit"), deploy("shop", Optional.empty(), archive));
+        assertResult(List.of(), List.of(), List.of("shop/audit"), deploy("shop", folder));
     }
 
     /** A row of {@code audit} is queued and v2 makes the flow sync or at-most-once: 422 naming it; witness: without the row it swaps. */
@@ -915,10 +942,10 @@ class DeploymentsRedeployTest {
         long seq = rowOfAudit("queued");
         PackageDraft v2 = shop();
         v2.flowDoc("audit").getJsonObject("delivery").put("mode", mode);
-        Path archive = v2.zipTo(archives);
+        Path folder = v2.folderIn(folders);
         int mark = mark();
 
-        DeployRefusedException refused = refused("shop", archive);
+        DeployRefusedException refused = refused("shop", folder);
 
         assertEquals(Kind.INVALID, refused.kind(), mode + ": " + refused.error() + " " + refused.problems());
         assertTrue(refused.problems().stream().anyMatch(l -> l.contains("audit")), mode + ": a problem names the flow: " + refused.problems());
@@ -927,14 +954,14 @@ class DeploymentsRedeployTest {
         assertEquals(flowsBefore, deployments.flows());
 
         queue.drop(seq);
-        assertResult(List.of(), List.of("shop/audit"), List.of(), deploy("shop", Optional.empty(), archive));
+        assertResult(List.of(), List.of("shop/audit"), List.of(), deploy("shop", folder));
         assertEquals(mode, byId(deployments.flows()).get("shop/audit").delivery());
     }
 
     /**
      * v2 still names the running at-least-once {@code audit}, but its yaml breaks the flow schema (a key the schema does not know)
      * while a row of audit is queued: the 422 lists the schema's problems and nothing else — no line saying v2 does not run audit
-     * at-least-once. Witness: once the row is gone the same archive gives the same problems.
+     * at-least-once. Witness: once the row is gone the same package gives the same problems.
      */
     @Test
     void aRunningAtLeastOnceFlowWhoseV2YamlIsInvalidGetsOnlyItsSchemaProblem() throws Exception {
@@ -942,11 +969,11 @@ class DeploymentsRedeployTest {
         long seq = rowOfAudit("queued");
         PackageDraft v2 = shop();
         v2.flowDoc("audit").put("colour", "red");
-        Path archive = v2.zipTo(archives);
+        Path folder = v2.folderIn(folders);
 
-        DeployRefusedException withRow = refused("shop", archive);
+        DeployRefusedException withRow = refused("shop", folder);
         queue.drop(seq);
-        DeployRefusedException withoutRow = refused("shop", archive);
+        DeployRefusedException withoutRow = refused("shop", folder);
 
         assertEquals(Kind.INVALID, withoutRow.kind(), "fixture: " + withoutRow.error() + " " + withoutRow.problems());
         assertTrue(withoutRow.problems().stream().anyMatch(l -> l.contains("audit")), "fixture: a schema problem names audit's yaml: " + withoutRow.problems());
@@ -957,7 +984,7 @@ class DeploymentsRedeployTest {
     /**
      * v2 removes the at-least-once {@code audit} and is invalid besides (an endpoint its schema refuses), and the queue cannot say
      * whether items of audit are left: the deploy is the 422 of the package's problems, not a failure of the node (500), and
-     * nothing stops. Witness: with the queue answering, the same archive is that 422.
+     * nothing stops. Witness: with the queue answering, the same package is that 422.
      */
     @Test
     void aHasItemsFailureOnAnInvalidPackageIs422() throws Exception {
@@ -966,15 +993,15 @@ class DeploymentsRedeployTest {
         List<DeployedFlow> flowsBefore = deployments.flows();
         PackageDraft v2 = removed(shop(), "audit").without("endpoints/archive.yaml");
         v2.endpoint("spare", "sideways", new JsonObject());
-        Path archive = v2.zipTo(archives);
-        DeployRefusedException answering = refused("shop", archive);
+        Path folder = v2.folderIn(folders);
+        DeployRefusedException answering = refused("shop", folder);
         assertEquals(Kind.INVALID, answering.kind(), "fixture: " + answering.error() + " " + answering.problems());
         assertTrue(answering.problems().stream().anyMatch(l -> l.contains("spare") && l.contains("direction")),
                 "fixture: a problem names the endpoint its schema refuses: " + answering.problems());
         queue.failHasItems(new IllegalStateException("the work queue is down"));
         int mark = mark();
 
-        DeployRefusedException refused = refused("shop", archive);
+        DeployRefusedException refused = refused("shop", folder);
 
         assertEquals(Kind.INVALID, refused.kind(), "a queue that cannot answer does not turn an invalid package into a 500: " + refused.error() + " " + refused.problems());
         assertTrue(refused.problems().containsAll(answering.problems()), "the 422 lists the package's problems: " + refused.problems());
@@ -988,7 +1015,7 @@ class DeploymentsRedeployTest {
      * pool — its wait elapsed (exactly VertxException), its queue full, a transaction's acquire refused: the deploy is
      * {@link Kind#BUSY} (503), retryable, its error naming the flow and the cause, no problem lines, and nothing changes: nothing
      * stops or starts, the flows, the package record and shop's directory as they were. A VertxException subclass is no pool
-     * refusal: the node's IOException, as before. Witness: the queue answering, the same archive deploys and removes audit.
+     * refusal: the node's IOException, as before. Witness: the queue answering, the same package deploys and removes audit.
      */
     @Test
     void aQueueQuestionThePoolRefusedIsBusyAndChangesNothing() throws Exception {
@@ -998,7 +1025,7 @@ class DeploymentsRedeployTest {
         List<DeployedPackage> packagesBefore = deployments.packages();
         Path shopDir = data.resolve("packages").resolve("shop");
         List<String> dirsBefore = children(shopDir);
-        Path archive = removed(shop(), "audit").without("endpoints/archive.yaml").zipTo(archives);
+        Path folder = removed(shop(), "audit").without("endpoints/archive.yaml").folderIn(folders);
         Map<String, Throwable> refusals = new LinkedHashMap<>();
         refusals.put("the wait elapsed", new VertxException("Timeout waiting for connection", true));
         refusals.put("the queue full", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
@@ -1007,7 +1034,7 @@ class DeploymentsRedeployTest {
         for (Map.Entry<String, Throwable> r : refusals.entrySet()) {
             int asked = hasItemsCalls("shop/audit").size();
             queue.failHasItems(r.getValue());
-            DeployRefusedException refused = refused("shop", archive);
+            DeployRefusedException refused = refused("shop", folder);
             assertEquals(Kind.BUSY, refused.kind(), r.getKey() + ": " + refused.error() + " " + refused.problems());
             assertTrue(hasItemsCalls("shop/audit").size() > asked, r.getKey() + ": witness, the queue was asked about audit: " + queue.hasItemsCalls());
             assertTrue(refused.error().contains(r.getValue().getMessage()) && refused.error().contains("shop/audit"),
@@ -1016,7 +1043,7 @@ class DeploymentsRedeployTest {
         }
         VertxException closed = new VertxException("connection closed by the server") { };
         queue.failHasItems(closed);
-        IOException failed = assertThrows(IOException.class, () -> deploy("shop", Optional.empty(), archive),
+        IOException failed = assertThrows(IOException.class, () -> deploy("shop", folder),
                 "a VertxException subclass is no pool refusal: the node's failure, as before");
         assertSame(closed, failed.getCause(), "the IOException carries the queue's failure: " + failed);
 
@@ -1028,7 +1055,7 @@ class DeploymentsRedeployTest {
         assertEquals(List.of(), children(deployments.incomingDir()), "no unpack is left behind");
 
         queue.failHasItems(null);
-        assertResult(List.of(), List.of(), List.of("shop/audit"), deploy("shop", Optional.empty(), archive));
+        assertResult(List.of(), List.of(), List.of("shop/audit"), deploy("shop", folder));
     }
 
     /**
@@ -1041,13 +1068,13 @@ class DeploymentsRedeployTest {
         deploy(shop());
         PackageDraft v2 = removed(shop(), "audit").without("endpoints/archive.yaml");
         v2.endpoint("spare", "sideways", new JsonObject());
-        Path archive = v2.zipTo(archives);
-        DeployRefusedException answering = refused("shop", archive);
+        Path folder = v2.folderIn(folders);
+        DeployRefusedException answering = refused("shop", folder);
         assertEquals(Kind.INVALID, answering.kind(), "fixture: " + answering.error() + " " + answering.problems());
         int asked = hasItemsCalls("shop/audit").size();
         queue.failHasItems(new PoolRefusedException(new VertxException("Timeout", true)));
 
-        DeployRefusedException refused = refused("shop", archive);
+        DeployRefusedException refused = refused("shop", folder);
 
         assertEquals(Kind.INVALID, refused.kind(), "the package's problems before the pool's refusal: " + refused.error() + " " + refused.problems());
         assertEquals(answering.problems(), refused.problems(), "the 422 lists the package's problems");
@@ -1059,7 +1086,7 @@ class DeploymentsRedeployTest {
      * each. One question fails for real (the queue is down), the other is refused by the node's Postgres pool: in either assignment
      * — so in either flow order — the deploy is the node's IOException naming the flow whose question really failed and carrying
      * its cause, never {@link Kind#BUSY}; only when both are pool refusals is it BUSY (503). Nothing stops or starts. Witness: the
-     * queue answering, the same archive removes both.
+     * queue answering, the same package removes both.
      */
     @Test
     void aRealQueueFailureOutranksAPoolRefusalInEitherFlowOrder() throws Exception {
@@ -1070,7 +1097,7 @@ class DeploymentsRedeployTest {
         List<DeployedFlow> flowsBefore = deployments.flows();
         List<DeployedPackage> packagesBefore = deployments.packages();
         PackageDraft v2 = removed(shop(), "audit"); // shop() never had relay: v2 drops it with its relay-in
-        Path archive = v2.without("endpoints/archive.yaml").zipTo(archives);
+        Path folder = v2.without("endpoints/archive.yaml").folderIn(folders);
         int mark = mark();
         for (List<String> order : List.of(List.of("shop/audit", "shop/relay"), List.of("shop/relay", "shop/audit"))) {
             String really = order.get(0);
@@ -1079,7 +1106,7 @@ class DeploymentsRedeployTest {
             queue.failHasItems(really, down);
             queue.failHasItems(pooled, new PoolRefusedException(new VertxException("Timeout", true)));
 
-            IOException failed = assertThrows(IOException.class, () -> deploy("shop", Optional.empty(), archive),
+            IOException failed = assertThrows(IOException.class, () -> deploy("shop", folder),
                     really + " fails, " + pooled + " is refused by the pool: the node's failure, whatever the flow order");
 
             assertSame(down, failed.getCause(), "the IOException carries the real failure, not the pool's refusal: " + failed);
@@ -1088,7 +1115,7 @@ class DeploymentsRedeployTest {
         }
         queue.failHasItems("shop/audit", new PoolRefusedException(new VertxException("Timeout", true)));
         queue.failHasItems("shop/relay", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
-        DeployRefusedException busy = refused("shop", archive);
+        DeployRefusedException busy = refused("shop", folder);
         assertEquals(Kind.BUSY, busy.kind(), "every question refused by the pool: retryable, " + busy.error() + " " + busy.problems());
         assertEquals(List.of(), busy.problems(), "no problem lines");
 
@@ -1100,7 +1127,7 @@ class DeploymentsRedeployTest {
 
         queue.failHasItems("shop/audit", null);
         queue.failHasItems("shop/relay", null);
-        assertResult(List.of(), List.of(), List.of("shop/audit", "shop/relay"), deploy("shop", Optional.empty(), archive));
+        assertResult(List.of(), List.of(), List.of("shop/audit", "shop/relay"), deploy("shop", folder));
     }
 
     /**
@@ -1186,12 +1213,12 @@ class DeploymentsRedeployTest {
         modes.put("b", "sync");
         Path shopDir = data.resolve("packages").resolve("shop");
         PackageDraft v1 = DeploymentsTest.flows("shop", modes);
-        String sha1 = deploy(v1).pkg().archiveSha256();
-        String sha2 = deploy(changed(DeploymentsTest.flows("shop", modes), "a", "v2")).pkg().archiveSha256();
+        String sha1 = hex(deploy(v1).pkg().content());
+        String sha2 = hex(deploy(changed(DeploymentsTest.flows("shop", modes), "a", "v2")).pkg().content());
         assertEquals(sorted(sha1, sha2), children(shopDir), "after v2: current and previous");
 
         DeployResult r3 = deploy(changed(DeploymentsTest.flows("shop", modes), "a", "v3"));
-        String sha3 = r3.pkg().archiveSha256();
+        String sha3 = hex(r3.pkg().content());
 
         assertResult(List.of(), List.of("shop/a"), List.of(), r3);
         assertEquals(sorted(sha1, sha2, sha3), children(shopDir), "after v3: current (v3), previous (v2) and v1, which b still runs from");
@@ -1199,7 +1226,7 @@ class DeploymentsRedeployTest {
         assertInstanceOf(Ack.Reply.class, within(send("shop/b").answer(), "b's answer"), "b runs on");
 
         DeployResult r4 = deploy(changed(changed(DeploymentsTest.flows("shop", modes), "a", "v4"), "b", "v4"));
-        String sha4 = r4.pkg().archiveSha256();
+        String sha4 = hex(r4.pkg().content());
 
         assertResult(List.of(), List.of("shop/a", "shop/b"), List.of(), r4);
         assertEquals(sorted(sha3, sha4), children(shopDir), "after v4: current and previous; v1 and v2 are no longer in use");
@@ -1215,15 +1242,15 @@ class DeploymentsRedeployTest {
     }
 
     /**
-     * The running archive deployed again (another revision): the kept directory is reused — the same directory and files, not a
+     * The running files committed again (another commit): the kept directory is reused — the same directory and files, not a
      * fresh unpack moved over them — nothing is built into a consumer, stopped or started, the flows keep their stamps, and the
-     * package record carries the new revision and time.
+     * package record carries the new commit and time.
      */
     @Test
     void theRunningArchiveAgainReusesItsDirAndSwapsNothing() throws Exception {
         PackageDraft p = shop();
-        byte[] zip = p.zip();
-        String sha = deploy("shop", Optional.of("r1"), PackageDraft.write(archives, zip)).pkg().archiveSha256();
+        Path folder = p.folderIn(folders);
+        String sha = hex(deploy("shop", "r1", folder).pkg().content());
         Path dir = packageDir(sha);
         Object dirKey = fileKey(dir);
         Object yamlKey = fileKey(dir.resolve("package.yaml"));
@@ -1233,7 +1260,7 @@ class DeploymentsRedeployTest {
         rt.clock().advance(Duration.ofSeconds(30));
         int mark = mark();
 
-        DeployResult again = deploy("shop", Optional.of("r2"), PackageDraft.write(archives, zip));
+        DeployResult again = deploy("shop", "r2", folder);
 
         assertResult(List.of(), List.of(), List.of(), again);
         assertEquals(List.of(), consumerEvents(since(mark)), "no consumer built, stopped or started: " + since(mark));
@@ -1242,9 +1269,9 @@ class DeploymentsRedeployTest {
         assertEquals(new ArrayList<>(p.files().keySet()), regularFiles(dir));
         assertEquals(List.of(sha), children(data.resolve("packages").resolve("shop")));
         assertEquals(List.of(), children(deployments.incomingDir()), "the fresh unpack is dropped");
-        assertEquals(flowsBefore, deployments.flows(), "the flows keep their stamps (revision r1)");
-        assertEquals(sha, again.pkg().archiveSha256());
-        assertEquals(Optional.of("r2"), again.pkg().revision(), "the package record carries the new revision");
+        assertEquals(flowsBefore, deployments.flows(), "the flows keep their stamps (commit r1)");
+        assertEquals(sha, hex(again.pkg().content()));
+        assertEquals(Optional.of(commit("r2")), again.pkg().commit(), "the package record carries the new commit");
         assertEquals(rt.clock().instant(), again.pkg().deployedAt(), "and the new time");
         assertEquals(List.of(again.pkg()), deployments.packages());
         assertEquals(open, doors.openProducers(), "the new build was closed, the running producers stay open: " + doors.producers());
@@ -1261,9 +1288,9 @@ class DeploymentsRedeployTest {
     @CsvSource({"running, added", "running, changed", "running, removed", "previous, added", "previous, changed", "previous, removed"})
     void aReusedKeptDirWhoseFilesChangedIsNotTrusted(String kept, String tamper) throws Exception {
         PackageDraft v1 = xmlShop("lib v1");
-        byte[] zip = v1.zip();
-        DeployedPackage first = deploy("shop", Optional.of("r1"), PackageDraft.write(archives, zip)).pkg();
-        String sha = first.archiveSha256();
+        Path folder = v1.folderIn(folders);
+        DeployedPackage first = deploy("shop", "r1", folder).pkg();
+        String sha = hex(first.content());
         Path dir = packageDir(sha);
         List<String> swapped = List.of();
         if (kept.equals("previous")) {
@@ -1279,20 +1306,20 @@ class DeploymentsRedeployTest {
             default -> throw new IllegalArgumentException(tamper);
         }
 
-        DeployResult again = deploy("shop", Optional.of("r3"), PackageDraft.write(archives, zip));
+        DeployResult again = deploy("shop", "r3", folder);
 
         assertResult(List.of(), swapped, List.of(), again);
-        assertEquals(sha, again.pkg().archiveSha256());
-        assertEquals(first.files(), again.pkg().files(), "the record lists the archive's files as the first unpack did, nothing written after it");
+        assertEquals(sha, hex(again.pkg().content()));
+        assertEquals(first.files(), again.pkg().files(), "the record lists the folder's files as the first unpack did, nothing written after it");
         Map<String, String> onDisk = new TreeMap<>();
         for (String f : regularFiles(dir)) onDisk.put(f, PackageDraft.sha256(dir.resolve(f)));
         Map<String, String> archived = new TreeMap<>();
         v1.files().forEach((path, bytes) -> archived.put(path, PackageDraft.sha256(bytes)));
-        assertEquals(archived, onDisk, "the directory holds exactly the archive's files, fresh from it");
+        assertEquals(archived, onDisk, "the directory holds exactly the folder's files, fresh from it");
         assertEquals(List.of(), children(deployments.incomingDir()), "no unpack is left behind");
-        assertEquals("orders:lib v1", reply("shop/orders"), "orders maps with the archive's lib.xsl");
+        assertEquals("orders:lib v1", reply("shop/orders"), "orders maps with the folder's lib.xsl");
         assertEquals("credits:lib v1", reply("shop/credits"), "and credits");
-        assertEquals("refunds v1", reply("shop/refunds"), "refunds maps with the archive's stylesheet");
+        assertEquals("refunds v1", reply("shop/refunds"), "refunds maps with the folder's stylesheet");
     }
 
     // --- in flight during a swap
@@ -1466,9 +1493,9 @@ class DeploymentsRedeployTest {
     void aRefusalWhoseCleanupFailsKeepsItsKindAndProblems() throws Exception {
         PackageDraft p = shop().endpoint("zz-in", "in", new JsonObject().put("path", "/zz").put("refuse", "no door today"))
                 .flow("zz", "1.0.0", "sync", "zz-in", 1024, to("partner"));
-        Path archive = p.zipTo(archives);
-        Path dir = packageDir(PackageDraft.sha256(archive));
-        DeployRefusedException clean = refused("shop", archive);
+        Path folder = p.folderIn(folders);
+        Path dir = packageDir(hex(Package.content(folder)));
+        DeployRefusedException clean = refused("shop", folder);
         assertEquals(Kind.INVALID, clean.kind(), "fixture: the refusal with a cleanup that works: " + clean.error() + " " + clean.problems());
         assertTrue(clean.problems().stream().anyMatch(l -> l.contains("zz") && l.contains("no door today")), "fixture: " + clean.problems());
         assertEquals(0, clean.getSuppressed().length, "fixture: nothing suppressed when the cleanup works");
@@ -1486,7 +1513,7 @@ class DeploymentsRedeployTest {
             }
         });
         try {
-            DeployRefusedException refused = refused("shop", archive);
+            DeployRefusedException refused = refused("shop", folder);
 
             assertTrue(planted.get(), "fixture: the chain was put below the package's directory while zz's consumer was built");
             assertTrue(Files.exists(dir.resolve("deep")), "fixture: the cleanup could not delete it");
@@ -1514,22 +1541,22 @@ class DeploymentsRedeployTest {
         Doors.Gate gate = doors.holdStart(1);
         OnVirtualThread.Call<DeployResult> running = deploying(changed(shop(), "orders", "v2"));
         reachedWhile(running, gate.reached(), "the redeploy starts v2's orders");
-        Path v3 = changed(changed(shop(), "orders", "v2"), "ping", "v3").zipTo(archives);
-        Path store = DeploymentsTest.flows("store", Map.of("orders", "sync")).zipTo(archives);
+        Path v3 = changed(changed(shop(), "orders", "v2"), "ping", "v3").folderIn(folders);
+        Path store = DeploymentsTest.flows("store", Map.of("orders", "sync")).folderIn(folders);
 
-        DeployRefusedException same = joinRefused(OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), v3)),
+        DeployRefusedException same = joinRefused(deploying("shop", null, v3),
                 "a redeploy of the same package while one runs answers at once");
-        DeployRefusedException other = joinRefused(OnVirtualThread.start(() -> deployments.deploy("store", Optional.empty(), store)),
+        DeployRefusedException other = joinRefused(deploying("store", null, store),
                 "a deploy of another package while a redeploy runs answers at once");
 
         assertEquals(Kind.CONFLICT, same.kind(), same.error());
         assertEquals(Kind.CONFLICT, other.kind(), other.error());
-        assertFalse(Files.exists(packageDir(PackageDraft.sha256(v3))), "the refused redeploy was never unpacked");
+        assertFalse(Files.exists(packageDir(hex(Package.content(v3)))), "the refused redeploy was never unpacked");
         assertFalse(Files.exists(data.resolve("packages").resolve("store")), "nor the refused deploy");
         assertFalse(running.isDone(), "the running redeploy still waits on its start");
         gate.release();
         assertResult(List.of(), List.of("shop/orders"), List.of(), OnVirtualThread.join(running));
-        assertResult(List.of(), List.of("shop/ping"), List.of(), deploy("shop", Optional.empty(), v3));
-        assertResult(List.of("store/orders"), List.of(), List.of(), deploy("store", Optional.empty(), store));
+        assertResult(List.of(), List.of("shop/ping"), List.of(), deploy("shop", v3));
+        assertResult(List.of("store/orders"), List.of(), List.of(), deploy("store", store));
     }
 }

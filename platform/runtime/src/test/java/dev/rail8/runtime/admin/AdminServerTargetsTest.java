@@ -9,7 +9,6 @@ import dev.rail8.core.flow.SequentialIntake;
 import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.runtime.deploy.Deployments;
-import dev.rail8.runtime.deploy.DirArchiveStore;
 import dev.rail8.runtime.deploy.Doors;
 import dev.rail8.runtime.deploy.InMemoryDeploymentStore;
 import dev.rail8.runtime.lease.InMemoryPollerLeases;
@@ -103,7 +102,7 @@ class AdminServerTargetsTest {
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
         InMemoryWorkQueue queue = new InMemoryWorkQueue(rt.clock());
         deployments = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
-                queue, () -> 0L, new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve("archives")), new SequentialIntake(messages, queue),
+                queue, () -> 0L, new InMemoryDeploymentStore(), new SequentialIntake(messages, queue),
                 new InMemoryPollerLeases(rt.clock()), targets);
     }
 

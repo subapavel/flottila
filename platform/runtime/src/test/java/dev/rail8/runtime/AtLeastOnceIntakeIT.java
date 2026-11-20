@@ -2,6 +2,7 @@ package dev.rail8.runtime;
 
 import dev.rail8.api.BlobKey;
 import dev.rail8.components.http.HttpComponent;
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.runtime.journal.Journal;
 import dev.rail8.runtime.journal.JournalIndexEntry;
 import dev.rail8.runtime.journal.JournalKeys;
@@ -113,6 +114,7 @@ class AtLeastOnceIntakeIT {
     Map<String, String> env(String nodeId) throws Exception {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "ci");   // ci is no deployed environment: a plain-http endpoint is allowed
+        GitRepos.with(env);   // the test JVM's package repositories, which its deploys commit to
         env.put("RAIL8_NODE_ID", nodeId);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
@@ -159,7 +161,7 @@ class AtLeastOnceIntakeIT {
         int partnerPort = partner();
         Node node = startNode("node-a");
         try (HttpClient client = NodeIT.http()) {
-            InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partnerPort)));
+            InvoiceAsyncIT.deploy(client, node, InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partnerPort));
             db.query("create function refuse_work() returns trigger language plpgsql as $$ begin raise exception 'work refused by the test'; end $$")
                     .execute().await();
             db.query("create trigger refuse_work before insert on work for each row execute function refuse_work()").execute().await();
@@ -195,7 +197,7 @@ class AtLeastOnceIntakeIT {
             env.put("RAIL8_PG_PORT", String.valueOf(wire.port()));
             Node node = startNode(env);
             try {
-                InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partnerPort)));
+                InvoiceAsyncIT.deploy(client, node, InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partnerPort));
 
                 int mark = wire.mark();
                 for (int i = 1; i <= 9; i++) {
@@ -261,7 +263,7 @@ class AtLeastOnceIntakeIT {
             env.put("RAIL8_JOURNAL_SWEEP_INTERVAL", "PT1S");
             env.put("RAIL8_JOURNAL_SWEEP_GRACE", "PT1S");
             Node node = startNode(env);
-            InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partnerPort)));
+            InvoiceAsyncIT.deploy(client, node, InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partnerPort));
             Path segments = data.resolve("node-a").resolve("journal").resolve("segments");
 
             PgWire.Held commit = wire.holdNextAfter(m -> m.sql() != null && m.sql().contains("insert into work("), PgWire.query("COMMIT"));

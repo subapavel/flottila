@@ -1,6 +1,7 @@
 package dev.rail8.runtime;
 
 import dev.rail8.components.http.HttpComponent;
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
@@ -19,16 +20,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.localstack.LocalStackContainer;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
-import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
@@ -56,61 +47,47 @@ import static dev.rail8.runtime.NodeIT.get;
 import static dev.rail8.runtime.NodeIT.http;
 import static dev.rail8.runtime.NodeIT.replaced;
 import static dev.rail8.runtime.NodeIT.send;
-import static dev.rail8.runtime.NodeIT.sha256;
 import static dev.rail8.runtime.NodeIT.until;
-import static dev.rail8.runtime.NodeIT.zip;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * P1-09c3b (D-070), the row's done-when: a node restores at start what the pool recorded — the {@code deployments} rows in its
- * Postgres, the archives in S3 (LocalStack 4, as {@code NodeIT}'s S3 case) — with no PUT and whatever its data directory holds,
- * here nothing. A restarted node with an empty data directory runs the demo again from its row and its object and resumes the
- * at-least-once work node 1 left queued; the item node 1 left leased runs once its lease (D-055) ran out — the lease is set
- * by SQL on the case database, a fake deadline, so no case waits on a clock. An object deleted from S3, or a flow that would listen on
- * the node's peer link port, makes the package FAILED on restore, the {@code deployments} check DEGRADED with /health 200, and
- * the node starts all the same; a PUT recovers it.
+ * A node restores at start what the pool recorded — the {@code deployments} rows in its Postgres, each naming a repository and a
+ * commit of the test JVM's package repositories — with no deploy and whatever its data directory holds, here nothing, so each
+ * commit is fetched. A restarted node with an empty data directory runs the demo again from its row and its commit and resumes
+ * the at-least-once work node 1 left queued; the item node 1 left leased runs once its lease ran out — the lease is set by SQL
+ * on the case database, a fake deadline, so no case waits on a clock. A commit gone from git, or a package that needs a secret
+ * the node lacks, makes the package FAILED on restore, the {@code deployments} check DEGRADED with /health 200, and the node
+ * starts all the same; a deploy recovers it.
  *
- * <p>Every case runs on a database of its own (FIX-5) and an S3 prefix of its own in one bucket; its nodes are closed before
- * LocalStack stops.
+ * <p>Every case runs on a database of its own and repositories of its own names; its nodes are closed after it.
  */
 class RestoreIT {
 
     static final SharedPostgres pg = SharedPostgres.database();
-    static final LocalStackContainer localstack = new LocalStackContainer("localstack/localstack:4").withServices("s3");
-    static final String BUCKET = "rail8-restore-it";
-    static final String REVISION = "9df3f78";
     static final Pattern NUMBER = Pattern.compile("number=\"(\\d+)\"");
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;
-    static S3Client s3;
 
     @TempDir Path tmp;
     String database;
     String url;
+    /** The case's prefix of repository names: {@code demo} is committed to {@code <prefix>-demo}. */
     String prefix;
-    /** Every node a case started and has not closed: closed after the case, before LocalStack stops. */
+    /** Every node a case started and has not closed: closed after the case. */
     final List<Node> running = new ArrayList<>();
     final List<HttpServer> partners = new ArrayList<>();
 
     @BeforeAll
     static void start() {
         pg.start();
-        localstack.start();
         vertx = Vertx.vertx();
-        s3 = S3Client.builder().endpointOverride(localstack.getEndpoint()).region(Region.of(localstack.getRegion()))
-                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.getAccessKey(), localstack.getSecretKey())))
-                .forcePathStyle(true).httpClientBuilder(UrlConnectionHttpClient.builder()).build();
-        s3.createBucket(CreateBucketRequest.builder().bucket(BUCKET).build());
     }
 
     @AfterAll
     static void stop() {
-        s3.close();
         vertx.close().await();
-        localstack.stop();
         pg.stop();
     }
 
@@ -143,10 +120,11 @@ class RestoreIT {
 
     // --- fixture
 
-    /** A ci node {@code nodeId} on the case database, data under {@code dataDir}, its archives in LocalStack under the case's prefix. */
+    /** A ci node {@code nodeId} on the case database, data under {@code dataDir}, deploying from the test JVM's package repositories. */
     Map<String, String> env(String nodeId, Path dataDir) {
         Map<String, String> env = new HashMap<>();
-        env.put("RAIL8_ENV", "ci");   // ci is no deployed environment: LocalStack's plain-http endpoint is allowed
+        env.put("RAIL8_ENV", "ci");   // ci is no deployed environment: a file:// git base and plain-http partners are allowed
+        GitRepos.with(env);
         env.put("RAIL8_NODE_ID", nodeId);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
@@ -158,14 +136,6 @@ class RestoreIT {
         env.put("RAIL8_PG_USER", pg.getUsername());
         env.put("RAIL8_PG_PASSWORD", pg.getPassword());
         env.put("RAIL8_PG_POOL_SIZE", "4");
-        env.put("RAIL8_ARCHIVE_STORE", "s3");
-        env.put("RAIL8_S3_BUCKET", BUCKET);
-        env.put("RAIL8_S3_REGION", localstack.getRegion());
-        env.put("RAIL8_S3_ENDPOINT", localstack.getEndpoint().toString());
-        env.put("RAIL8_S3_PATH_STYLE", "true");
-        env.put("RAIL8_S3_PREFIX", prefix);
-        env.put("RAIL8_S3_ACCESS_KEY", localstack.getAccessKey());
-        env.put("RAIL8_S3_SECRET_KEY", localstack.getSecretKey());
         TestJournalKey.with(env);   // a node needs a journal master key (CORE-4c1, D-106): a required configuration
         return env;
     }
@@ -185,17 +155,19 @@ class RestoreIT {
         OnVirtualThread.call(() -> { node.close(); return null; });
     }
 
-    String key(String sha256) {
-        return prefix + "/archives/" + sha256 + ".zip";
+    /** The case's repository for the package {@code name}. */
+    String repository(String name) {
+        return prefix + "-" + name;
     }
 
-    /** The object under {@code key}, or null when there is none. */
-    static byte[] object(String key) {
-        try {
-            return s3.getObjectAsBytes(GetObjectRequest.builder().bucket(BUCKET).key(key).build()).asByteArray();
-        } catch (NoSuchKeyException none) {
-            return null;
-        }
+    /** Commits {@code files} to the case's repository for {@code name}; the commit. */
+    String commit(String name, Map<String, byte[]> files) {
+        return GitRepos.shared().commit(repository(name), files);
+    }
+
+    /** Deploys {@code commit} of the case's repository for {@code name} on the admin port {@code admin}; the answer. */
+    HttpResponse<String> deploy(HttpClient client, int admin, String name, String commit) throws Exception {
+        return send(client, "POST", admin, "/admin/deploy", NodeIT.deployBody(repository(name), commit), "application/json");
     }
 
     /** The sample invoice with its {@code <Id>} set to {@code id}: the partner tells the messages apart by it. */
@@ -217,7 +189,7 @@ class RestoreIT {
 
     /** The case database's {@code deployments} rows, as one line each. */
     List<String> deploymentRows() throws SQLException {
-        return rows("select package, version, coalesce(revision, '-'), archive_sha256, deployed_at from deployments order by package", 5);
+        return rows("select package, version, repository, commit, content, deployed_at from deployments order by package", 6);
     }
 
     long dlqRows() throws SQLException {
@@ -268,21 +240,21 @@ class RestoreIT {
     // --- cases
 
     /**
-     * Node 1 deploys the demo as an at-least-once flow with {@code maxInFlight: 1} (one item runs at a time) over S3 and Postgres
+     * Node 1 deploys the demo from git as an at-least-once flow with {@code maxInFlight: 1} (one item runs at a time)
      * and accepts invoices 4711, 4712 and 4713 (202 each). The partner holds node 1's request for 4711 and never answers it (its
      * producer's timeout is ten minutes): node 1 leaves 4711 leased and 4712, 4713 queued, and closes. Node 2, on the same database
-     * and S3 prefix, with an empty data directory and no PUT, restores the demo from its row and its object and runs the invoices
+     * and repositories, with an empty data directory and no deploy, restores the demo from its row and its commit and runs the invoices
      * it accepts itself — but not node 1's: their bodies are in node 1's journal, the one copy (CORE-REWORK §3 "Node down", D-105
      * item 9), so they wait for node 1 and stay in work, 4711 even once its lease ran out (taking them over is P2-15/CORE-5; giving
      * them up is ACCEPT_LOSS, CORE-4c3). The witness that node 2 claims: 4714 and 4715, accepted by node 2 after node 1's items,
      * run on node 2 although the claim takes the oldest claimable item first. Nothing is parked, node 1 never ran more than 4711,
-     * and the row is as the PUT wrote it: the restore wrote none.
+     * and the row is as the deploy wrote it: the restore wrote none.
      *
      * <p>CORE-4c2 changed the expectation (was: node 2 runs 4712, 4713 and, after the lease, 4711 — every item completes): a node
      * claims only items whose body it holds (CORE-3 item 6, WorkClaimIT).
      */
     @Test
-    void aRestartedNodeWithAnEmptyDataDirRestoresWithoutAPutAndLeavesTheOtherJournalsItemsQueued() throws Exception {
+    void aRestartedNodeWithAnEmptyDataDirRestoresWithoutADeployAndLeavesTheOtherJournalsItemsQueued() throws Exception {
         Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         AtomicBoolean answering = new AtomicBoolean(false);
         List<String> held = new CopyOnWriteArrayList<>();
@@ -300,14 +272,13 @@ class RestoreIT {
         Map<String, byte[]> files = demoFiles("http://127.0.0.1:" + partner.actualPort());
         files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once", "maxInFlight: 16", "maxInFlight: 1")));
         files.put("endpoints/partner-domestic.yaml", replaced(files.get("endpoints/partner-domestic.yaml"), Map.of("maxBodyBytes: 1048576", "maxBodyBytes: 1048576\n  timeoutMs: 600000")));
-        byte[] zip = zip(files);
-        String sha = sha256(zip);
+        String commit = commit("demo", files);
 
         Node one = start(env("node-1", tmp.resolve("node-1")));
         List<String> ids = new ArrayList<>();
         try (HttpClient client = http()) {
-            HttpResponse<String> put = send(client, "PUT", one.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip, "application/zip");
-            assertEquals(200, put.statusCode(), "fixture: node 1 deploys the demo: " + put.body());
+            HttpResponse<String> deployed = deploy(client, one.adminPort(), "demo", commit);
+            assertEquals(200, deployed.statusCode(), "fixture: node 1 deploys the demo: " + deployed.body());
             for (int id : List.of(4711, 4712, 4713)) {
                 HttpResponse<String> accepted = send(client, "POST", one.httpPort(), "/http/in", invoice(id), "application/xml");
                 assertEquals(202, accepted.statusCode(), "fixture: invoice " + id + " is accepted: " + accepted.body());
@@ -315,8 +286,8 @@ class RestoreIT {
                 if (id == 4711) until(() -> held.equals(List.of("4711")), "node 1's worker runs 4711 and the partner holds it");
             }
         }
-        List<String> rowsAfterPut = deploymentRows();
-        assertEquals(1, rowsAfterPut.size(), "fixture: the PUT wrote the demo's row: " + rowsAfterPut);
+        List<String> rowsAfterDeploy = deploymentRows();
+        assertEquals(1, rowsAfterDeploy.size(), "fixture: the deploy wrote the demo's row: " + rowsAfterDeploy);
         close(one);
         assertEquals(List.of(ids.get(0) + " node-1", ids.get(1) + " -", ids.get(2) + " -"), work(),
                 "fixture: node 1 left 4711 leased and 4712, 4713 queued");
@@ -329,7 +300,7 @@ class RestoreIT {
 
         try (HttpClient client = http()) {
             HttpResponse<String> own = send(client, "POST", two.httpPort(), "/http/in", invoice(4714), "application/xml");
-            assertEquals(202, own.statusCode(), "node 2, restored without a PUT, accepts: " + own.body());
+            assertEquals(202, own.statusCode(), "node 2, restored without a deploy, accepts: " + own.body());
             until(() -> answered.contains("4714"), "node 2 runs what it accepted (partner saw " + answered + ")");
             assertEquals(List.of("4714"), answered, "and nothing of node 1's, though 4712 and 4713 are older and unleased: " + answered);
             sql("update work set locked_until = now() - interval '1 second' where id = '" + ids.get(0) + "'");   // node 1's lease ran out
@@ -352,56 +323,56 @@ class RestoreIT {
         assertEquals(0, dlqRows(), "nothing was parked");
         assertEquals(List.of("4711"), held, "node 1 ran 4711 only");
 
-        assertEquals(rowsAfterPut, deploymentRows(), "the restore wrote no row: the PUT's is unchanged");
-        assertTrue(Files.isDirectory(empty.resolve("packages").resolve("demo").resolve(sha)), "node 2 unpacked the archive it fetched: " + children(empty));
-        assertFalse(Files.exists(empty.resolve("archives")), "node 2 keeps no archive store on disk: it fetched from S3");
+        assertEquals(rowsAfterDeploy, deploymentRows(), "the restore wrote no row: the deploy's is unchanged");
         JsonObject demo = listed(two.adminPort(), "packages", "name").get("demo");
         assertTrue(demo != null && "RUNNING".equals(demo.getString("state")), "node 2 lists the demo RUNNING: " + demo);
         assertEquals(new JsonArray(), demo.getJsonArray("problems"), demo.encode());
-        assertEquals(REVISION, demo.getString("revision"), "the row's revision: " + demo.encode());
-        assertEquals("sha256:" + sha, demo.getString("archive"), demo.encode());
+        assertEquals(repository("demo"), demo.getString("repository"), "the row's repository: " + demo.encode());
+        assertEquals(commit, demo.getString("commit"), "the row's commit: " + demo.encode());
+        String hex = demo.getString("content").substring("sha256:".length());
+        assertTrue(Files.isDirectory(empty.resolve("packages").resolve("demo").resolve(hex)), "node 2 wrote the commit it fetched, by its content: " + children(empty));
         assertEquals("RUNNING", listed(two.adminPort(), "flows", "id").get("demo/invoice-sync").getString("state"));
         assertEquals("UP", health(two.adminPort(), 200).getJsonObject("checks").getString("deployments"), "nothing FAILED");
     }
 
     /**
-     * Node 1 deploys the demo over S3 and serves an invoice; then the demo's object is deleted from S3. Node 2 starts all the same
-     * (a missing object is no reason not to start), lists the demo FAILED — version, revision and archive from its row, problems
-     * naming the archive, no flows, no files — lists no flow, answers 404 at the demo's in path, and its /health is 200 with
-     * the {@code deployments} check DEGRADED (the wire names no package). A PUT of the demo stores the object again, runs it, and
-     * the check is UP.
+     * Node 1 deploys the demo from git and serves an invoice; then the demo's repository is deleted. Node 2, with an empty data
+     * directory, starts all the same (a commit that cannot be fetched is no reason not to start), lists the demo FAILED — version,
+     * repository and commit from its row, problems naming the commit, no flows, no files — lists no flow, answers 404 at the demo's
+     * in path, and its /health is 200 with the {@code deployments} check DEGRADED (the wire names no package). A deploy of the demo
+     * committed again runs it, and the check is UP.
      */
     @Test
-    void aDeletedObjectRestoresAFailedPackageAndHealthIsDegraded() throws Exception {
+    void aDeletedCommitRestoresAFailedPackageAndHealthIsDegraded() throws Exception {
         Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b ->
                 req.response().putHeader("content-type", "application/xml").end(ack))).listen(0, "127.0.0.1").await();
         partners.add(partner);
-        byte[] zip = zip(demoFiles("http://127.0.0.1:" + partner.actualPort()));
-        String sha = sha256(zip);
+        Map<String, byte[]> files = demoFiles("http://127.0.0.1:" + partner.actualPort());
+        String commit = commit("demo", files);
 
         Node one = start(env("node-1", tmp.resolve("node-1")));
         try (HttpClient client = http()) {
-            assertEquals(200, send(client, "PUT", one.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip, "application/zip").statusCode(), "fixture: node 1 deploys");
+            assertEquals(200, deploy(client, one.adminPort(), "demo", commit).statusCode(), "fixture: node 1 deploys");
             assertEquals(200, send(client, "POST", one.httpPort(), "/http/in", invoice(4711), "application/xml").statusCode(), "fixture: node 1 serves the in path");
         }
         assertEquals("UP", health(one.adminPort(), 200).getJsonObject("checks").getString("deployments"), "the deployments check, UP on node 1");
         List<String> row = deploymentRows();
         close(one);
-        s3.deleteObject(DeleteObjectRequest.builder().bucket(BUCKET).key(key(sha)).build());
-        assertTrue(object(key(sha)) == null, "fixture: the object is gone");
+        GitRepos.shared().delete(repository("demo"));
+        assertFalse(Files.exists(GitRepos.shared().dir(repository("demo"))), "fixture: the repository is gone");
 
         Node two = start(env("node-2", tmp.resolve("node-2")));
 
         JsonObject demo = listed(two.adminPort(), "packages", "name").get("demo");
         assertTrue(demo != null && "FAILED".equals(demo.getString("state")), "node 2 lists the demo FAILED: " + demo);
         JsonArray problems = demo.getJsonArray("problems");
-        assertTrue(problems.stream().map(String::valueOf).anyMatch(l -> l.contains(sha)), "a problem names the missing archive: " + demo.encode());
+        assertTrue(problems.stream().map(String::valueOf).anyMatch(l -> l.contains(commit)), "a problem names the missing commit: " + demo.encode());
         assertEquals(new JsonArray(), demo.getJsonArray("flows"), demo.encode());
         assertEquals(new JsonArray(), demo.getJsonArray("files"), demo.encode());
         assertEquals("0.1.0", demo.getString("version"), demo.encode());
-        assertEquals(REVISION, demo.getString("revision"), demo.encode());
-        assertEquals("sha256:" + sha, demo.getString("archive"), demo.encode());
+        assertEquals(repository("demo"), demo.getString("repository"), demo.encode());
+        assertEquals(commit, demo.getString("commit"), demo.encode());
         assertEquals(Map.of(), listed(two.adminPort(), "flows", "id"), "no flow runs");
         try (HttpClient client = http()) {
             assertEquals(404, send(client, "POST", two.httpPort(), "/http/in", invoice(4711), "application/xml").statusCode(),
@@ -415,11 +386,10 @@ class RestoreIT {
         assertEquals(row, deploymentRows(), "the row stays as it was");
 
         try (HttpClient client = http()) {
-            HttpResponse<String> put = send(client, "PUT", two.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip, "application/zip");
-            assertEquals(200, put.statusCode(), "a PUT recovers the package: " + put.body());
+            HttpResponse<String> deployed = deploy(client, two.adminPort(), "demo", commit("demo", files));
+            assertEquals(200, deployed.statusCode(), "a deploy recovers the package: " + deployed.body());
             assertEquals(200, send(client, "POST", two.httpPort(), "/http/in", invoice(4712), "application/xml").statusCode(), "the demo serves on node 2");
         }
-        assertArrayEquals(zip, object(key(sha)), "the PUT stored the object again");
         assertEquals("UP", health(two.adminPort(), 200).getJsonObject("checks").getString("deployments"), "UP once the demo runs");
         assertEquals("RUNNING", listed(two.adminPort(), "packages", "name").get("demo").getString("state"));
     }
@@ -429,11 +399,11 @@ class RestoreIT {
      * {@code other}, at two in paths. The demo's domestic partner is the secret {@code secret://demo-partner}, which node 1 sets and
      * node 2 does not, so node 2 cannot restore the demo. Node 2 starts all the same: the demo is listed FAILED with its reason,
      * naming the secret, and {@code other} runs and serves. {@code /health} answers 200 with the status UP and the
-     * {@code deployments} check DEGRADED, and {@code /ready} answers 200. A PUT of the demo naming its partner's URL replaces it,
+     * {@code deployments} check DEGRADED, and {@code /ready} answers 200. A deploy of the demo naming its partner's URL replaces it,
      * and then the check is UP.
      */
     @Test
-    void aPackageThatCannotBeRestoredLeavesTheNodeHealthyAndAPutReplacesIt() throws Exception {
+    void aPackageThatCannotBeRestoredLeavesTheNodeHealthyAndADeployReplacesIt() throws Exception {
         Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b ->
                 req.response().putHeader("content-type", "application/xml").end(ack))).listen(0, "127.0.0.1").await();
@@ -449,10 +419,8 @@ class RestoreIT {
         holding.put("RAIL8_SECRET_DEMO_PARTNER", partnerBase + "/echo");
         Node one = start(holding);
         try (HttpClient client = http()) {
-            assertEquals(200, send(client, "PUT", one.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip(demoPkg), "application/zip").statusCode(),
-                    "fixture: node 1 deploys the demo");
-            assertEquals(200, send(client, "PUT", one.adminPort(), "/admin/packages/other?revision=" + REVISION, zip(otherFiles), "application/zip").statusCode(),
-                    "fixture: node 1 deploys other");
+            assertEquals(200, deploy(client, one.adminPort(), "demo", commit("demo", demoPkg)).statusCode(), "fixture: node 1 deploys the demo");
+            assertEquals(200, deploy(client, one.adminPort(), "other", commit("other", otherFiles)).statusCode(), "fixture: node 1 deploys other");
         }
         close(one);
 
@@ -478,8 +446,8 @@ class RestoreIT {
         assertEquals(200, ready.statusCode(), "the node is ready for the packages that run: " + ready.body());
 
         try (HttpClient client = http()) {
-            HttpResponse<String> put = send(client, "PUT", two.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip(demoFiles(partnerBase)), "application/zip");
-            assertEquals(200, put.statusCode(), "a PUT replaces the FAILED package: " + put.body());
+            HttpResponse<String> deployed = deploy(client, two.adminPort(), "demo", commit("demo", demoFiles(partnerBase)));
+            assertEquals(200, deployed.statusCode(), "a deploy replaces the FAILED package: " + deployed.body());
             assertEquals(200, send(client, "POST", two.httpPort(), "/http/in", invoice(4712), "application/xml").statusCode(), "the demo serves at its in path");
         }
         assertEquals("UP", health(two.adminPort(), 200).getJsonObject("checks").getString("deployments"), "UP once nothing is FAILED");

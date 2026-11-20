@@ -26,8 +26,10 @@ import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.Row;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.PersonIdent;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -59,12 +61,11 @@ import java.util.function.LongPredicate;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 /**
  * The node bench (P1-10a, {@code bench/run.sh} with {@code BENCH_SCENARIOS}): an in-process {@link Node} (env dev, the dir
- * archive store in a temp data directory) over the given Postgres, a bench package PUT through its admin API and a raw Vert.x
+ * archive store in a temp data directory) over the given Postgres, a bench package committed to a git repository there and
+ * deployed through its admin API, and a raw Vert.x
  * HTTP echo on 127.0.0.1 as the partner (it answers every request with the request's bytes). One scenario per run, one JSON
  * document to {@code --out}:
  * <ul>
@@ -443,7 +444,8 @@ public final class NodeBenchMain {
         AtomicLong receipts = new AtomicLong();
         HttpServer echo = echo(vertx, receipts);
         HttpClientAgent client = client(vertx, o);
-        NodeConfig config = nodeConfig(o, data, echo.actualPort(), in);
+        Path repos = Files.createDirectories(data.resolve("repos"));   // beside the node's own files: the node writes none there
+        NodeConfig config = nodeConfig(o, data, repos, echo.actualPort(), in);
         Harness h = new Harness(o, vertx, pool, client, body, in, echo.actualPort(), config.journal().dir());
         SaxonXml xml = new SaxonXml();
         JsonObject measured;
@@ -453,7 +455,7 @@ public final class NodeBenchMain {
                 xml.languages());
         try {
             int admin = node.adminPort();
-            h.deploy(admin, benchPackage(o, echo.actualPort()));
+            h.deploy(admin, commit(repos, benchPackage(o, echo.actualPort())));
             long failuresAtStart = h.snapshotWriteFailures(admin);
             int warmupFailed = h.load(in, IN_PATH, o.warmup()).failed();
             int warmedUp = o.warmup() - warmupFailed;
@@ -578,14 +580,14 @@ public final class NodeBenchMain {
     }
 
     /**
-     * The node's configuration, its HTTP port on 127.0.0.1:{@code in}; the echo's target ({@code http://127.0.0.1:<echo>}, D-099) may have as many calls in flight as the
+     * The node's configuration, its HTTP port on 127.0.0.1:{@code in}, its package repositories under {@code repos}; the echo's target ({@code http://127.0.0.1:<echo>}, D-099) may have as many calls in flight as the
      * run can send at once, so its limit (16 by default) never caps the load the run asks for: {@code --concurrency} for sync (a
      * client's next request follows its reply), the flow's {@code maxInFlight} for at-least-once (its worker runs at most that many
      * items).
      */
-    private static NodeConfig nodeConfig(Options o, Path data, int echo, int in) {
+    private static NodeConfig nodeConfig(Options o, Path data, Path repos, int echo, int in) {
         return NodeConfig.from(Map.ofEntries(Map.entry("RAIL8_ENV", "dev"), Map.entry("RAIL8_NODE_ID", "node-bench"),
-                Map.entry("RAIL8_JOURNAL_KEY", JOURNAL_KEY),
+                Map.entry("RAIL8_JOURNAL_KEY", JOURNAL_KEY), Map.entry("RAIL8_GIT_BASE", gitBase(repos)),
                 Map.entry("RAIL8_ADMIN_PORT", "0"), Map.entry("RAIL8_PEER_PORT", "0"), Map.entry("RAIL8_HTTP_PORT", String.valueOf(in)),
                 Map.entry("RAIL8_DATA_DIR", data.toString()),
                 Map.entry("RAIL8_PG_HOST", o.host()),
@@ -607,10 +609,10 @@ public final class NodeBenchMain {
     }
 
     /**
-     * The bench package as a zip: the in endpoint at {@value #IN_PATH} on the node's HTTP port, the partner at the echo, and the flow {@code bench}
+     * The bench package's files by their paths: the in endpoint at {@value #IN_PATH} on the node's HTTP port, the partner at the echo, and the flow {@code bench}
      * — sync for the sync scenario, at-most-once for at-most-once, else at-least-once — with the run's recording level and payload and its steps.
      */
-    static byte[] benchPackage(Options o, int echo) throws IOException {
+    static Map<String, byte[]> benchPackage(Options o, int echo) throws IOException {
         Map<String, byte[]> files = new TreeMap<>();
         files.put("package.yaml", yaml(doc("package").put("name", "bench").put("version", "0.1.0")));
         files.put("endpoints/in.yaml", yaml(doc("endpoint").put("id", "in").put("scheme", "http").put("direction", "in")
@@ -638,20 +640,33 @@ public final class NodeBenchMain {
                 files.put(file, in.readAllBytes());
             }
         }
-        return zip(files);
+        return files;
     }
 
-    /** {@code files} (path → content) as a zip. */
-    static byte[] zip(Map<String, byte[]> files) throws IOException {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
-            for (Map.Entry<String, byte[]> f : files.entrySet()) {
-                zip.putNextEntry(new ZipEntry(f.getKey()));
-                zip.write(f.getValue());
-                zip.closeEntry();
-            }
+    /** {@code repos} as a node's {@code RAIL8_GIT_BASE}: the {@code file://} base the bench's repository {@value #REPOSITORY} is a folder of. */
+    static String gitBase(Path repos) {
+        return repos.toUri().toString();
+    }
+
+    /**
+     * {@code files} (path → content) written into the repository {@value #REPOSITORY}, a new folder of {@code repos}, and
+     * committed there on {@code main}; answers the commit's id, which a node whose {@code RAIL8_GIT_BASE} is {@link #gitBase}
+     * of {@code repos} deploys. Once per {@code repos}: a repository already there is refused.
+     */
+    static String commit(Path repos, Map<String, byte[]> files) throws IOException {
+        Path dir = Files.createDirectory(repos.resolve(REPOSITORY));
+        for (Map.Entry<String, byte[]> f : files.entrySet()) {
+            Path target = dir.resolve(f.getKey());
+            Files.createDirectories(target.getParent());
+            Files.write(target, f.getValue());
         }
-        return bytes.toByteArray();
+        PersonIdent bench = new PersonIdent("Rail8 bench", "bench@rail8.invalid");
+        try (Git git = Git.init().setDirectory(dir.toFile()).setInitialBranch("main").call()) {
+            git.add().addFilepattern(".").call();
+            return git.commit().setMessage("The bench package\n").setAuthor(bench).setCommitter(bench).setSign(false).call().name();
+        } catch (GitAPIException e) {
+            throw new IOException("the bench package could not be committed in " + dir, e);
+        }
     }
 
     static JsonObject doc(String kind) {
@@ -669,6 +684,9 @@ public final class NodeBenchMain {
      * with its data directory.
      */
     static final String JOURNAL_KEY = journalKey();
+
+    /** The bench package's git repository: a folder of the run's package repositories, by this name. */
+    static final String REPOSITORY = "bench";
 
     /** Where the bench's in endpoint takes requests on the node's HTTP port: the http adapter's prefix, then its address. */
     static final String IN_PATH = "/http/in";
@@ -1089,8 +1107,10 @@ public final class NodeBenchMain {
             return new JsonObject(exchange(HttpMethod.GET, admin, "/health", "text/plain", Buffer.buffer()).body()).getLong("snapshotWriteFailures");
         }
 
-        void deploy(int admin, byte[] zip) {
-            Answer a = exchange(HttpMethod.PUT, admin, "/admin/packages/bench", "application/zip", Buffer.buffer(zip));
+        /** Deploys {@code commit} of the bench's repository {@value #REPOSITORY}; a refusal fails the run with the node's answer. */
+        void deploy(int admin, String commit) {
+            Buffer request = Buffer.buffer(new JsonObject().put("repository", REPOSITORY).put("commit", commit).encode());
+            Answer a = exchange(HttpMethod.POST, admin, "/admin/deploy", "application/json", request);
             if (a.status() != 200) throw new IllegalStateException("the node refused the bench package: " + a.status() + " " + a.body());
         }
 

@@ -20,7 +20,6 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Handler;
@@ -63,12 +62,14 @@ class DeploymentsCallsTest {
         @Override public void close() {}
     };
     Deployments deployments;
+    GitRepos repos;
 
     @BeforeEach
     void wire() {
         capture.setLevel(Level.ALL);
         rail8.addHandler(capture);
-        deployments = node(env("node-1"), new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve("node-1").resolve("archives")), doors);
+        repos = new GitRepos(tmp.resolve("repos"));
+        deployments = node(env("node-1"), new InMemoryDeploymentStore(), doors);
     }
 
     @AfterEach
@@ -91,15 +92,16 @@ class DeploymentsCallsTest {
         env.put("RAIL8_STOP_DEADLINE", "PT5S");
         env.put("RAIL8_BLOB_DURABLE_MAX", "4096");
         env.put("RAIL8_ADMIN_PORT", "8181");
+        env.put("RAIL8_GIT_BASE", repos.base().toString());
         return env;
     }
 
-    Deployments node(Map<String, String> env, DeploymentStore rows, ArchiveStore archives, Doors serving) {
+    Deployments node(Map<String, String> env, DeploymentStore rows, Doors serving) {
         components.add(serving);
         Map<String, Component> byScheme = Map.of(serving.scheme(), serving);
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), byScheme);
         Deployments d = new Deployments(NodeConfig.from(env), runtime, byScheme, rt.clock(), rt.timer(), List.of(), List.of(), new InMemoryMessageStore(),
-                new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, rows, archives);
+                new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, rows);
         nodes.add(d);
         return d;
     }
@@ -137,14 +139,20 @@ class DeploymentsCallsTest {
         return "flow '" + flow + "' calls rec " + address + ", which no flow on this node serves";
     }
 
+    /** Commits {@code p} to the repository of its name and deploys that commit on {@code d}, which writes its record. */
+    DeployResult deployCommitted(Deployments d, PackageDraft p) throws Exception {
+        String commit = repos.commit(p);
+        return OnVirtualThread.call(() -> d.deploy(p.name(), commit, "test"));
+    }
+
     DeployResult deploy(Deployments d, PackageDraft p) throws Exception {
-        Path archive = p.zipTo(tmp.resolve("uploads"));
-        return OnVirtualThread.call(() -> d.deploy(p.name(), Optional.empty(), archive));
+        Path folder = p.folderIn(tmp.resolve("folders"));
+        return OnVirtualThread.call(() -> d.deploy(p.name(), folder));
     }
 
     List<String> refused(Deployments d, PackageDraft p) {
-        Path archive = p.zipTo(tmp.resolve("uploads"));
-        DeployRefusedException r = assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> d.deploy(p.name(), Optional.empty(), archive)),
+        Path folder = p.folderIn(tmp.resolve("folders"));
+        DeployRefusedException r = assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> d.deploy(p.name(), folder)),
                 "the deploy of " + p.name() + " is refused");
         assertEquals(Kind.INVALID, r.kind(), "a 422: " + r.error() + " " + r.problems());
         return r.problems();
@@ -291,12 +299,11 @@ class DeploymentsCallsTest {
     @Test
     void aRestoredPackageThatClosesACycleIsFailedAndOneWarningNamesTheCallLeftUnserved() throws Exception {
         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
-        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"));
-        deploy(node(env("node-a"), rows, bucket, new Doors()), flow(callee(pkg("alpha"), "beta", "/b"), "a", "/a", "beta"));
-        deploy(node(env("node-b"), rows, bucket, new Doors()), flow(callee(pkg("beta"), "alpha", "/a"), "b", "/b", "alpha"));
+        deployCommitted(node(env("node-a"), rows, new Doors()), flow(callee(pkg("alpha"), "beta", "/b"), "a", "/a", "beta"));
+        deployCommitted(node(env("node-b"), rows, new Doors()), flow(callee(pkg("beta"), "alpha", "/a"), "b", "/b", "alpha"));
         logged.clear();
         Doors third = new Doors();
-        Deployments restored = node(env("node-c"), rows, bucket, third);
+        Deployments restored = node(env("node-c"), rows, third);
 
         OnVirtualThread.call(() -> { restored.restore(); return null; });
 

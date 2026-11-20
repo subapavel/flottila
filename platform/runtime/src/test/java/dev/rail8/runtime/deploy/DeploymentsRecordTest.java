@@ -52,22 +52,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * P1-09c3a (D-070): the deploy's write path. Unpack, check, build without problems, then {@code archives.put} — before anything
- * stops; a failed put is {@link Kind#FAILED} (500) "archive sha256:&lt;hex&gt; not stored: &lt;cause&gt;", cleaned up, and the old
- * version runs — then phase A, phase B, then {@code records.save(..).await()}, the commit point: the listing changes and the
- * package's directories are pruned only once the record is written. A failed save refuses a first deploy (500, cleaned up) and
- * rolls a redeploy back with the problem "the deploy record was not written: &lt;cause&gt;". A deploy refused after its put writes
- * no row and keeps its object: nothing deletes archives in Phase 1.
+ * The deploy's write path. Fetch, write, check, build without problems, then phase A, phase B, then
+ * {@code records.save(..).await()}, the commit point: the listing changes and the package's directories are pruned only once the
+ * record is written. A failed save refuses a first deploy (500, cleaned up) and rolls a redeploy back with the problem "the deploy
+ * record was not written: &lt;cause&gt;". A refused deploy writes no row. Every deploy writes one audit row, its outcome included.
  *
  * <p>Fixtures as in {@link DeploymentsTest}: {@link Doors} at the SPI boundary, in-memory message store, DLQ and work queue, a
- * fake clock — standing at {@code .123456789}, so a record's microseconds show — and, new here, the two stores at the SPI
- * boundary of {@code Deployments}: {@link Ledger} (records) and {@link Shelf} (archives over a {@link DirArchiveStore} at
- * {@code <dataDir>/archives}), both tracing into the one log the Doors events go to.
- *
- * <p>The shape these cases assume (P1-09c3a test-author): {@code Deployments(NodeConfig, Runtime, Map<String, Component>, Clock,
- * Timer, List<StepFactory>, List<Expressions>, MessageStore, Dlq, WorkQueue, Meter, DeploymentStore, ArchiveStore)}, and the record
- * written is {@code DeploymentRecord(name, version, revision, archiveSha256, deployedAt)} with the {@code deployedAt} of the
- * {@link DeployedPackage} the deploy answers (truncated to the microsecond by the record).
+ * fake clock — standing at {@code .123456789}, so a record's microseconds show — the package committed to a {@link GitRepos}
+ * repository, and {@link Ledger} as the record store, tracing into the one log the Doors events go to.
  */
 class DeploymentsRecordTest {
 
@@ -77,25 +69,23 @@ class DeploymentsRecordTest {
 
     @TempDir Path tmp;
     Path data;
-    Path uploads;
+    GitRepos repos;
 
     final FakeRuntime rt = FakeRuntime.create().withClockAt(NOW);
     final Doors doors = new Doors();
     final InMemoryMessageStore messages = new InMemoryMessageStore();
     final InMemoryDlq dlq = new InMemoryDlq();
-    /** The Doors events and the two stores' traces, in the order they were made. */
+    /** The Doors events and the record store's trace, in the order they were made. */
     final List<String> log = new CopyOnWriteArrayList<>();
     Ledger records;
-    Shelf shelf;
     Deployments deployments;
 
     @BeforeEach
     void wire() {
         data = tmp.resolve("data");
-        uploads = tmp.resolve("uploads");
+        repos = new GitRepos(tmp.resolve("repos"));
         doors.trace(log::add);
         records = new Ledger(log::add);
-        shelf = new Shelf(data.resolve("archives"), tmp.resolve("shelf-reads"), log::add);
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "dev");
         env.put("RAIL8_NODE_ID", NODE);
@@ -104,8 +94,8 @@ class DeploymentsRecordTest {
         env.put("RAIL8_MAX_PACKAGE_BYTES", Long.toString(2L * 1024 * 1024));
         TracingTimer timer = new TracingTimer(rt.timer());
         Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
-        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), timer, List.of(), List.of(), messages, dlq,
-                new CountingQueue(rt.clock()), () -> 0L, records, shelf);
+        deployments = new Deployments(NodeConfig.from(repos.env(env)), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), timer, List.of(), List.of(), messages, dlq,
+                new CountingQueue(rt.clock()), () -> 0L, records);
     }
 
     @AfterEach
@@ -123,21 +113,28 @@ class DeploymentsRecordTest {
         return p;
     }
 
-    static String sha256(byte[] zip) {
-        return PackageDraft.sha256(zip);
+    /** The name of the directory {@code p} is written into: the hex of its content digest. */
+    static String hex(PackageDraft p) {
+        return p.content().substring("sha256:".length());
     }
 
-    OnVirtualThread.Call<DeployResult> deploying(byte[] zip, String revision) {
-        Path archive = PackageDraft.write(uploads, zip);
-        return OnVirtualThread.start(() -> deployments.deploy("shop", Optional.of(revision), archive));
+    /** The deploy of {@code p}, committed to the repository {@code shop}, by the actor {@code ops}; started, not awaited. */
+    OnVirtualThread.Call<DeployResult> deploying(PackageDraft p) {
+        String commit = repos.commit(p);
+        return OnVirtualThread.start(() -> deployments.deploy("shop", commit, "ops"));
     }
 
-    DeployResult deploy(byte[] zip, String revision) throws Exception {
-        return OnVirtualThread.join(deploying(zip, revision));
+    DeployResult deploy(PackageDraft p) throws Exception {
+        return OnVirtualThread.join(deploying(p));
     }
 
-    DeployRefusedException refused(byte[] zip, String revision) throws Exception {
-        return joinRefused(deploying(zip, revision), "the deploy of shop " + revision + " is refused");
+    DeployRefusedException refused(PackageDraft p) throws Exception {
+        return joinRefused(deploying(p), "the deploy of shop " + p.version() + " is refused");
+    }
+
+    /** The audit rows written, each as {@code <actor> <subject> <detail>}. */
+    List<String> audited() {
+        return records.audited().stream().map(a -> a.actor() + " " + a.subject() + " " + a.detail().encode()).toList();
     }
 
     Path shopDir() {
@@ -182,104 +179,39 @@ class DeploymentsRecordTest {
                 "a problem line names " + List.of(words) + ": " + refused.problems() + " (error: " + refused.error() + ")");
     }
 
-    // --- the archive is put after the build, before anything stops
+    // --- the audit row
 
     @Test
-    void theArchiveIsStoredBeforeAnythingStops() throws Exception {
-        byte[] zip1 = shop("1.0.0", "v1").zip();
-        String sha1 = sha256(zip1);
-        int first = mark();
-        DeployResult v1 = deploy(zip1, "r1");
-        List<String> firstDeploy = since(first);
-        assertEquals(sha1, v1.pkg().archiveSha256(), "fixture: the archive's sha256");
-        assertEquals(List.of(sha1), shelf.puts(), "a first deploy puts its archive once, under its sha256");
-        assertArrayEquals(zip1, shelf.bytes(sha1), "the object is the archive uploaded, byte for byte");
-        for (String flow : List.of("shop/a", "shop/b")) {
-            assertBefore(firstDeploy, "consumer " + flow, "put " + sha1, "the put follows the build, consumers included");
-            assertBefore(firstDeploy, "stored " + sha1, "start " + flow, "the archive is stored before any flow starts");
-        }
+    void everyDeployWritesOneAuditRowWithItsOutcome() throws Exception {
+        PackageDraft v1 = shop("1.0.0", "v1");
+        deploy(v1);
+        assertEquals(List.of("ops repository/shop {\"repository\":\"shop\",\"commit\":\"" + v1.commit()
+                + "\",\"outcome\":\"deployed\",\"package\":\"shop\",\"version\":\"1.0.0\"}"), audited(), "the actor, the repository, the commit, the outcome");
 
-        Doors.Door a1 = doors.door("shop/a");
-        byte[] zip2 = shop("2.0.0", "v2").zip();
-        String sha2 = sha256(zip2);
-        int second = mark();
-        deploy(zip2, "r2");
-        List<String> redeploy = since(second);
-        assertTrue(a1.stopped(), "fixture: phase A stopped the running a, which v2 changes: " + a1.history());
-        assertEquals(List.of(sha1, sha2), shelf.puts(), "the redeploy puts its own archive");
-        assertBefore(redeploy, "consumer shop/a", "put " + sha2, "the put follows the new build");
-        assertBefore(redeploy, "stored " + sha2, "stop shop/a", "the archive is stored before phase A stops anything");
-        assertEquals(List.of(), shelf.platformPuts(), "put blocks on the deploy's virtual thread, never on a platform thread");
-
-        PackageDraft broken = shop("3.0.0", "v3");
+        PackageDraft broken = shop("2.0.0", "v2");
         broken.endpointDoc("b-in").getJsonObject("config").put("refuse", "port taken");   // b's consumer cannot be built: a build problem
-        byte[] zip3 = broken.zip();
-        DeployRefusedException invalid = refused(zip3, "r3");
+        DeployRefusedException invalid = refused(broken);
         assertEquals(Kind.INVALID, invalid.kind(), invalid.getMessage());
-        assertEquals(List.of(sha1, sha2), shelf.puts(), "a package whose build has problems is never put");
-        assertFalse(shelf.holds(sha256(zip3)), "nor stored");
-        assertEquals(List.of("shop 1.0.0", "shop 2.0.0"), records.saves().stream().map(r -> r.name() + " " + r.version()).toList(), "nor recorded");
-    }
+        assertEquals(List.of("shop 1.0.0"), records.saves().stream().map(r -> r.name() + " " + r.version()).toList(), "a refused deploy writes no row");
+        assertEquals("ops repository/shop {\"repository\":\"shop\",\"commit\":\"" + broken.commit() + "\",\"outcome\":\"refused\",\"error\":\""
+                + invalid.error() + "\"}", audited().get(1), "a refused deploy is audited with its error");
 
-    @Test
-    void aFailedPutIs500AndTheOldVersionRuns() throws Exception {
-        byte[] zip1 = shop("1.0.0", "v1").zip();
-        String sha1 = sha256(zip1);
-        shelf.failNextPut(new IOException("no space left on device"));
-        DeployRefusedException first = refused(zip1, "r1");
-        assertEquals(Kind.FAILED, first.kind(), first.getMessage());
-        assertTrue(first.error().startsWith("archive sha256:" + sha1 + " not stored: ") && first.error().contains("no space left on device"),
-                "the error names the archive and the cause: " + first.error());
-        assertEquals(List.of(), deployments.packages(), "a first deploy whose put failed lists nothing");
-        assertEquals(List.of(), deployments.flows());
-        assertEquals(List.of(), children(shopDir()), "its directory is deleted");
-        assertEquals(List.of(), children(deployments.incomingDir()), "nothing is left in .incoming");
-        assertTrue(doors.doors().stream().noneMatch(Doors.Door::started), "nothing started: " + doors.events());
-        until(() -> doors.openProducers().isEmpty(), "every producer the refused deploy built is closed: " + doors.producers());
-        assertEquals(List.of(), records.saves(), "no row");
-
-        deploy(zip1, "r1");   // the operator's retry: v1 runs and is recorded
-        Doors.Door a1 = doors.door("shop/a");
-        Doors.Door b1 = doors.door("shop/b");
-        Map<String, DeployedFlow> flowsBefore = byId(deployments.flows());
-        List<DeployedPackage> packagesBefore = deployments.packages();
-        List<DeploymentRecord> rowsBefore = records.rows();
-        List<Doors.Out> openBefore = doors.openProducers();
-        int doorsBefore = doors.doors().size();
-        byte[] zip2 = shop("2.0.0", "v2").zip();
-        String sha2 = sha256(zip2);
-        shelf.failNextPut(new IOException("bucket unreachable"));
-        int m = mark();
-
-        DeployRefusedException second = refused(zip2, "r2");
-
-        assertEquals(Kind.FAILED, second.kind(), second.getMessage());
-        assertTrue(second.error().startsWith("archive sha256:" + sha2 + " not stored: ") && second.error().contains("bucket unreachable"),
-                "the error names the archive and the cause: " + second.error());
-        assertEquals(List.of(), since(m).stream().filter(e -> e.startsWith("stop ") || e.startsWith("start ")).toList(),
-                "nothing stopped and nothing started: " + since(m));
-        assertFalse(a1.stopped() || b1.stopped(), "v1 runs on: " + a1.history() + " " + b1.history());
-        assertInstanceOf(Ack.Reply.class, send(a1), "v1's a serves");
-        assertEquals(flowsBefore, byId(deployments.flows()), "listed as before");
-        assertEquals(packagesBefore, deployments.packages(), "the package listed is v1's");
-        assertEquals(rowsBefore, records.rows(), "the record is v1's");
-        assertEquals(1, records.saves().size(), "the refused redeploy wrote no row");
-        assertEquals(List.of(sha1), children(shopDir()), "v2's directory is deleted, v1's stays");
-        assertEquals(List.of(), children(deployments.incomingDir()), "nothing is left in .incoming");
-        List<Doors.Door> v2Doors = doors.doors().subList(doorsBefore, doors.doors().size());
-        assertTrue(v2Doors.stream().noneMatch(Doors.Door::started), "nothing of v2 started: " + v2Doors);
-        until(() -> doors.openProducers().equals(openBefore), "every producer v2 built is closed, v1's stay open: " + doors.producers());
+        OnVirtualThread.call(() -> deployments.check("shop", v1.commit()));
+        assertEquals(2, audited().size(), "a check writes no audit row");
+        assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> deployments.deploy("shop", "no-such-branch", "ops")));
+        assertEquals("ops repository/shop {\"repository\":\"shop\",\"commit\":\"no-such-branch\",\"outcome\":\"refused\",\"error\":\""
+                + "shop at no-such-branch: not found\"}", audited().get(2), "a ref that was never read is audited as asked");
     }
 
     // --- the record is the commit point
 
     @Test
     void aDeployIsRecordedOnlyOnceItsFlowsStarted() throws Exception {
-        byte[] zip1 = shop("1.0.0", "v1").zip();
-        String sha1 = sha256(zip1);
+        PackageDraft p1 = shop("1.0.0", "v1");
+        String sha1 = hex(p1);
         Doors.Gate bStart = doors.holdStartOf("shop/b");
         Ledger.Hold save1 = records.holdNextSave();
-        OnVirtualThread.Call<DeployResult> d1 = deploying(zip1, "r1");
+        OnVirtualThread.Call<DeployResult> d1 = deploying(p1);
         reachedWhile(d1, bStart.reached(), "phase B calls b's start");
         parked(d1, "the deploy waits for b's start");
         assertEquals(List.of(), records.saves(), "no record while a flow's start is pending");
@@ -293,24 +225,23 @@ class DeploymentsRecordTest {
         assertEquals(List.of(), deployments.flows());
         save1.release();
         DeployResult v1 = OnVirtualThread.join(d1);
-        DeploymentRecord rec1 = new DeploymentRecord("shop", "1.0.0", Optional.of("r1"), sha1, v1.pkg().deployedAt(), List.of());
-        assertEquals(List.of(rec1), records.saves(), "one save: the package, its version, revision and archive sha256");
+        DeploymentRecord rec1 = new DeploymentRecord("shop", "1.0.0", "shop", p1.commit(), p1.content(), v1.pkg().deployedAt(), List.of());
+        assertEquals(List.of(rec1), records.saves(), "one save: the package, its version, repository, commit and content");
         assertEquals(Instant.parse("2026-10-27T09:30:00.123456Z"), records.saves().getFirst().deployedAt(),
-                "deployedAt is the package's (the clock at the unpack, before the second the case advanced), to the microsecond");
+                "deployedAt is the package's (the clock at the checkout, before the second the case advanced), to the microsecond");
         assertEquals(List.of(rec1), records.rows());
         assertEquals(List.of(v1.pkg()), deployments.packages());
 
-        byte[] zip2 = shop("2.0.0", "v2").zip();
-        String sha2 = sha256(zip2);
-        deploy(zip2, "r2");   // b runs on from v1's directory: v1's is kept for it
+        PackageDraft p2 = shop("2.0.0", "v2");
+        String sha2 = hex(p2);
+        deploy(p2);   // b runs on from v1's directory: v1's is kept for it
         PackageDraft v3 = changed(shop("3.0.0", "v3"), "b", "v3");   // both change: v1's directory is pruned once v3 is recorded
-        byte[] zip3 = v3.zip();
-        String sha3 = sha256(zip3);
+        String sha3 = hex(v3);
         List<DeployedPackage> packagesBefore = deployments.packages();
         List<DeploymentRecord> rowsBefore = records.rows();
         assertEquals(Set.of(sha1, sha2), Set.copyOf(children(shopDir())), "fixture: v1's and v2's directories are kept");
         Ledger.Hold save3 = records.holdNextSave();
-        OnVirtualThread.Call<DeployResult> d3 = deploying(zip3, "r3");
+        OnVirtualThread.Call<DeployResult> d3 = deploying(v3);
         reachedWhile(d3, save3.reached(), "v3 saves its record");
         parked(d3, "the deploy waits for its record");
         assertTrue(live("shop/a").size() == 1 && live("shop/b").size() == 1, "v3's flows run while its record is written: " + doors.events());
@@ -319,17 +250,18 @@ class DeploymentsRecordTest {
         assertTrue(Files.isDirectory(shopDir().resolve(sha1)), "nothing is pruned before the record is written: " + children(shopDir()));
         save3.release();
         DeployResult r3 = OnVirtualThread.join(d3);
-        assertEquals(List.of(new DeploymentRecord("shop", "3.0.0", Optional.of("r3"), sha3, r3.pkg().deployedAt(), List.of())), records.rows(), "v3's row replaced v2's");
+        assertEquals(List.of(new DeploymentRecord("shop", "3.0.0", "shop", v3.commit(), v3.content(), r3.pkg().deployedAt(), List.of())), records.rows(),
+                "v3's row replaced v2's");
         assertEquals(List.of(r3.pkg()), deployments.packages());
         assertEquals(Set.of(sha2, sha3), Set.copyOf(children(shopDir())), "pruned once recorded: v3's directory and the previous one stay");
     }
 
     @Test
     void aFailedRecordRefusesAFirstDeployAndRollsBackARedeploy() throws Exception {
-        byte[] zip1 = shop("1.0.0", "v1").zip();
-        String sha1 = sha256(zip1);
+        PackageDraft p1 = shop("1.0.0", "v1");
+        String sha1 = hex(p1);
         records.failNextSave("connection reset by peer");
-        DeployRefusedException first = refused(zip1, "r1");
+        DeployRefusedException first = refused(p1);
         assertEquals(Kind.FAILED, first.kind(), first.getMessage());
         assertTrue(first.getMessage().contains("connection reset by peer"), "the refusal names the cause: " + first.getMessage());
         List<Doors.Door> built = doors.doors();
@@ -341,20 +273,17 @@ class DeploymentsRecordTest {
         assertEquals(List.of(), children(shopDir()), "its directory is deleted");
         assertEquals(List.of(), children(deployments.incomingDir()), "nothing is left in .incoming");
         assertEquals(List.of(), records.rows(), "no row");
-        assertArrayEquals(zip1, shelf.bytes(sha1), "the object stays (orphans are kept)");
 
-        deploy(zip1, "r1");
+        deploy(p1);
         List<DeploymentRecord> rowsBefore = records.rows();
         assertEquals(1, rowsBefore.size(), "fixture: v1 is recorded");
         Map<String, DeployedFlow> flowsBefore = byId(deployments.flows());
         List<DeployedPackage> packagesBefore = deployments.packages();
         Doors.Door b1 = doors.door("shop/b");
         int doorsBefore = doors.doors().size();
-        byte[] zip2 = shop("2.0.0", "v2").zip();
-        String sha2 = sha256(zip2);
         records.failNextSave("connection reset by peer");
 
-        DeployRefusedException second = refused(zip2, "r2");
+        DeployRefusedException second = refused(shop("2.0.0", "v2"));
 
         assertEquals(Kind.FAILED, second.kind(), second.getMessage());
         assertProblem(second, "the deploy record was not written: ", "connection reset by peer");
@@ -368,11 +297,10 @@ class DeploymentsRecordTest {
         assertEquals(packagesBefore, deployments.packages(), "the package listed is v1's");
         assertEquals(rowsBefore, records.rows(), "the row is v1's");
         assertEquals(List.of(sha1), children(shopDir()), "v2's directory is deleted, v1's stays");
-        assertArrayEquals(zip2, shelf.bytes(sha2), "v2's object stays (orphans are kept)");
     }
 
     /**
-     * FIX-172b O1 (D-133): a record write the node's Postgres pool refused — its wait elapsed (exactly a {@link VertxException}),
+     * A record write the node's Postgres pool refused — its wait elapsed (exactly a {@link VertxException}),
      * its queue full ({@link ConnectionPoolTooBusyException}), a transaction's acquire refused ({@link PoolRefusedException}) — is
      * {@link Kind#BUSY}, retryable, on a first deploy (nothing listed, no row) and on a redeploy (rolled back: the problem line
      * names the cause, v1 listed and recorded as before). A {@link VertxException} subclass is no pool refusal: {@link Kind#FAILED}.
@@ -383,25 +311,25 @@ class DeploymentsRecordTest {
         refusals.put("the wait elapsed", new VertxException("Timeout waiting for connection", true));
         refusals.put("the queue full", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
         refusals.put("the acquire refused", new PoolRefusedException(new VertxException("Timeout", true)));
-        byte[] zip1 = shop("1.0.0", "v1").zip();
+        PackageDraft p1 = shop("1.0.0", "v1");
         for (Map.Entry<String, Throwable> r : refusals.entrySet()) {
             records.failNextSave(r.getValue());
-            DeployRefusedException first = refused(zip1, "r1");
+            DeployRefusedException first = refused(p1);
             assertEquals(Kind.BUSY, first.kind(), r.getKey() + ", a first deploy: " + first.getMessage());
             assertTrue(first.error().contains(r.getValue().getMessage()), r.getKey() + ": the refusal names the cause: " + first.error());
             assertEquals(List.of(), deployments.packages(), r.getKey() + ": nothing is listed");
             assertEquals(List.of(), records.rows(), r.getKey() + ": no row");
         }
         records.failNextSave(new VertxException("connection closed by the server") { });
-        assertEquals(Kind.FAILED, refused(zip1, "r1").kind(), "a VertxException subclass is no pool refusal, a first deploy");
+        assertEquals(Kind.FAILED, refused(p1).kind(), "a VertxException subclass is no pool refusal, a first deploy");
 
-        deploy(zip1, "r1");
+        deploy(p1);
         List<DeploymentRecord> rowsBefore = records.rows();
         List<DeployedPackage> packagesBefore = deployments.packages();
-        byte[] zip2 = shop("2.0.0", "v2").zip();
+        PackageDraft p2 = shop("2.0.0", "v2");
         for (Map.Entry<String, Throwable> r : refusals.entrySet()) {
             records.failNextSave(r.getValue());
-            DeployRefusedException second = refused(zip2, "r2");
+            DeployRefusedException second = refused(p2);
             assertEquals(Kind.BUSY, second.kind(), r.getKey() + ", a redeploy: " + second.getMessage());
             assertTrue(second.error().contains("was not recorded"), r.getKey() + ": the rollback's error line: " + second.error());
             assertProblem(second, "the deploy record was not written: ", r.getValue().getMessage());
@@ -409,16 +337,16 @@ class DeploymentsRecordTest {
             assertEquals(rowsBefore, records.rows(), r.getKey() + ": the row is v1's");
         }
         records.failNextSave(new VertxException("connection closed by the server") { });
-        assertEquals(Kind.FAILED, refused(zip2, "r2").kind(), "a VertxException subclass is no pool refusal, a redeploy");
+        assertEquals(Kind.FAILED, refused(p2).kind(), "a VertxException subclass is no pool refusal, a redeploy");
         assertEquals(packagesBefore, deployments.packages(), "the package listed is still v1's");
     }
 
     /**
-     * FIX-172b F1 (D-133): an undeploy whose record delete the node's Postgres pool refused — its wait elapsed (exactly a
+     * An undeploy whose record delete the node's Postgres pool refused — its wait elapsed (exactly a
      * {@link VertxException}), its queue full ({@link ConnectionPoolTooBusyException}), a transaction's acquire refused
      * ({@link PoolRefusedException}) — is {@link Kind#BUSY}, retryable, and changes nothing: the row stays, the package and its
      * flows stay listed, no flow is stopped. A {@link VertxException} subclass is no pool refusal: it stays the node's
-     * {@link IOException} (500) carrying the delete's failure, as before FIX-172b. Then an undeploy whose delete works undeploys.
+     * {@link IOException} (500) carrying the delete's failure. Then an undeploy whose delete works undeploys.
      */
     @Test
     void aRecordDeleteThePoolRefusedIsBusyAndChangesNothing() throws Exception {
@@ -426,7 +354,7 @@ class DeploymentsRecordTest {
         refusals.put("the wait elapsed", new VertxException("Timeout waiting for connection", true));
         refusals.put("the queue full", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
         refusals.put("the acquire refused", new PoolRefusedException(new VertxException("Timeout", true)));
-        deploy(shop("1.0.0", "v1").zip(), "r1");
+        deploy(shop("1.0.0", "v1"));
         List<DeploymentRecord> rowsBefore = records.rows();
         assertEquals(List.of("shop"), rowsBefore.stream().map(DeploymentRecord::name).toList(), "fixture: shop is recorded");
         List<DeployedPackage> packagesBefore = deployments.packages();
@@ -463,30 +391,22 @@ class DeploymentsRecordTest {
     }
 
     @Test
-    void aRefusedDeployWritesNoRowAndKeepsItsObject() throws Exception {
-        byte[] zip1 = shop("1.0.0", "v1").zip();
-        String sha1 = sha256(zip1);
+    void aRefusedDeployWritesNoRow() throws Exception {
+        PackageDraft p1 = shop("1.0.0", "v1");
         doors.failStartOf("shop/a", "address in use");
-        DeployRefusedException first = refused(zip1, "r1");
+        DeployRefusedException first = refused(p1);
         assertEquals(Kind.FAILED, first.kind(), first.getMessage());
-        assertEquals(List.of(sha1), shelf.puts(), "fixture: the archive was put before phase B");
         assertEquals(List.of(), records.saves(), "a first deploy whose flow did not start never saves a record");
-        assertArrayEquals(zip1, shelf.bytes(sha1), "its object stays: nothing deletes archives");
 
-        deploy(zip1, "r1");
-        assertEquals(List.of(sha1, sha1), shelf.puts(), "the same archive deployed again is put again");
+        deploy(p1);
         List<DeploymentRecord> rowsBefore = records.rows();
         assertEquals(List.of("shop"), rowsBefore.stream().map(DeploymentRecord::name).toList(), "fixture: v1 is recorded");
-        byte[] zip2 = shop("2.0.0", "v2").zip();
-        String sha2 = sha256(zip2);
         doors.failStartOf("shop/a", "address in use");
 
-        DeployRefusedException second = refused(zip2, "r2");
+        DeployRefusedException second = refused(shop("2.0.0", "v2"));
 
         assertEquals(Kind.FAILED, second.kind(), second.getMessage());
         assertEquals(1, records.saves().size(), "a redeploy rolled back saves no record: " + records.saves());
         assertEquals(rowsBefore, records.rows(), "the row is v1's");
-        assertArrayEquals(zip2, shelf.bytes(sha2), "v2's object stays");
-        assertArrayEquals(zip1, shelf.bytes(sha1), "and v1's");
     }
 }

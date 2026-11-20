@@ -151,7 +151,7 @@ class AdminDlqRestartTest {
                 .add(new JsonObject().put("type", "extractKey").put("name", "key").put("language", "header").put("key", "customer").put("xpath", "x-customer"))
                 .add(new JsonObject().put("type", "probe").put("name", "probe")));
         shop.flowDoc("keyed").put("partitionBy", "customer");
-        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), shop.zipTo(tmp.resolve("archives"))));
+        OnVirtualThread.call(() -> deployments.deploy("shop", shop.folderIn(tmp.resolve("folders"))));
         worker = new FlowBuilder(rt.runtime(), List.of(probe), List.of(), Map.of()).recording(store, Meter.system()).queue(queue).dlq(dlq).workers(workers)
                 .worker(orders(), Path.of(""), "node-a", new WorkerPolicy(Duration.ofSeconds(30), Duration.ofDays(7)));
         worker.start();

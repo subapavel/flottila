@@ -1,5 +1,6 @@
 package dev.rail8.runtime.node;
 
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.testkit.Ports;
 import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Handler;
@@ -21,7 +22,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.URI;
@@ -49,8 +49,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -62,7 +60,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  * {@link NodeFailStopIT} starts its child) over one Postgres, each case on a database of its own (FIX-5). Every node runs the
  * package {@code ledger}: an at-least-once flow whose one step is {@code to partner}; the partner is an http server in this JVM
  * that records each call's {@code x-message-id} (first-wins: the distinct ids in arrival order, and every raw call), answers
- * or holds it. Node A and node B share the package and its archive directory but each has its own HTTP port (A on 127.0.0.2,
+ * or holds it. Node A and node B share the package and its git repository but each has its own HTTP port (A on 127.0.0.2,
  * B on 127.0.0.3, one port number; the in endpoint is served at {@code /http/in} there) and its own partner path ({@code /a}, {@code /b}
  * through {@code secret://partner-url}), so the partner tells who sent a call. Node leases PT2S renewed every PT0.5S, but in the
  * ledger case (see there). Waits spin on observed state (the partner's, the database's, the child's
@@ -297,13 +295,13 @@ class NodeTakeoverLedgerIT {
         int admin = freePort();
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "dev");
+        GitRepos.with(env);   // shared: B and A's restart restore the package from its commit there
         env.put("RAIL8_NODE_ID", id);
         env.put("RAIL8_ADMIN_PORT", String.valueOf(admin));
         env.put("RAIL8_PEER_PORT", "0");   // two nodes on one host: each its own peer port, like its admin port (CORE-5a)
         env.put("RAIL8_HTTP_HOST", host);   // each node's HTTP port on a loopback address of its own, one port number
         env.put("RAIL8_HTTP_PORT", String.valueOf(inPort));
         env.put("RAIL8_DATA_DIR", data.toString());
-        env.put("RAIL8_ARCHIVE_DIR", dir.resolve("archives").toString());   // shared: B and A's restart restore the package from it
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
         env.put("RAIL8_PG_DATABASE", database);
@@ -337,12 +335,14 @@ class NodeTakeoverLedgerIT {
         return child;
     }
 
-    /** PUTs the package with in-flight limit {@code maxInFlight} to {@code child}; its flow runs there. */
+    /** Commits the package with in-flight limit {@code maxInFlight} to the repository {@code ledger} and deploys it on {@code child}; its flow runs there. */
     void deploy(Child child, int maxInFlight) throws Exception {
-        HttpResponse<String> put = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + child.admin() + "/admin/packages/ledger"))
-                .timeout(BOUND).header("content-type", "application/zip").PUT(HttpRequest.BodyPublishers.ofByteArray(ledgerPackage(maxInFlight))).build(),
+        String commit = GitRepos.shared().commit("ledger", ledgerPackage(maxInFlight));
+        byte[] body = new JsonObject().put("repository", "ledger").put("commit", commit).encode().getBytes(StandardCharsets.UTF_8);
+        HttpResponse<String> deployed = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + child.admin() + "/admin/deploy"))
+                .timeout(BOUND).header("content-type", "application/json").POST(HttpRequest.BodyPublishers.ofByteArray(body)).build(),
                 HttpResponse.BodyHandlers.ofString());
-        assertEquals(200, put.statusCode(), "fixture: the package deploys: " + put.body());
+        assertEquals(200, deployed.statusCode(), "fixture: the package deploys: " + deployed.body());
         assertRunning(child);
     }
 
@@ -353,7 +353,8 @@ class NodeTakeoverLedgerIT {
         assertEquals("RUNNING", flows.getJsonObject(0).getString("state"), "fixture: the flow runs on " + child.id() + ": " + flows + " " + child.log());
     }
 
-    byte[] ledgerPackage(int maxInFlight) throws IOException {
+    /** The files of the package {@code ledger}, each by its path, its flow's in-flight limit {@code maxInFlight}. */
+    static Map<String, byte[]> ledgerPackage(int maxInFlight) {
         Map<String, JsonObject> files = new TreeMap<>();
         files.put("package.yaml", doc("package").put("name", "ledger").put("version", "0.1.0"));
         files.put("endpoints/in.yaml", doc("endpoint").put("id", "in").put("scheme", "http").put("direction", "in")
@@ -365,15 +366,9 @@ class NodeTakeoverLedgerIT {
                 .put("recording", new JsonObject().put("level", "all").put("payload", "metadata-only"))
                 .put("limits", new JsonObject().put("maxBodyBytes", 65536).put("maxInFlight", maxInFlight))
                 .put("steps", new JsonArray().add(new JsonObject().put("type", "to").put("name", "partner").put("endpoint", "partner"))));
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
-            for (Map.Entry<String, JsonObject> f : files.entrySet()) {
-                zip.putNextEntry(new ZipEntry(f.getKey()));
-                zip.write(f.getValue().encodePrettily().getBytes(StandardCharsets.UTF_8));   // JSON is YAML
-                zip.closeEntry();
-            }
-        }
-        return bytes.toByteArray();
+        Map<String, byte[]> bytes = new TreeMap<>();
+        files.forEach((path, doc) -> bytes.put(path, doc.encodePrettily().getBytes(StandardCharsets.UTF_8)));   // JSON is YAML
+        return bytes;
     }
 
     static JsonObject doc(String kind) {

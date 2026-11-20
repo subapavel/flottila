@@ -1,6 +1,7 @@
 package dev.rail8.runtime;
 
 import dev.rail8.components.http.HttpComponent;
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
@@ -112,6 +113,7 @@ class InvoiceAsyncIT {
     Map<String, String> env(String nodeId) throws IOException {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "ci");   // ci is no deployed environment: a plain-http endpoint is allowed
+        GitRepos.with(env);   // the test JVM's package repositories, which its deploys commit to
         env.put("RAIL8_NODE_ID", nodeId);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
@@ -155,11 +157,11 @@ class InvoiceAsyncIT {
                 .getBytes(StandardCharsets.UTF_8);
     }
 
-    /** Deploys the package {@code zip} as {@code demo} on the node's admin API; the deploy names the one flow. */
-    static void deploy(HttpClient client, Node node, byte[] zip) throws Exception {
-        HttpResponse<String> put = NodeIT.send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip, "application/zip");
-        assertEquals(200, put.statusCode(), "fixture: the package deploys: " + put.body());
-        assertEquals(new JsonArray().add("demo/invoice-async"), new JsonObject(put.body()).getJsonArray("flows"), "fixture: " + put.body());
+    /** Commits {@code files} to the repository {@code demo} and deploys that commit on the node's admin API; the deploy names the one flow. */
+    static void deploy(HttpClient client, Node node, Map<String, byte[]> files) throws Exception {
+        HttpResponse<String> deployed = NodeIT.deploy(client, node.adminPort(), "demo", files);
+        assertEquals(200, deployed.statusCode(), "fixture: the package deploys: " + deployed.body());
+        assertEquals(new JsonArray().add("demo/invoice-async"), new JsonObject(deployed.body()).getJsonArray("flows"), "fixture: " + deployed.body());
     }
 
     /** A partner that records each request's path and body and answers the demo's ack once {@code release} completes. */
@@ -193,9 +195,9 @@ class InvoiceAsyncIT {
         holds.add(release);
         HttpServer partner = partner(partnerSaw, release.future());
         try (HttpClient client = NodeIT.http()) {
-            byte[] zip = NodeIT.zip(asyncFiles("http://127.0.0.1:" + partner.actualPort()));
+            Map<String, byte[]> files = asyncFiles("http://127.0.0.1:" + partner.actualPort());
             Node node = startNode("node-async");
-            deploy(client, node, zip);
+            deploy(client, node, files);
 
             HttpResponse<String> accepted = NodeIT.send(client, "POST", node.httpPort(), "/http/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
 
@@ -236,7 +238,7 @@ class InvoiceAsyncIT {
         HttpServer partner = partner(partnerSaw, Future.succeededFuture());
         try (HttpClient client = NodeIT.http()) {
             Node node = startNode("node-async");
-            deploy(client, node, NodeIT.zip(asyncFiles("http://127.0.0.1:" + partner.actualPort())));
+            deploy(client, node, asyncFiles("http://127.0.0.1:" + partner.actualPort()));
             String longId = "7".repeat(257);
 
             HttpResponse<String> refused = NodeIT.send(client, "POST", node.httpPort(), "/http/in", invoice(longId, "S-1"), "application/xml");
@@ -259,7 +261,7 @@ class InvoiceAsyncIT {
         HttpServer partner = partner(partnerSaw, Future.succeededFuture());
         try (HttpClient client = NodeIT.http()) {
             Node node = startNode("node-async");
-            deploy(client, node, NodeIT.zip(asyncFiles("http://127.0.0.1:" + partner.actualPort())));
+            deploy(client, node, asyncFiles("http://127.0.0.1:" + partner.actualPort()));
 
             HttpResponse<String> accepted = NodeIT.send(client, "POST", node.httpPort(), "/http/in", "this is no invoice".getBytes(StandardCharsets.UTF_8), "application/xml");
 

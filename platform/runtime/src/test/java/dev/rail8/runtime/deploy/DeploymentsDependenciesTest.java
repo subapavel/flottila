@@ -42,24 +42,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * P2-02b (D-087, D-060 e): package dependencies on the node. {@code invoice} declares {@code common 1.2.0} in package.yaml and pins it
- * in package.lock with its content digest; its flow maps with {@code common:xslt/to-ubl.xsl}, read from {@code common}'s directory of
- * that version, whose include stays in {@code common}. The check (deploy and validate) resolves against what this node has: each
- * RUNNING package's current version and every version a record pins (a FAILED package's is not available), matching name, version
- * and content, following each dependency's own lock, refusing a cycle of names — 422, no absolute path. The record pins the closure
- * (name, version, archive SHA-256); prune never removes a pinned directory, restore fetches a pin by its SHA-256 when absent and
- * lists the package FAILED when it cannot.
+ * Package dependencies on the node. {@code invoice} declares {@code common 1.2.0} in package.yaml and pins it in package.lock with
+ * its content digest, its repository and its commit; its flow maps with {@code common:xslt/to-ubl.xsl}, read from {@code common}'s
+ * directory of that version, whose include stays in {@code common}. A deploy resolves each pin of the closure from its own
+ * commit — a directory the node keeps with that content is used as it is, otherwise the commit is fetched and its content checked
+ * against the pin — following each dependency's own lock and refusing a cycle of names: 422, no absolute path. A validate fetches
+ * nothing and resolves against what the node has. The record pins the closure (name, version, content, repository, commit); prune
+ * never removes a pinned directory; restore reads a pin from its commit when its directory is absent and lists the package FAILED
+ * when it cannot.
  *
- * <p>Fixtures: nodes of one pool ({@link Node}), each with its own data directory and {@link Doors}, over one {@link Ledger} (the
- * pool's rows) and one {@link Shelf} over {@code <tmp>/bucket} (the pool's archive store), read through
- * {@link DeploymentsRestoreTest.Fetches} so every fetch is counted. A partner replies with what was sent: a reply is the XSLT's output.
- * Content digests are computed by {@link PackageDraft#content()} from the files, never by the code under test. Every zip is taken
- * once: its SHA-256 is that of the bytes deployed.
- *
- * <p>The shape assumed (P2-02b test-author): {@code DeploymentRecord(name, version, revision, archiveSha256, deployedAt,
- * List<DeploymentRecord.Pin> dependencies)} with {@code record Pin(String name, String version, String archiveSha256)};
- * {@code DeployedPackage.content()} ({@code sha256:<hex>}) and {@code DeployedPackage.dependencies()}, a list of
- * {@code DeployedPackage.Dependency(String name, String version, String content, String archiveSha256, boolean direct)}.
+ * <p>Fixtures: nodes of one pool ({@link Node}), each with its own data directory, git cache and {@link Doors}, over one
+ * {@link Ledger} (the pool's rows) and one {@link GitRepos} (the pool's repositories, one per package). A partner replies with what
+ * was sent: a reply is the XSLT's output. Content digests are computed by {@link PackageDraft#content()} from the files, never by
+ * the code under test.
  */
 class DeploymentsDependenciesTest {
 
@@ -67,18 +62,14 @@ class DeploymentsDependenciesTest {
     static final String FLOW = "invoice/to-ubl";
 
     @TempDir Path tmp;
-    Path bucket;
-    Path uploads;
+    GitRepos repos;
     final FakeRuntime rt = FakeRuntime.create();
     final Ledger records = new Ledger(trace -> {});
-    Shelf shelf;
     final List<Node> nodes = new ArrayList<>();
 
     @BeforeEach
     void wire() {
-        bucket = tmp.resolve("bucket");
-        uploads = tmp.resolve("uploads");
-        shelf = new Shelf(bucket, tmp.resolve("shelf-reads"), trace -> {});
+        repos = new GitRepos(tmp.resolve("repos"));
     }
 
     @AfterEach
@@ -90,25 +81,25 @@ class DeploymentsDependenciesTest {
 
     // --- fixture: nodes of one pool
 
-    /** A package as zipped once: its draft, its bytes, their SHA-256. */
-    record Zipped(PackageDraft draft, byte[] zip, String sha) {
-        static Zipped of(PackageDraft draft) {
-            byte[] zip = draft.zip();
-            return new Zipped(draft, zip, PackageDraft.sha256(zip));
-        }
-
+    /** A package as committed once, to the repository of its name: its draft, the commit, its content digest. */
+    record Committed(PackageDraft draft, String commit, String content) {
         String name() { return draft.name(); }
 
         String version() { return draft.version(); }
 
-        String content() { return draft.content(); }
+        /** The name of its directory under {@code packages/<name>/}: the hex of its content digest. */
+        String hex() { return content.substring("sha256:".length()); }
+    }
+
+    /** Commits {@code draft} to the repository of its name. */
+    Committed committed(PackageDraft draft) {
+        return new Committed(draft, repos.commit(draft), draft.content());
     }
 
     final class Node {
         final String id;
         final Path data;
         final Doors doors = new Doors();
-        final DeploymentsRestoreTest.Fetches fetches = new DeploymentsRestoreTest.Fetches(shelf);
         final Deployments deployments;
         private boolean closed;
 
@@ -127,27 +118,28 @@ class DeploymentsDependenciesTest {
             env.put("RAIL8_STOP_DEADLINE", "PT5S");
             env.put("RAIL8_BLOB_DURABLE_MAX", "4096");
             env.put("RAIL8_MAX_PACKAGE_BYTES", Long.toString(2L * 1024 * 1024));
+            env.put("RAIL8_GIT_BASE", repos.base().toString());
             SaxonXml xml = new SaxonXml();
             List<StepFactory> steps = Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList();
             Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
             deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), steps, xml.languages(),
-                    new InMemoryMessageStore(), new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, records, fetches);
+                    new InMemoryMessageStore(), new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, records);
             nodes.add(this);
         }
 
-        DeployResult deploy(Zipped p) throws Exception {
-            Path archive = PackageDraft.write(uploads, p.zip());
-            return OnVirtualThread.call(() -> deployments.deploy(p.name(), Optional.empty(), archive));
+        DeployResult deploy(Committed p) throws Exception {
+            return OnVirtualThread.call(() -> deployments.deploy(p.name(), p.commit(), "test"));
         }
 
+        /** Commits {@code p} to the repository of its name and deploys that commit. */
         DeployResult deploy(PackageDraft p) throws Exception {
-            return deploy(Zipped.of(p));
+            return deploy(committed(p));
         }
 
         DeployRefusedException refused(PackageDraft p) throws IOException {
-            Path archive = PackageDraft.write(uploads, p.zip());
+            Committed c = committed(p);
             DeployRefusedException refused = assertThrows(DeployRefusedException.class,
-                    () -> OnVirtualThread.call(() -> deployments.deploy(p.name(), Optional.empty(), archive)), "the deploy of " + p.name() + " is refused");
+                    () -> OnVirtualThread.call(() -> deployments.deploy(c.name(), c.commit(), "test")), "the deploy of " + p.name() + " is refused");
             assertEquals(Kind.INVALID, refused.kind(), refused.getMessage() + " " + refused.problems());
             assertNoAbsolutePath(refused.problems());
             assertFalse(refused.error().contains(tmp.toString()), "no absolute path in the error: " + refused.error());
@@ -186,9 +178,14 @@ class DeploymentsDependenciesTest {
             return listed(name).orElseGet(() -> fail(id + " lists no package " + name + ": " + deployments.packages()));
         }
 
-        /** {@code packages/<name>/<sha>/} of this node's data directory. */
-        Path dir(String name, String sha) {
-            return data.resolve("packages").resolve(name).resolve(sha);
+        /** {@code packages/<name>/<hex>/} of this node's data directory. */
+        Path dir(String name, String hex) {
+            return data.resolve("packages").resolve(name).resolve(hex);
+        }
+
+        /** Deletes this node's git cache: a commit it reads next is fetched. */
+        void forgetGit() throws IOException {
+            deleteTree(data.resolve("git"));
         }
     }
 
@@ -226,8 +223,20 @@ class DeploymentsDependenciesTest {
         return user("invoice", version, "common:xslt/to-ubl.xsl", deps);
     }
 
-    static DeploymentRecord.Pin pin(Zipped p) {
-        return new DeploymentRecord.Pin(p.name(), p.version(), p.sha());
+    static DeploymentRecord.Pin pin(Committed p) {
+        return new DeploymentRecord.Pin(p.name(), p.version(), p.content(), p.name(), p.commit());
+    }
+
+    static void deleteTree(Path root) throws IOException {
+        if (Files.notExists(root)) return;
+        try (Stream<Path> walk = Files.walk(root)) {
+            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(p);
+        }
+    }
+
+    /** The file key of {@code p} (Linux: device and inode): the same key, the same directory, not one written again. */
+    static Object fileKey(Path p) throws IOException {
+        return Files.readAttributes(p, java.nio.file.attribute.BasicFileAttributes.class, java.nio.file.LinkOption.NOFOLLOW_LINKS).fileKey();
     }
 
     DeploymentRecord row(String name) {
@@ -254,14 +263,14 @@ class DeploymentsDependenciesTest {
     @Test
     void invoicePinsCommon120AndUsesItsXslt() throws Exception {
         Node node = new Node("node-1");
-        Zipped common = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed common = committed(common("1.2.0", "UBL 1.2.0"));
         node.deploy(common);
 
         DeployResult r = node.deploy(invoice("1.0.0", common.draft()));
 
         assertEquals(List.of(FLOW), r.added(), r.toString());
         assertEquals("UBL 1.2.0", node.reply(FLOW), "common's to-ubl.xsl, its include next to it in common");
-        assertEquals(List.of(pin(common)), row("invoice").dependencies(), "the record pins common 1.2.0 by its archive");
+        assertEquals(List.of(pin(common)), row("invoice").dependencies(), "the record pins common 1.2.0 by its commit");
         assertEquals(List.of(), row("common").dependencies(), "common pins nothing");
         assertEquals(common.content(), node.pkg("common").content(), "the node's content digest of common is the lock's");
     }
@@ -270,7 +279,7 @@ class DeploymentsDependenciesTest {
     @Test
     void deployingCommon130LeavesInvoiceOn120() throws Exception {
         Node node = new Node("node-1");
-        Zipped common120 = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed common120 = committed(common("1.2.0", "UBL 1.2.0"));
         node.deploy(common120);
         node.deploy(invoice("1.0.0", common120.draft()));
         Doors.Door running = node.doors.door(FLOW);
@@ -282,41 +291,59 @@ class DeploymentsDependenciesTest {
         assertSame(running, node.doors.door(FLOW), "no consumer was built for invoice");
         assertEquals(0, running.stops(), "invoice's consumer was not stopped");
         assertEquals("UBL 1.2.0", node.reply(FLOW), "invoice still maps with common 1.2.0");
-        assertEquals(List.of(new DeployedPackage.Dependency("common", "1.2.0", common120.content(), common120.sha(), true)),
+        assertEquals(List.of(new DeployedPackage.Dependency("common", "1.2.0", common120.content(), common120.name(), common120.commit(), true)),
                 node.pkg("invoice").dependencies(), "invoice lists the version it pins");
         assertEquals(List.of(pin(common120)), row("invoice").dependencies(), "its record pins 1.2.0 still");
     }
 
-    /** invoice pins common 1.2.0: on a node with common 1.3.0, or with no common, 422 naming what the node has; invoice is not listed. */
+    /** invoice pins common 1.2.0 at a commit its repository does not have: 422 naming the pin's commit, with or without common deployed. */
     @Test
-    void aMissingVersionIs422NamingWhatTheNodeHas() throws Exception {
+    void aPinWhoseCommitIsNotThereIs422() throws Exception {
         Node node = new Node("node-1");
-        PackageDraft invoice = invoice("1.0.0", common("1.2.0", "UBL 1.2.0"));
+        PackageDraft invoice = invoice("1.0.0", common("1.2.0", "UBL 1.2.0"));   // never committed: the lock pins a commit no repository has
+        String missing = "dependency common@1.2.0: common at " + PackageDraft.COMMIT + ": not found";
 
         DeployRefusedException none = node.refused(invoice);
 
-        assertTrue(none.problems().contains("dependency common@1.2.0 is not deployed on this node (no package common)"), none.problems().toString());
+        assertTrue(none.problems().contains(missing), none.problems().toString());
 
         node.deploy(common("1.3.0", "UBL 1.3.0"));
         DeployRefusedException other = node.refused(invoice);
 
-        assertTrue(other.problems().contains("dependency common@1.2.0 is not deployed on this node (it has common 1.3.0)"), other.problems().toString());
+        assertTrue(other.problems().contains(missing), other.problems().toString());
         assertEquals(Optional.empty(), node.listed("invoice"), "nothing of invoice is listed");
         assertEquals(List.of("common"), records.rows().stream().map(DeploymentRecord::name).toList(), "no row for invoice");
     }
 
-    /** common 1.2.0 on the node has other bytes than the lock pins: 422 naming both digests; the lock with the node's digest deploys. */
+    /** common 1.2.0, committed but never deployed, while 1.3.0 runs: invoice's deploy fetches its pin from its commit and maps with it. */
+    @Test
+    void aDependencyIsFetchedFromItsPinnedCommitWhileAnotherVersionRuns() throws Exception {
+        Node node = new Node("node-1");
+        Committed c120 = committed(common("1.2.0", "UBL 1.2.0"));
+        node.deploy(common("1.3.0", "UBL 1.3.0"));
+
+        DeployResult r = node.deploy(invoice("1.0.0", c120.draft()));
+
+        assertEquals(List.of(FLOW), r.added(), r.toString());
+        assertEquals("UBL 1.2.0", node.reply(FLOW), "the pin's files, not those of the version that runs");
+        assertEquals("1.3.0", node.pkg("common").version(), "common runs on at 1.3.0");
+        assertTrue(Files.isDirectory(node.dir("common", c120.hex())), "the pin is written under common, by its content");
+        assertEquals(List.of(pin(c120)), row("invoice").dependencies());
+    }
+
+    /** The pin's commit holds other bytes than the lock pins: 422 naming both digests; the lock with the commit's digest deploys. */
     @Test
     void aContentMismatchIs422() throws Exception {
         Node node = new Node("node-1");
         PackageDraft onNode = common("1.2.0", "UBL 1.2.0");
         PackageDraft locked = common("1.2.0", "UBL 1.2.0 as built elsewhere");
         node.deploy(onNode);
+        PackageDraft invoice = invoice("1.0.0").locking(List.of(new PackageDraft.LockEntry("common", "1.2.0", locked.content(), "common", onNode.commit())));
 
-        DeployRefusedException refused = node.refused(invoice("1.0.0", locked));
+        DeployRefusedException refused = node.refused(invoice);
 
-        assertTrue(refused.problems().contains("dependency common@1.2.0 has content " + onNode.content() + " on this node, package.lock pins " + locked.content()),
-                refused.problems().toString());
+        assertTrue(refused.problems().contains("dependency common@1.2.0: common at " + onNode.commit() + " has content " + onNode.content()
+                + ", package.lock pins " + locked.content()), refused.problems().toString());
         assertEquals(Optional.empty(), node.listed("invoice"));
         assertEquals(List.of(FLOW), node.deploy(invoice("1.0.0", onNode)).added(), "witness: the lock with the node's content deploys");
     }
@@ -344,27 +371,23 @@ class DeploymentsDependenciesTest {
     }
 
     /**
-     * common 1.2.0 listed FAILED after a restart (its archive gone from the store, its directory still on disk) is not available: 422.
-     * Deployed again, it is.
+     * common 1.2.0 listed FAILED after a restart (its commit gone from its repository and the node's cache, its directory still on
+     * disk): the directory holds the content invoice's lock pins, so invoice deploys from it.
      */
     @Test
-    void aFailedVersionIsNotAvailable() throws Exception {
+    void aDirectoryWithThePinnedContentIsUsedWhateverItsPackagesState() throws Exception {
         Node first = new Node("node-1");
-        Zipped common = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed common = committed(common("1.2.0", "UBL 1.2.0"));
         first.deploy(common);
         first.close();
-        Files.delete(bucket.resolve(common.sha() + ".zip"));
+        repos.delete("common");
+        first.forgetGit();
         Node restarted = new Node("node-1b", first.data);
         restarted.restore();
         assertEquals(DeployedPackage.State.FAILED, restarted.pkg("common").state(), "fixture: common is listed FAILED");
-        assertTrue(Files.isDirectory(restarted.dir("common", common.sha())), "fixture: its directory is still on disk");
+        assertTrue(Files.isDirectory(restarted.dir("common", common.hex())), "fixture: its directory is still on disk");
 
-        DeployRefusedException refused = restarted.refused(invoice("1.0.0", common.draft()));
-
-        assertTrue(refused.problems().stream().anyMatch(l -> l.startsWith("dependency common@1.2.0 is not deployed on this node")), refused.problems().toString());
-
-        restarted.deploy(common);
-        assertEquals(List.of(FLOW), restarted.deploy(invoice("1.0.0", common.draft())).added(), "witness: common deployed again is available");
+        assertEquals(List.of(FLOW), restarted.deploy(invoice("1.0.0", common.draft())).added());
         assertEquals("UBL 1.2.0", restarted.reply(FLOW));
     }
 
@@ -372,19 +395,19 @@ class DeploymentsDependenciesTest {
     @Test
     void aPinnedVersionIsNeverPrunedAndAnUnpinnedOneIs() throws Exception {
         Node node = new Node("node-1");
-        Zipped c120 = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed c120 = committed(common("1.2.0", "UBL 1.2.0"));
         node.deploy(c120);
         node.deploy(invoice("1.0.0", c120.draft()));
-        Zipped c130 = Zipped.of(common("1.3.0", "UBL 1.3.0"));
+        Committed c130 = committed(common("1.3.0", "UBL 1.3.0"));
         node.deploy(c130);
         node.deploy(common("1.4.0", "UBL 1.4.0"));
 
-        assertTrue(Files.isDirectory(node.dir("common", c120.sha())), "1.2.0 is neither current nor previous, and pinned: kept");
+        assertTrue(Files.isDirectory(node.dir("common", c120.hex())), "1.2.0 is neither current nor previous, and pinned: kept");
 
         node.deploy(common("1.5.0", "UBL 1.5.0"));
 
-        assertFalse(Files.exists(node.dir("common", c130.sha())), "1.3.0 is neither current, previous nor pinned: pruned");
-        assertTrue(Files.isDirectory(node.dir("common", c120.sha())), "1.2.0 is still pinned: kept");
+        assertFalse(Files.exists(node.dir("common", c130.hex())), "1.3.0 is neither current, previous nor pinned: pruned");
+        assertTrue(Files.isDirectory(node.dir("common", c120.hex())), "1.2.0 is still pinned: kept");
         assertEquals("UBL 1.2.0", node.reply(FLOW));
     }
 
@@ -392,7 +415,7 @@ class DeploymentsDependenciesTest {
     @Test
     void aMissingDependencyFileIs422WithoutAnAbsolutePath() throws Exception {
         Node node = new Node("node-1");
-        Zipped common = Zipped.of(common("1.2.0", "UBL 1.2.0")
+        Committed common = committed(common("1.2.0", "UBL 1.2.0")
                 .file("xslt/escape.xsl", XSL + "<xsl:include href=\"../../escape.xsl\"/><xsl:output method=\"text\"/><xsl:template match=\"/\">x</xsl:template>"
                         + "</xsl:stylesheet>"));
         node.deploy(common);
@@ -401,12 +424,12 @@ class DeploymentsDependenciesTest {
 
         assertTrue(missing.problems().stream().anyMatch(l -> l.contains("'to-ubl'") && l.endsWith("stylesheet 'common:xslt/missing.xsl' does not exist in common@1.2.0")),
                 missing.problems().toString());
-        for (String l : missing.problems()) assertFalse(l.contains(common.sha()), "no archive directory in '" + l + "'");
+        for (String l : missing.problems()) assertFalse(l.contains(common.hex()), "no package directory in '" + l + "'");
 
         DeployRefusedException escape = node.refused(user("invoice", "1.0.0", "common:xslt/escape.xsl", common.draft()));
 
         assertTrue(escape.problems().stream().anyMatch(l -> l.contains("to-ubl") && l.contains("../../escape.xsl")), escape.problems().toString());
-        for (String l : escape.problems()) assertFalse(l.contains(common.sha()), "no archive directory in '" + l + "'");
+        for (String l : escape.problems()) assertFalse(l.contains(common.hex()), "no package directory in '" + l + "'");
         assertEquals(Optional.empty(), node.listed("invoice"));
     }
 
@@ -414,7 +437,7 @@ class DeploymentsDependenciesTest {
     @Test
     void aMissingDependencyFileNamedInsideAProcessIs422NamingTheProcessStep() throws Exception {
         Node node = new Node("node-1");
-        Zipped common = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed common = committed(common("1.2.0", "UBL 1.2.0"));
         node.deploy(common);
         PackageDraft invoice = user("invoice", "1.0.0", "common:xslt/to-ubl.xsl", common.draft());
         JsonObject flow = invoice.flowDoc("to-ubl");
@@ -438,7 +461,7 @@ class DeploymentsDependenciesTest {
         node.deploy(invoice("1.0.0", c120));
         Doors.Door running = node.doors.door(FLOW);
         String hash = node.deployments.flows().stream().filter(f -> f.id().equals(FLOW)).findFirst().orElseThrow().hash();
-        Zipped c121 = Zipped.of(common("1.2.1", "UBL 1.2.0"));
+        Committed c121 = committed(common("1.2.1", "UBL 1.2.0"));
         node.deploy(c121);
 
         DeployResult r = node.deploy(invoice("1.0.1", c121.draft()));
@@ -459,11 +482,11 @@ class DeploymentsDependenciesTest {
         assertEquals("UBL 1.3.0", node.reply(FLOW));
     }
 
-    /** A node with an empty data directory restores common 1.3.0 and invoice, whose pin 1.2.0 it fetches by its SHA-256 and maps with. */
+    /** A node with an empty data directory restores common 1.3.0 and invoice, whose pin 1.2.0 it reads from its own commit and maps with. */
     @Test
     void restoreOnAnEmptyDataDirInstallsThePin() throws Exception {
         Node first = new Node("node-1");
-        Zipped c120 = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed c120 = committed(common("1.2.0", "UBL 1.2.0"));
         first.deploy(c120);
         first.deploy(invoice("1.0.0", c120.draft()));
         first.deploy(common("1.3.0", "UBL 1.3.0"));
@@ -473,27 +496,30 @@ class DeploymentsDependenciesTest {
 
         assertEquals(DeployedPackage.State.RUNNING, second.pkg("invoice").state(), second.pkg("invoice").problems().toString());
         assertEquals("1.3.0", second.pkg("common").version());
-        assertEquals(1, second.fetches.fetchesOf(c120.sha()), "the pin is fetched by its SHA-256: " + second.fetches.keys());
-        assertTrue(Files.isDirectory(second.dir("common", c120.sha())), "and unpacked under common");
+        assertTrue(Files.isDirectory(second.dir("common", c120.hex())), "the pin is written under common, by its content");
         assertEquals("UBL 1.2.0", second.reply(FLOW), "invoice maps with its pin, not common's current version");
     }
 
-    /** invoice's pin is gone from the archive store: at restore on an empty data directory invoice is FAILED naming the pin; common runs. */
+    /**
+     * invoice's pin is gone from its repository (common's history rewritten, 1.3.0 on a fresh one): at restore on an empty data
+     * directory invoice is FAILED naming the pin's commit; common runs.
+     */
     @Test
-    void aPinNotInTheArchiveStoreIsFailedAtRestore() throws Exception {
+    void aPinWhoseCommitIsGoneIsFailedAtRestore() throws Exception {
         Node first = new Node("node-1");
-        Zipped c120 = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed c120 = committed(common("1.2.0", "UBL 1.2.0"));
         first.deploy(c120);
         first.deploy(invoice("1.0.0", c120.draft()));
+        repos.delete("common");
         first.deploy(common("1.3.0", "UBL 1.3.0"));
-        Files.delete(bucket.resolve(c120.sha() + ".zip"));
 
         Node second = new Node("node-2");
         second.restore();
 
         DeployedPackage invoice = second.pkg("invoice");
         assertEquals(DeployedPackage.State.FAILED, invoice.state(), invoice.toString());
-        assertTrue(invoice.problems().stream().anyMatch(l -> l.contains("common@1.2.0") && l.contains(c120.sha())), "a line names the pin: " + invoice.problems());
+        assertTrue(invoice.problems().contains("dependency common@1.2.0: common at " + c120.commit() + ": not found"), "a line names the pin: "
+                + invoice.problems());
         assertEquals(List.of(), invoice.flows(), "a FAILED package has no flows");
         assertTrue(second.doors.doors().stream().noneMatch(d -> d.flow().equals(FLOW) && d.started()), "invoice's consumer never started: " + second.doors.events());
         assertEquals(DeployedPackage.State.RUNNING, second.pkg("common").state(), "common runs");
@@ -503,9 +529,9 @@ class DeploymentsDependenciesTest {
     @Test
     void theRecordPinsTheClosureNotOnlyDirectDependencies() throws Exception {
         Node node = new Node("node-1");
-        Zipped base = Zipped.of(library("base", "1.0.0", "base"));
+        Committed base = committed(library("base", "1.0.0", "base"));
         node.deploy(base);
-        Zipped mid = Zipped.of(library("mid", "1.0.0", "mid", base.draft()));
+        Committed mid = committed(library("mid", "1.0.0", "mid", base.draft()));
         node.deploy(mid);
 
         node.deploy(user("top", "1.0.0", "mid:xslt/to-ubl.xsl", mid.draft()));
@@ -513,8 +539,8 @@ class DeploymentsDependenciesTest {
         assertEquals(Set.of(pin(mid), pin(base)), Set.copyOf(row("top").dependencies()), "the closure: " + row("top").dependencies());
         assertEquals(2, row("top").dependencies().size(), row("top").dependencies().toString());
         assertEquals(List.of(pin(base)), row("mid").dependencies());
-        assertEquals(Set.of(new DeployedPackage.Dependency("mid", "1.0.0", mid.content(), mid.sha(), true),
-                new DeployedPackage.Dependency("base", "1.0.0", base.content(), base.sha(), false)), Set.copyOf(node.pkg("top").dependencies()));
+        assertEquals(Set.of(new DeployedPackage.Dependency("mid", "1.0.0", mid.content(), mid.name(), mid.commit(), true),
+                new DeployedPackage.Dependency("base", "1.0.0", base.content(), base.name(), base.commit(), false)), Set.copyOf(node.pkg("top").dependencies()));
 
         node.deploy(user("billing", "1.0.0", "base:xslt/to-ubl.xsl", mid.draft(), base.draft()));
 
@@ -539,24 +565,25 @@ class DeploymentsDependenciesTest {
     }
 
     /**
-     * A restart over the same data directory: common (current 1.3.0) is restored before invoice, which pins 1.2.0 — common's prune
-     * keeps 1.2.0 though invoice is not restored yet, so it is not fetched; alpha, restored before common, pins 1.2.0 too: kept.
+     * A restart over the same data directory: common (current 1.4.0) is restored before invoice, which pins 1.2.0 — common's prune
+     * keeps 1.2.0 though invoice is not restored yet, so its directory is used as it is; alpha, restored before common, pins 1.2.0
+     * too: kept.
      */
     @Test
     void aPinnedVersionSurvivesARestorePruneInEitherNameOrder() throws Exception {
         Node first = new Node("node-1");
-        Zipped c120 = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed c120 = committed(common("1.2.0", "UBL 1.2.0"));
         first.deploy(c120);
         first.deploy(invoice("1.0.0", c120.draft()));
         first.deploy(common("1.3.0", "UBL 1.3.0"));
         first.deploy(common("1.4.0", "UBL 1.4.0"));
+        Object kept = fileKey(first.dir("common", c120.hex()));
         first.close();
 
         Node restarted = new Node("node-1b", first.data);
         restarted.restore();
 
-        assertEquals(0, restarted.fetches.fetchesOf(c120.sha()), "1.2.0 was kept on disk, not fetched: " + restarted.fetches.keys());
-        assertTrue(Files.isDirectory(restarted.dir("common", c120.sha())));
+        assertEquals(kept, fileKey(restarted.dir("common", c120.hex())), "1.2.0's directory was kept on disk, not written again");
         assertEquals("UBL 1.2.0", restarted.reply(FLOW));
 
         restarted.deploy(user("alpha", "1.0.0", "common:xslt/to-ubl.xsl", c120.draft()));
@@ -565,8 +592,7 @@ class DeploymentsDependenciesTest {
         Node empty = new Node("node-2");
         empty.restore();
 
-        assertEquals(1, empty.fetches.fetchesOf(c120.sha()), "alpha's pin is fetched once: common's prune kept it for invoice: " + empty.fetches.keys());
-        assertTrue(Files.isDirectory(empty.dir("common", c120.sha())), "alpha's pin, fetched before common's restore, survives common's prune");
+        assertTrue(Files.isDirectory(empty.dir("common", c120.hex())), "alpha's pin, written before common's restore, survives common's prune");
         assertEquals("UBL 1.2.0", empty.reply("alpha/to-ubl"));
         assertEquals("UBL 1.2.0", empty.reply(FLOW));
     }
@@ -588,7 +614,7 @@ class DeploymentsDependenciesTest {
         assertEquals(List.of(), OnVirtualThread.call(() -> node.deployments.validate("invoice", dir)), "common 1.2.0 deployed: no problem");
     }
 
-    // --- guards (P2-02b review round: M28, M29, M30)
+    // --- guards
 
     /** loop depends on itself: package.yaml's check and the node's resolution both find the cycle; the 422 lists its line once. */
     @Test
@@ -603,67 +629,68 @@ class DeploymentsDependenciesTest {
     }
 
     /**
-     * common 1.2.0, pinned by invoice and neither current nor previous, deployed again and refused (the archive store's put fails):
+     * common 1.2.0, pinned by invoice and neither current nor previous, deployed again and refused (its record is not written):
      * the refusal deletes what it wrote, never the directory a record pins — invoice serves on and billing still resolves 1.2.0.
      */
     @Test
     void aRefusedRedeployOfAPinnedVersionKeepsItsDirectory() throws Exception {
         Node node = new Node("node-1");
-        Zipped c120 = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed c120 = committed(common("1.2.0", "UBL 1.2.0"));
         node.deploy(c120);
         node.deploy(invoice("1.0.0", c120.draft()));
         node.deploy(common("1.3.0", "UBL 1.3.0"));
         node.deploy(common("1.4.0", "UBL 1.4.0"));
-        assertTrue(Files.isDirectory(node.dir("common", c120.sha())), "fixture: 1.2.0 is on disk, pinned, neither current nor previous");
-        shelf.failNextPut(new IOException("the bucket is down"));
+        assertTrue(Files.isDirectory(node.dir("common", c120.hex())), "fixture: 1.2.0 is on disk, pinned, neither current nor previous");
+        records.failNextSave("the pool is down");
 
         DeployRefusedException refused = assertThrows(DeployRefusedException.class, () -> node.deploy(c120), "the redeploy of 1.2.0 is refused");
 
         assertEquals(Kind.FAILED, refused.kind(), refused.getMessage());
         assertEquals("1.4.0", node.pkg("common").version(), "fixture: 1.4.0 stays current");
-        assertTrue(Files.isRegularFile(node.dir("common", c120.sha()).resolve("xslt/to-ubl.xsl")), "the refusal leaves the directory invoice's record pins");
+        assertTrue(Files.isRegularFile(node.dir("common", c120.hex()).resolve("xslt/to-ubl.xsl")), "the refusal leaves the directory invoice's record pins");
         assertEquals(List.of("billing/to-ubl"), node.deploy(user("billing", "1.0.0", "common:xslt/to-ubl.xsl", c120.draft())).added(), "1.2.0 still resolves");
         assertEquals("UBL 1.2.0", node.reply("billing/to-ubl"));
     }
 
-    /** invoice FAILED at restore (its own archive gone) keeps its record's pin: a later deploy of common prunes 1.3.0's previous, not 1.2.0. */
+    /** invoice FAILED at restore (its own commit gone) keeps its record's pin: a later deploy of common prunes 1.3.0's previous, not 1.2.0. */
     @Test
     void aPackageFailedAtRestoreKeepsItsPinsFromPrune() throws Exception {
         Node first = new Node("node-1");
-        Zipped c120 = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed c120 = committed(common("1.2.0", "UBL 1.2.0"));
         first.deploy(c120);
-        Zipped invoice = Zipped.of(invoice("1.0.0", c120.draft()));
+        Committed invoice = committed(invoice("1.0.0", c120.draft()));
         first.deploy(invoice);
-        Zipped c130 = Zipped.of(common("1.3.0", "UBL 1.3.0"));
+        Committed c130 = committed(common("1.3.0", "UBL 1.3.0"));
         first.deploy(c130);
         first.deploy(common("1.4.0", "UBL 1.4.0"));
         first.close();
-        Files.delete(bucket.resolve(invoice.sha() + ".zip"));
+        repos.delete("invoice");
+        first.forgetGit();
         Node restarted = new Node("node-1b", first.data);
         restarted.restore();
         assertEquals(DeployedPackage.State.FAILED, restarted.pkg("invoice").state(), "fixture: invoice is FAILED");
-        assertTrue(Files.isDirectory(restarted.dir("common", c120.sha())), "fixture: 1.2.0 is on disk after the restore");
+        assertTrue(Files.isDirectory(restarted.dir("common", c120.hex())), "fixture: 1.2.0 is on disk after the restore");
 
         restarted.deploy(common("1.5.0", "UBL 1.5.0"));
 
-        assertFalse(Files.exists(restarted.dir("common", c130.sha())), "witness: 1.3.0, pinned by nobody, is pruned");
-        assertTrue(Files.isDirectory(restarted.dir("common", c120.sha())), "invoice's record, FAILED on this node, pins 1.2.0: kept");
+        assertFalse(Files.exists(restarted.dir("common", c130.hex())), "witness: 1.3.0, pinned by nobody, is pruned");
+        assertTrue(Files.isDirectory(restarted.dir("common", c120.hex())), "invoice's record, FAILED on this node, pins 1.2.0: kept");
     }
 
     /**
      * invoice 1.0.0 maps with common 1.2.0, whose stylesheet is then deleted from its directory; 1.0.1 (on common 1.3.0) does not
      * start: the rollback cannot build 1.0.0's flow again, and its line names the dependency file without an absolute path or the
-     * archive directory.
+     * package's directory.
      */
     @Test
     void aRollbackThatCannotRebuildFromADependencyNamesNoAbsolutePath() throws Exception {
         Node node = new Node("node-1");
-        Zipped c120 = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed c120 = committed(common("1.2.0", "UBL 1.2.0"));
         node.deploy(c120);
         node.deploy(invoice("1.0.0", c120.draft()));
         PackageDraft c130 = common("1.3.0", "UBL 1.3.0");
         node.deploy(c130);
-        Files.delete(node.dir("common", c120.sha()).resolve("xslt/to-ubl.xsl"));
+        Files.delete(node.dir("common", c120.hex()).resolve("xslt/to-ubl.xsl"));
         node.doors.failStartOf(FLOW, "address in use");
 
         DeployRefusedException refused = assertThrows(DeployRefusedException.class, () -> node.deploy(invoice("1.0.1", c130)), "1.0.1 does not start");
@@ -673,10 +700,10 @@ class DeploymentsDependenciesTest {
         assertEquals(1, again.size(), "a line says to-ubl does not build again: " + refused.problems());
         assertTrue(again.getFirst().contains("to-ubl.xsl"), "it names the file: " + again);
         assertNoAbsolutePath(refused.problems());
-        for (String l : refused.problems()) assertFalse(l.contains(c120.sha()), "no archive directory in '" + l + "'");
+        for (String l : refused.problems()) assertFalse(l.contains(c120.hex()), "no package directory in '" + l + "'");
     }
 
-    // --- review r1 (P2-02b)
+    // --- rollbacks over a dependency
 
     /**
      * invoice 1.0.0 on common 1.2.0; common 1.2.1 has the same bytes, so invoice 1.0.1 locking it swaps nothing and its flow runs on,
@@ -686,7 +713,7 @@ class DeploymentsDependenciesTest {
     @Test
     void aRollbackAfterALockBumpRebuildsFromTheDirTheFlowReads() throws Exception {
         Node node = new Node("node-1");
-        Zipped c120 = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed c120 = committed(common("1.2.0", "UBL 1.2.0"));
         node.deploy(c120);
         node.deploy(invoice("1.0.0", c120.draft()));
         PackageDraft c121 = common("1.2.1", "UBL 1.2.0");
@@ -702,64 +729,65 @@ class DeploymentsDependenciesTest {
         assertEquals("version 1.0.2 did not start; 1.0.1 runs again", refused.error(), "the rollback ran the flow again: " + refused.problems());
         assertEquals(DeployedFlow.State.RUNNING, node.deployments.flows().stream().filter(f -> f.id().equals(FLOW)).findFirst().orElseThrow().state());
         assertEquals("UBL 1.2.0", node.reply(FLOW), "rebuilt over 1.2.0's directory");
-        assertTrue(Files.isDirectory(node.dir("common", c120.sha())), "1.2.0's directory, in use by the running flow, was kept");
+        assertTrue(Files.isDirectory(node.dir("common", c120.hex())), "1.2.0's directory, in use by the running flow, was kept");
     }
 
     /**
      * invoice's flow reads common 1.2.0's directory through its build only (the lock bumped to 1.2.1 with the same bytes, then common
-     * 1.3.0): no record pins 1.2.0, it is neither current nor previous, but in use. A deploy of common at 1.2.0's archive, refused
-     * (the archive store's put fails), deletes what it wrote — never that directory; invoice answers as before.
+     * 1.3.0): no record pins 1.2.0, it is neither current nor previous, but in use. A deploy of common at 1.2.0's commit, refused
+     * (its record is not written), deletes what it wrote — never that directory; invoice answers as before.
      */
     @Test
     void aRefusedRedeployOfAVersionARunningFlowReadsKeepsItsDirectory() throws Exception {
         Node node = new Node("node-1");
-        Zipped c120 = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed c120 = committed(common("1.2.0", "UBL 1.2.0"));
         node.deploy(c120);
         node.deploy(invoice("1.0.0", c120.draft()));
         PackageDraft c121 = common("1.2.1", "UBL 1.2.0");
         node.deploy(c121);
         assertEquals(List.of(), node.deploy(invoice("1.0.1", c121)).swapped(), "fixture: the same bytes, nothing swaps");
         node.deploy(common("1.3.0", "UBL 1.3.0"));
-        assertTrue(records.rows().stream().flatMap(r -> r.dependencies().stream()).noneMatch(p -> p.archiveSha256().equals(c120.sha())),
+        assertTrue(records.rows().stream().flatMap(r -> r.dependencies().stream()).noneMatch(p -> p.commit().equals(c120.commit())),
                 "fixture: no record pins 1.2.0: " + records.rows());
-        assertTrue(Files.isDirectory(node.dir("common", c120.sha())), "fixture: 1.2.0's directory is kept, in use");
-        shelf.failNextPut(new IOException("the bucket is down"));
+        assertTrue(Files.isDirectory(node.dir("common", c120.hex())), "fixture: 1.2.0's directory is kept, in use");
+        records.failNextSave("the pool is down");
 
         DeployRefusedException refused = assertThrows(DeployRefusedException.class, () -> node.deploy(c120), "the redeploy of 1.2.0 is refused");
 
         assertEquals(Kind.FAILED, refused.kind(), refused.getMessage());
         assertEquals("1.3.0", node.pkg("common").version(), "fixture: 1.3.0 stays current");
-        assertTrue(Files.isRegularFile(node.dir("common", c120.sha()).resolve("xslt/to-ubl.xsl")), "the refusal leaves the directory the running flow reads");
+        assertTrue(Files.isRegularFile(node.dir("common", c120.hex()).resolve("xslt/to-ubl.xsl")), "the refusal leaves the directory the running flow reads");
         assertEquals("UBL 1.2.0", node.reply(FLOW));
     }
 
     /**
-     * invoice is FAILED at restore (its own archive gone): its record pins common 1.2.0, and no listed flow reads it. A deploy of
-     * common at 1.2.0's archive, refused (the archive store's put fails), leaves that directory.
+     * invoice is FAILED at restore (its own commit gone): its record pins common 1.2.0, and no listed flow reads it. A deploy of
+     * common at 1.2.0's commit, refused (its record is not written), leaves that directory.
      */
     @Test
     void aRefusedRedeployOfAVersionOnlyAFailedPackagePinsKeepsItsDirectory() throws Exception {
         Node first = new Node("node-1");
-        Zipped c120 = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed c120 = committed(common("1.2.0", "UBL 1.2.0"));
         first.deploy(c120);
-        Zipped invoice = Zipped.of(invoice("1.0.0", c120.draft()));
+        Committed invoice = committed(invoice("1.0.0", c120.draft()));
         first.deploy(invoice);
         first.deploy(common("1.3.0", "UBL 1.3.0"));
         first.deploy(common("1.4.0", "UBL 1.4.0"));
         first.close();
-        Files.delete(bucket.resolve(invoice.sha() + ".zip"));
+        repos.delete("invoice");
+        first.forgetGit();
         Node restarted = new Node("node-1b", first.data);
         restarted.restore();
         assertEquals(DeployedPackage.State.FAILED, restarted.pkg("invoice").state(), "fixture: invoice is FAILED");
         assertEquals(List.of(), restarted.deployments.flows(), "fixture: no listed flow reads 1.2.0");
-        assertTrue(Files.isDirectory(restarted.dir("common", c120.sha())), "fixture: 1.2.0's directory is on disk, pinned");
-        shelf.failNextPut(new IOException("the bucket is down"));
+        assertTrue(Files.isDirectory(restarted.dir("common", c120.hex())), "fixture: 1.2.0's directory is on disk, pinned");
+        records.failNextSave("the pool is down");
 
         DeployRefusedException refused = assertThrows(DeployRefusedException.class, () -> restarted.deploy(c120), "the redeploy of 1.2.0 is refused");
 
         assertEquals(Kind.FAILED, refused.kind(), refused.getMessage());
         assertEquals("1.4.0", restarted.pkg("common").version(), "fixture: 1.4.0 stays current");
-        assertTrue(Files.isRegularFile(restarted.dir("common", c120.sha()).resolve("xslt/to-ubl.xsl")), "invoice's FAILED record pins 1.2.0: the refusal leaves it");
+        assertTrue(Files.isRegularFile(restarted.dir("common", c120.hex()).resolve("xslt/to-ubl.xsl")), "invoice's FAILED record pins 1.2.0: the refusal leaves it");
     }
 
     /** package.lock with a byte 0xFF: the deploy is a 422 naming package.lock, not a node failure; nothing is listed. */
@@ -807,33 +835,39 @@ class DeploymentsDependenciesTest {
     }
 
     /**
-     * The archive store holds other bytes under the pin's SHA-256 — the same files zipped again, so the same content: at restore on
-     * an empty data directory invoice is FAILED naming the pin, and nothing of those bytes is unpacked; common runs.
+     * A lock pins common 1.2.0's content at a commit that holds other content (1.3.0's): the node that deployed it had that content
+     * on disk and fetched nothing, but at restore on an empty data directory invoice is FAILED naming the pin, and nothing of that
+     * commit is written under the pin's content; common runs.
      */
     @Test
-    void aPinWithOtherBytesInTheArchiveStoreIsFailedAtRestore() throws Exception {
+    void aPinWhoseCommitHoldsOtherContentIsFailedAtRestore() throws Exception {
         Node first = new Node("node-1");
-        Zipped c120 = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed c120 = committed(common("1.2.0", "UBL 1.2.0"));
         first.deploy(c120);
-        first.deploy(invoice("1.0.0", c120.draft()));
-        first.deploy(common("1.3.0", "UBL 1.3.0"));
-        byte[] other = c120.draft().zipWithDirectories(List.of("xslt/"));
-        assertFalse(PackageDraft.sha256(other).equals(c120.sha()), "fixture: other bytes, the same files");
-        Files.write(bucket.resolve(c120.sha() + ".zip"), other);
+        Committed c130 = committed(common("1.3.0", "UBL 1.3.0"));
+        PackageDraft edited = invoice("1.0.0", c120.draft());
+        JsonObject lock = new JsonObject(new String(edited.files().get("package.lock"), java.nio.charset.StandardCharsets.UTF_8));
+        lock.getJsonArray("dependencies").getJsonObject(0).put("commit", c130.commit());
+        edited.file("package.lock", lock.encodePrettily());
+        first.deploy(edited);
+        assertEquals(DeployedPackage.State.RUNNING, first.pkg("invoice").state(), "fixture: the node had the pinned content and fetched nothing");
+        first.deploy(c130);
+        assertEquals(List.of(new DeploymentRecord.Pin("common", "1.2.0", c120.content(), "common", c130.commit())), row("invoice").dependencies(),
+                "fixture: the record pins the lock's commit");
 
         Node second = new Node("node-2");
         second.restore();
 
         DeployedPackage invoice = second.pkg("invoice");
         assertEquals(DeployedPackage.State.FAILED, invoice.state(), invoice.toString());
-        assertTrue(invoice.problems().stream().anyMatch(l -> l.contains("common@1.2.0") && l.contains(c120.sha())), "a line names the pin: " + invoice.problems());
-        assertEquals(1, second.fetches.fetchesOf(c120.sha()), "fixture: the pin was fetched");
-        assertFalse(Files.exists(second.dir("common", c120.sha())), "nothing of the other bytes is unpacked under the pin's key");
+        assertTrue(invoice.problems().contains("dependency common@1.2.0: common at " + c130.commit() + " holds common@1.3.0"), "a line names the pin: "
+                + invoice.problems());
+        assertFalse(Files.exists(second.dir("common", c120.hex())), "nothing of that commit is written under the pin's content");
         assertTrue(second.doors.doors().stream().noneMatch(d -> d.flow().equals(FLOW) && d.started()), "invoice's consumer never started");
         assertEquals(DeployedPackage.State.RUNNING, second.pkg("common").state(), "common runs");
     }
 
-    /** Fixture self-check: the lock helper writes what D-087 names, so a red above is the node's, not the fixture's. */
+    /** Fixture self-check: the lock helper writes the documented shape, so a red above is the node's, not the fixture's. */
     @Test
     void theFixtureLockIsTheDocumentedShape() {
         PackageDraft c = common("1.2.0", "x");

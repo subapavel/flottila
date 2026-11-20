@@ -428,6 +428,18 @@ abstract class PackageRepositoriesContract {
     }
 
     @Test
+    void closeCancelsTheDeadline() throws Exception {
+        String orders = source.commit("orders", "main", pkg("orders"));
+        PackageRepositories deploy = cache(Options.defaults()).open();
+        deploy.forDeploy("orders", orders);
+        assertEquals(1, timer.pending(), "fixture: the fetch started the deadline");
+
+        deploy.close();
+
+        assertEquals(0, timer.pending(), "no timer task is left once the deploy's reads end");
+    }
+
+    @Test
     void freesTheRepositoriesNothingNamesWhenTheCacheIsFull() throws Exception {
         Random random = new Random(7);
         byte[] big = new byte[3 << 19];

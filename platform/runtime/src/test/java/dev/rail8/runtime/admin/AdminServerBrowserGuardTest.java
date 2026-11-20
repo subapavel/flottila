@@ -15,6 +15,7 @@ import dev.rail8.core.record.Page;
 import dev.rail8.core.record.Snapshot;
 import dev.rail8.runtime.deploy.Deployments;
 import dev.rail8.runtime.deploy.Doors;
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.testkit.FakeRuntime;
@@ -82,6 +83,8 @@ class AdminServerBrowserGuardTest {
     final AdminServerWorkTest.RecordingQueue queue = new AdminServerWorkTest.RecordingQueue(rows);
     final List<AdminServer> started = new ArrayList<>();
     Deployments deployments;
+    GitRepos repos;
+    String shop;   // the commit of shop in its repository
     long seq;
 
     @BeforeAll
@@ -102,6 +105,9 @@ class AdminServerBrowserGuardTest {
         env.put("RAIL8_ENV", "dev");
         env.put("RAIL8_NODE_ID", "node-1");
         env.put("RAIL8_DATA_DIR", tmp.resolve("data").toString());
+        repos = new GitRepos(tmp.resolve("repos"));
+        env.put("RAIL8_GIT_BASE", repos.base().toString());
+        shop = repos.commit(AdminServerDeployTest.shop());
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
         deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(),
                 messages, new InMemoryDlq(), rows, () -> 0L);
@@ -156,14 +162,14 @@ class AdminServerBrowserGuardTest {
         return h;
     }
 
-    /** One route of each method: GET a timeline, PUT a package, POST a release, POST a retry. */
+    /** A route of each method and kind: GET a timeline, POST a deploy, POST a release, POST a retry. */
     record Route(HttpMethod method, String path, byte[] body) {
         @Override public String toString() { return method + " " + path; }
     }
 
     List<Route> routes() {
         return List.of(new Route(HttpMethod.GET, "/admin/messages/m-404", null),
-                new Route(HttpMethod.PUT, "/admin/packages/shop", AdminServerDeployTest.shop().zip()),
+                new Route(HttpMethod.POST, "/admin/deploy", AdminServerDeployTest.body("shop", shop)),
                 new Route(HttpMethod.POST, "/admin/work/" + seq + "/release", null),
                 new Route(HttpMethod.POST, RETRY, null));
     }
@@ -232,7 +238,7 @@ class AdminServerBrowserGuardTest {
 
     /**
      * What curl and the CLI send — no Origin, no Sec-Fetch-Site — and {@code Sec-Fetch-Site: none} (a typed URL) pass the guard:
-     * the token check and the routes answer as before (GET a timeline 404, PUT a package 200, POST a release 200, POST a retry 404).
+     * the token check and the routes answer as before (GET a timeline 404, POST a deploy 200, POST a release 200, POST a retry 404).
      */
     @Test
     void aCurlStyleRequestWithoutOriginPasses() throws Exception {
@@ -241,8 +247,8 @@ class AdminServerBrowserGuardTest {
         assertEquals(404, send(port, HttpMethod.GET, "/admin/messages/m-404", headers("Authorization", AUTH, "Sec-Fetch-Site", "none"), null).status(),
                 "Sec-Fetch-Site: none passes");
         assertEquals(List.of("m-404", "m-404"), messages.timelines, "both reached the route");
-        Answer put = send(port, HttpMethod.PUT, "/admin/packages/shop", headers("Authorization", AUTH, "Sec-Fetch-Site", "none"), AdminServerDeployTest.shop().zip());
-        assertEquals(200, put.status(), "PUT deploys: " + put.body());
+        Answer deployed = send(port, HttpMethod.POST, "/admin/deploy", headers("Authorization", AUTH, "Sec-Fetch-Site", "none"), AdminServerDeployTest.body("shop", shop));
+        assertEquals(200, deployed.status(), "POST deploys: " + deployed.body());
         assertEquals(List.of("shop"), deployments.packages().stream().map(p -> p.name()).toList());
         assertEquals(200, send(port, HttpMethod.POST, "/admin/work/" + seq + "/release", headers("Authorization", AUTH), null).status(), "POST releases");
         assertEquals(List.of(seq), queue.releases);
@@ -252,7 +258,7 @@ class AdminServerBrowserGuardTest {
     }
 
     /**
-     * The guard runs before the token check: on GET, PUT and POST, with Origin or with Sec-Fetch-Site cross-site, no token, a
+     * The guard runs before the token check: on GET and POST, with Origin or with Sec-Fetch-Site cross-site, no token, a
      * wrong token and the right one are all 403 — never 401 — and reach nothing. On an open loopback server (no token configured)
      * the guard applies all the same. Witness: without the browser headers and without a token, the same requests are 401.
      */

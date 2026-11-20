@@ -69,15 +69,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * {@code RecordingComponent}), in-memory message store, DLQ and work queue, and a fake clock that drives every timer —
  * worker ticks and stop deadlines — so nothing here waits on wall time.
  *
- * <p>The shape these tests assume (P1-09d1b test-author): in {@code dev.rail8.runtime.deploy}, {@code Deployments(NodeConfig,
- * Runtime, Map<String, Component>, Clock, Timer, List<StepFactory>, List<Expressions>, MessageStore, Dlq, WorkQueue, Meter)} (the
- * {@code Timer} since P1-09d2c, the runtime's own, passed explicitly) with {@code deploy(String
- * name, Optional<String> revision, Path archive)} (its {@code DeployResult.pkg()} the {@code DeployedPackage} deployed since P1-09d2b, which made
- * a deploy of a running package a redeploy: {@code DeploymentsRedeployTest}), {@code List<DeployedFlow> flows()}, {@code List<DeployedPackage> packages()},
- * {@code long maxPackageBytes()}, {@code Path incomingDir()}, {@code void close()}; {@code DeployRefusedException} with
- * {@code kind()}, {@code error()}, {@code problems()} and the nested enum {@code Kind}; record accessors {@code DeployedPackage}
- * {@code name(), version(), revision(), archiveSha256()} (lower-case hex, no prefix){@code , deployedAt(), flows(), files()} with
- * files' {@code path(), sha256()}; {@code DeployedFlow} {@code id(), pkg(), packageVersion(), revision(), flowVersion(), delivery()}.
+ * <p>Each package is committed to a {@link GitRepos} repository of its name and deployed at that commit, as
+ * {@code deploy(repository, commit, actor)} on a node whose {@code RAIL8_GIT_BASE} names those repositories.
  */
 class DeploymentsTest {
 
@@ -89,7 +82,7 @@ class DeploymentsTest {
 
     @TempDir Path tmp;
     Path data;
-    Path archives;
+    GitRepos repos;
 
     final FakeRuntime rt = FakeRuntime.create();
     final Doors doors = new Doors();
@@ -104,7 +97,7 @@ class DeploymentsTest {
     @BeforeEach
     void wire() {
         data = tmp.resolve("data");
-        archives = tmp.resolve("archives");
+        repos = new GitRepos(tmp.resolve("repos"));
         timer = new TracingTimer(rt.timer());
         queue = new CountingQueue(rt.clock());
         config = NodeConfig.from(env("dev"));
@@ -127,6 +120,9 @@ class DeploymentsTest {
         env.put("RAIL8_STOP_DEADLINE", STOP_DEADLINE.toString());
         env.put("RAIL8_BLOB_DURABLE_MAX", Long.toString(DURABLE_MAX));
         env.put("RAIL8_MAX_PACKAGE_BYTES", Long.toString(MAX_PACKAGE));
+        boolean deployed = !rail8Env.equals("dev") && !rail8Env.equals("ci");   // a deployed node reads its repositories over https only
+        env.put("RAIL8_GIT_BASE", deployed ? GitRepos.UNSERVED : repos.base().toString());
+        if (deployed) env.put("RAIL8_GIT_REF", "refs/heads/main");
         return env;
     }
 
@@ -171,22 +167,29 @@ class DeploymentsTest {
         return p;
     }
 
-    /** The package a deploy answers (P1-09d2b: {@code DeployResult.pkg()}). */
-    DeployedPackage deploy(String name, Optional<String> revision, Path archive) throws Exception {
-        return OnVirtualThread.call(() -> deployments.deploy(name, revision, archive)).pkg();
+    /** Commits {@code p} to {@code repository}; the deploy of that commit on {@code d}, started. */
+    OnVirtualThread.Call<DeployResult> deploying(Deployments d, String repository, PackageDraft p) {
+        String commit = repos.commit(repository, p);
+        return OnVirtualThread.start(() -> d.deploy(repository, commit, "test"));
     }
 
+    /** The package a deploy of {@code p}, committed to the repository of its name, answers. */
     DeployedPackage deploy(PackageDraft p) throws Exception {
-        return deploy(p.manifest().getString("name"), Optional.empty(), p.zipTo(archives));
+        return OnVirtualThread.join(deploying(deployments, p.name(), p)).pkg();
     }
 
-    DeployRefusedException refused(Deployments d, String name, Optional<String> revision, Path archive) {
-        return assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> d.deploy(name, revision, archive)),
-                "the deploy of " + name + " is refused");
+    DeployRefusedException refused(Deployments d, String repository, PackageDraft p) throws Exception {
+        return joinRefused(deploying(d, repository, p), "the deploy of " + repository + " is refused");
     }
 
-    DeployRefusedException refused(String name, Optional<String> revision, Path archive) {
-        return refused(deployments, name, revision, archive);
+    DeployRefusedException refused(String repository, PackageDraft p) throws Exception {
+        return refused(deployments, repository, p);
+    }
+
+    /** The refusal of a deploy of {@code commitOrRef} of {@code repository} on {@code d}. */
+    static DeployRefusedException refused(Deployments d, String repository, String commitOrRef) {
+        return assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> d.deploy(repository, commitOrRef, "test")),
+                "the deploy of " + repository + " at " + commitOrRef + " is refused");
     }
 
     /** A message sent through a consumer, and its answer. */
@@ -225,6 +228,11 @@ class DeploymentsTest {
         }
     }
 
+    /** The name of the directory a package of {@code content} is written into: the hex of its digest. */
+    static String hex(String content) {
+        return content.substring("sha256:".length());
+    }
+
     /** The refusal {@code call} ends with, within {@link #BOUND}; anything else fails naming {@code what}. */
     static DeployRefusedException joinRefused(OnVirtualThread.Call<?> call, String what) throws Exception {
         try {
@@ -256,6 +264,11 @@ class DeploymentsTest {
         }
     }
 
+    /** Every regular file below the data directory but its git cache, which keeps each commit fetched ({@link #regularFiles}). */
+    List<String> unpacked() throws IOException {
+        return regularFiles(data).stream().filter(f -> !f.startsWith("git/")).toList();
+    }
+
     /** The entries directly in {@code dir}; empty when it does not exist. */
     static List<String> children(Path dir) throws IOException {
         if (!Files.exists(dir)) return List.of();
@@ -264,9 +277,9 @@ class DeploymentsTest {
         }
     }
 
-    /** A listed flow as one line: {@code <id> <pkg>@<packageVersion> rev=<revision|-> flow@<flowVersion> <delivery>}. */
+    /** A listed flow as one line: {@code <id> <pkg>@<packageVersion> commit=<commit|-> flow@<flowVersion> <delivery>}. */
     static Set<String> rows(List<DeployedFlow> flows) {
-        return flows.stream().map(f -> f.id() + " " + f.pkg() + "@" + f.packageVersion() + " rev=" + f.revision().orElse("-") + " flow@" + f.flowVersion() + " " + f.delivery())
+        return flows.stream().map(f -> f.id() + " " + f.pkg() + "@" + f.packageVersion() + " commit=" + f.commit().orElse("-") + " flow@" + f.flowVersion() + " " + f.delivery())
                 .collect(Collectors.toSet());
     }
 
@@ -297,25 +310,25 @@ class DeploymentsTest {
     @Test
     void aFirstDeployStartsEveryFlowAndListsIt() throws Exception {
         PackageDraft shop = shop("shop");
-        byte[] zip = shop.zip();
-        assertEquals(MAX_PACKAGE, deployments.maxPackageBytes(), "the package limit is the node's RAIL8_MAX_PACKAGE_BYTES");
         assertTrue(deployments.incomingDir().startsWith(data) && deployments.incomingDir().getFileName().toString().equals(".incoming"),
-                "uploads and unpacks land in .incoming under the data directory (one file system: the move is atomic): " + deployments.incomingDir());
+                "commits are written into .incoming under the data directory (one file system: the move is atomic): " + deployments.incomingDir());
 
-        DeployedPackage p = deploy("shop", Optional.empty(), PackageDraft.write(archives, zip));
+        DeployedPackage p = deploy(shop);
 
         assertEquals("shop", p.name());
         assertEquals("1.0.0", p.version());
-        assertEquals(Optional.empty(), p.revision());
-        assertEquals(PackageDraft.sha256(zip), p.archiveSha256(), "the archive's SHA-256 as lower-case hex");
+        assertEquals(Optional.of("shop"), p.repository());
+        assertEquals(Optional.of(shop.commit()), p.commit(), "the commit's full id");
+        assertEquals(shop.content(), p.content(), "the content digest of the package's files");
         assertEquals(List.of("shop/audit", "shop/orders", "shop/ping"), sorted(p.flows()), "every flow, by its qualified id");
-        assertEquals(Set.of("shop/audit shop@1.0.0 rev=- flow@1.0.3 at-least-once", "shop/orders shop@1.0.0 rev=- flow@2.1.0 sync",
-                "shop/ping shop@1.0.0 rev=- flow@0.0.1 at-most-once"), rows(deployments.flows()), "flows() lists every flow of the package");
+        String at = " commit=" + shop.commit();
+        assertEquals(Set.of("shop/audit shop@1.0.0" + at + " flow@1.0.3 at-least-once", "shop/orders shop@1.0.0" + at + " flow@2.1.0 sync",
+                "shop/ping shop@1.0.0" + at + " flow@0.0.1 at-most-once"), rows(deployments.flows()), "flows() lists every flow of the package with its commit");
         assertEquals(List.of("shop"), deployments.packages().stream().map(DeployedPackage::name).toList(), "packages() lists the package");
 
-        Path dir = data.resolve("packages").resolve("shop").resolve(p.archiveSha256());
+        Path dir = data.resolve("packages").resolve("shop").resolve(hex(p.content()));
         for (Map.Entry<String, byte[]> f : shop.files().entrySet()) {
-            assertArrayEquals(f.getValue(), Files.readAllBytes(dir.resolve(f.getKey())), "<dataDir>/packages/<name>/<sha256>/" + f.getKey());
+            assertArrayEquals(f.getValue(), Files.readAllBytes(dir.resolve(f.getKey())), "<dataDir>/packages/<name>/<content hex>/" + f.getKey());
         }
         assertEquals(List.of(), children(deployments.incomingDir()), "nothing is left in .incoming: the unpacked directory was moved");
         for (String flow : List.of("shop/orders", "shop/audit", "shop/ping")) assertTrue(doors.door(flow).started(), flow + "'s consumer started: " + doors.events());
@@ -391,8 +404,6 @@ class DeploymentsTest {
         Map<String, List<String>> words = new LinkedHashMap<>();
         one.put("a document its schema refuses", p -> p.endpoint("spare", "sideways", new JsonObject()));
         words.put("a document its schema refuses", List.of("endpoints/spare.yaml at '/direction'"));
-        one.put("the manifest names another package", p -> p.manifest().put("name", "store"));
-        words.put("the manifest names another package", List.of("store", "shop"));
         one.put("dependencies", p -> p.manifest().put("dependencies", new JsonArray().add(new JsonObject().put("name", "common").put("version", "1.0.0"))));
         words.put("dependencies", List.of("dependencies"));
         one.put("a scheme no component on the node serves", p -> p.endpoint("archive", "sftp", "out", new JsonObject().put("url", "sftp://archive")));
@@ -489,7 +500,7 @@ class DeploymentsTest {
         PackageDraft p = shop("shop");
         breaks.accept(p);
 
-        DeployRefusedException refused = refused("shop", Optional.empty(), p.zipTo(archives));
+        DeployRefusedException refused = refused("shop", p);
 
         String all = refused.error() + "\n  " + String.join("\n  ", refused.problems());
         assertEquals(Kind.INVALID, refused.kind(), rule + ": " + all);
@@ -503,7 +514,7 @@ class DeploymentsTest {
         assertEquals(List.of(), startEvents(), "no consumer of the invalid package was started: " + doors.events());
         assertEquals(List.of(), deployments.flows(), "nothing is listed");
         assertEquals(List.of(), deployments.packages(), "no package is listed");
-        assertEquals(List.of(), regularFiles(data), "the unpacked package is deleted");
+        assertEquals(List.of(), unpacked(), "the unpacked package is deleted");
         rt.clock().advance(Duration.ofHours(1));
         assertEquals(List.of(), queue.claims(), "no worker of the invalid package polls");
     }
@@ -576,7 +587,7 @@ class DeploymentsTest {
         PackageDraft p = shop("shop");
         steps(p, "orders", new JsonObject().put("type", OptionSchemaSteps.Garbled.TYPE).put("name", "g"));
 
-        DeployRefusedException refused = refused(d, "shop", Optional.empty(), p.zipTo(archives));
+        DeployRefusedException refused = refused(d, "shop", p);
 
         assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
         assertEquals(1, refused.problems().size(), "one line for the step whose factory's schema is unusable: " + refused.problems());
@@ -591,7 +602,7 @@ class DeploymentsTest {
         PackageDraft p = shop("shop");
         steps(p, "orders", new JsonObject().put("type", "frobnicate").put("name", "f").put("template", 7));
 
-        DeployRefusedException refused = refused("shop", Optional.empty(), p.zipTo(archives));
+        DeployRefusedException refused = refused("shop", p);
 
         assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
         assertEquals(1, refused.problems().size(), "one line: " + refused.problems());
@@ -608,14 +619,14 @@ class DeploymentsTest {
                 .flow("orders", "1.0.0", "sync", "orders-in", 1024, PackageDraft.toPartner())
                 .flow("loop", "1.0.0", "sync", "partner", 1024, PackageDraft.toPartner());
 
-        DeployRefusedException refused = refused("shop", Optional.empty(), p.zipTo(archives));
+        DeployRefusedException refused = refused("shop", p);
 
         assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
         assertTrue(refused.problems().stream().anyMatch(l -> l.contains("loop") && l.contains("partner")),
                 "a problem names the flow and its out endpoint: " + refused.problems());
         assertEquals(List.of(), doors.events(), "no consumer was built, on the out endpoint or any other: " + doors.events());
         assertEquals(List.of(), deployments.flows());
-        assertEquals(List.of(), regularFiles(data), "the unpacked package is deleted");
+        assertEquals(List.of(), unpacked(), "the unpacked package is deleted");
     }
 
     @Test
@@ -632,7 +643,7 @@ class DeploymentsTest {
 
         PackageDraft over = flows("over", Map.of("audit", "at-least-once"));
         over.flowDoc("audit").getJsonObject("limits").put("maxBodyBytes", DURABLE_MAX + 1);
-        DeployRefusedException refused = refused("over", Optional.empty(), over.zipTo(archives));
+        DeployRefusedException refused = refused("over", over);
 
         assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
         assertTrue(refused.problems().stream().anyMatch(l -> l.contains("audit") && l.contains(Long.toString(DURABLE_MAX))),
@@ -647,19 +658,18 @@ class DeploymentsTest {
         NodeConfig prod = NodeConfig.from(env("prod"));
         assertTrue(prod.deployed(), "fixture: prod is a deployed environment");
         Deployments d = deployments(prod);
-        Path archive = shop("shop").zipTo(archives);
+        String commit = repos.commit(shop("shop"));
 
-        DeployRefusedException refused = refused(d, "shop", Optional.empty(), archive);
+        DeployRefusedException refused = refused(d, "shop", commit);
 
         assertEquals(Kind.FORBIDDEN, refused.kind(), refused.error());
         assertEquals("manual deploy is non-production only (ARCHITECTURE §9)", refused.error());
         assertEquals(List.of(), refused.problems(), "a 403 is {error} only");
-        assertEquals(Kind.FORBIDDEN, refused(d, "shop", Optional.empty(), archives.resolve("no-such.zip")).kind(),
-                "refused before the archive is read: a path where no file is gives the same 403");
-        assertEquals(Kind.BAD_REQUEST, refused(d, "Shop", Optional.empty(), archive).kind(), "the name is checked first (deploy order 1)");
-        assertEquals(Kind.BAD_REQUEST, refused(d, "shop", Optional.of("not a revision"), archive).kind(), "and the revision");
+        assertEquals(Kind.FORBIDDEN, refused(d, "no-such-repository", commit).kind(), "refused before anything is fetched: a repository that is not there gives the same 403");
+        assertEquals(Kind.BAD_REQUEST, refused(d, "Shop!", commit).kind(), "the repository is checked first (deploy order 1)");
+        assertEquals(Kind.BAD_REQUEST, refused(d, "shop", "not a ref").kind(), "and the commit");
         OnVirtualThread.call(() -> { d.close(); return null; });
-        assertEquals(Kind.FORBIDDEN, refused(d, "shop", Optional.empty(), archive).kind(), "a closing node in a deployed environment answers 403 too (order 2 before 3)");
+        assertEquals(Kind.FORBIDDEN, refused(d, "shop", commit).kind(), "a closing node in a deployed environment answers 403 too (order 2 before 3)");
         assertEquals(List.of(), doors.events(), "no consumer was built");
         assertEquals(List.of(), regularFiles(data), "nothing was written");
     }
@@ -680,7 +690,8 @@ class DeploymentsTest {
 
         assertEquals(List.of("shop/orders"), a.flows());
         assertEquals(List.of("store/orders"), b.flows());
-        assertEquals(Set.of("shop/orders shop@1.0.0 rev=- flow@2.1.0 sync", "store/orders store@3.0.0 rev=- flow@5.0.0 sync"), rows(deployments.flows()),
+        assertEquals(Set.of("shop/orders shop@1.0.0 commit=" + shop.commit() + " flow@2.1.0 sync", "store/orders store@3.0.0 commit=" + store.commit()
+                + " flow@5.0.0 sync"), rows(deployments.flows()),
                 "flow ids are unique per package only: both are listed, qualified");
         assertEquals(Set.of("shop", "store"), deployments.packages().stream().map(DeployedPackage::name).collect(Collectors.toSet()));
         assertEquals("/shop", doors.door("shop/orders").cfg().options().get("path"), "each package's consumer has its own endpoint's config");
@@ -704,12 +715,10 @@ class DeploymentsTest {
     @Test
     void aDeployWhileOneRunsIs409() throws Exception {
         Doors.Gate gate = doors.holdStart(1);
-        Path first = shop("shop").zipTo(archives);
-        OnVirtualThread.Call<DeployResult> running = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), first));
+        OnVirtualThread.Call<DeployResult> running = deploying(deployments, "shop", shop("shop"));
         reached(gate.reached(), "the first deploy starts its first consumer", running);
 
-        Path second = shop("store").zipTo(archives);
-        DeployRefusedException refused = joinRefused(OnVirtualThread.start(() -> deployments.deploy("store", Optional.empty(), second)),
+        DeployRefusedException refused = joinRefused(deploying(deployments, "store", shop("store")),
                 "a deploy while another runs answers at once (it does not wait for the lock)");
 
         assertEquals(Kind.CONFLICT, refused.kind(), refused.error());
@@ -721,20 +730,19 @@ class DeploymentsTest {
         assertEquals("store", deploy(shop("store")).name(), "the lock is free again once the first deploy is done");
     }
 
-    /** Deploy order 4: a directory an earlier node left at {@code <name>/<sha256>} (nothing deployed here) is replaced by the unpack, not merged. */
+    /** A directory an earlier node left at {@code <name>/<content hex>} (nothing deployed here) is replaced by the write, not merged. */
     @Test
-    void aLeftoverDirectoryOfTheSameArchiveIsReplaced() throws Exception {
+    void aLeftoverDirectoryOfTheSameContentIsReplaced() throws Exception {
         PackageDraft p = shop("shop");
-        byte[] zip = p.zip();
-        Path dir = data.resolve("packages").resolve("shop").resolve(PackageDraft.sha256(zip));
+        Path dir = data.resolve("packages").resolve("shop").resolve(hex(p.content()));
         Files.createDirectories(dir.resolve("flows"));
         Files.writeString(dir.resolve("stale.txt"), "left by an earlier node");
         Files.writeString(dir.resolve("package.yaml"), "not the archive's manifest");
 
-        DeployedPackage deployed = deploy("shop", Optional.empty(), PackageDraft.write(archives, zip));
+        DeployedPackage deployed = deploy(p);
 
         assertEquals(List.of("shop/audit", "shop/orders", "shop/ping"), sorted(deployed.flows()));
-        assertEquals(new ArrayList<>(p.files().keySet()), regularFiles(dir), "the directory holds exactly the archive's files: the leftover was replaced");
+        assertEquals(new ArrayList<>(p.files().keySet()), regularFiles(dir), "the directory holds exactly the commit's files: the leftover was replaced");
         assertArrayEquals(p.files().get("package.yaml"), Files.readAllBytes(dir.resolve("package.yaml")));
     }
 
@@ -742,44 +750,35 @@ class DeploymentsTest {
 
     /** After a refusal at any stage past the name checks no file of the package is left under the data directory. */
     @ParameterizedTest(name = "{0}")
-    @ValueSource(strings = {"not a zip", "a zip-slip entry", "an invalid package", "a consumer that does not start"})
+    @ValueSource(strings = {"a manifest whose name is a path", "an invalid package", "a consumer that does not start"})
     void aRefusedDeployLeavesNoDirectory(String why) throws Exception {
-        Path archive;
+        PackageDraft p = shop("shop");
         Kind expected;
         switch (why) {
-            case "not a zip" -> {
-                archive = PackageDraft.write(archives, "this is no zip archive".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                expected = Kind.BAD_REQUEST;
-            }
-            case "a zip-slip entry" -> {
-                Map<String, byte[]> entries = new LinkedHashMap<>(shop("shop").files());   // good entries first
-                entries.put("../escaped.txt", "out of the package".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                archive = PackageDraft.write(archives, PackageDraft.zip(entries, List.of()));
-                expected = Kind.BAD_REQUEST;
+            case "a manifest whose name is a path" -> {
+                p.manifest().put("name", "../escaped");
+                expected = Kind.INVALID;
             }
             case "an invalid package" -> {
-                PackageDraft p = shop("shop");
                 p.manifest().put("dependencies", new JsonArray().add(new JsonObject().put("name", "common").put("version", "1.0.0")));
-                archive = p.zipTo(archives);
                 expected = Kind.INVALID;
             }
             case "a consumer that does not start" -> {
                 doors.failStart(2, "address in use");
-                archive = shop("shop").zipTo(archives);
                 expected = Kind.FAILED;
             }
             default -> throw new IllegalArgumentException(why);
         }
 
-        DeployRefusedException refused = refused("shop", Optional.empty(), archive);
+        DeployRefusedException refused = refused("shop", p);
 
         assertEquals(expected, refused.kind(), why + ": " + refused.error() + " " + refused.problems());
-        assertEquals(List.of(), regularFiles(data).stream().filter(f -> !f.startsWith("archives/")).toList(), "no file of the package is left under the data directory");
-        if (expected != Kind.FAILED) assertEquals(List.of(), regularFiles(data.resolve("archives")), "a refusal before the put stores no archive (D-070: only a later phase's refusal leaves an orphan)");
-        assertFalse(Files.exists(data.resolve("packages").resolve("shop").resolve(PackageDraft.sha256(archive))), "no <name>/<sha256> directory");
-        assertFalse(Files.exists(data.resolve("packages").resolve("shop")), "the refused first deploy of shop leaves no packages/shop/ directory either");
+        assertEquals(List.of(), unpacked(), "no file of the package is left under the data directory");
+        assertFalse(Files.exists(data.resolve("packages").resolve("shop")), "the refused first deploy of shop leaves no packages/shop/ directory");
+        assertFalse(Files.exists(data.resolve("escaped")), "nor one its manifest's name points at");
         assertEquals(List.of(), children(deployments.incomingDir()), "nothing is left in .incoming");
-        assertTrue(regularFiles(tmp).stream().allMatch(f -> f.startsWith("archives/") || f.startsWith("data/archives/")), "nothing was written outside the data directory either: " + regularFiles(tmp));
+        assertTrue(regularFiles(tmp).stream().allMatch(f -> f.startsWith("repos/") || f.startsWith("data/git/")),
+                "nothing was written outside the data directory and the git cache either: " + regularFiles(tmp));
         assertEquals(List.of(), deployments.flows());
         assertEquals(List.of(), deployments.packages());
     }
@@ -802,9 +801,8 @@ class DeploymentsTest {
         modes.put("refunds", "sync");
         modes.put("relay", "at-least-once");
         PackageDraft shop = flows("shop", modes);
-        Path archive = shop.zipTo(archives);
         Doors.Gate fourth = doors.holdStart(4);
-        OnVirtualThread.Call<DeployResult> deploying = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), archive));
+        OnVirtualThread.Call<DeployResult> deploying = deploying(deployments, "shop", shop);
         reached(fourth.reached(), "the package's fourth consumer start", deploying);
 
         List<Doors.Door> shopDoors = doors.doors().stream().filter(d -> d.flow().startsWith("shop/")).toList();
@@ -837,7 +835,7 @@ class DeploymentsTest {
         assertFalse(doors.door("store/orders").stopped(), "another package's flow keeps running");
         assertEquals(otherListed, rows(deployments.flows()), "only the other package's flows are listed");
         assertEquals(List.of("store"), deployments.packages().stream().map(DeployedPackage::name).toList());
-        assertFalse(Files.exists(data.resolve("packages").resolve("shop").resolve(PackageDraft.sha256(archive))), "the package's directory is deleted");
+        assertFalse(Files.exists(data.resolve("packages").resolve("shop").resolve(hex(shop.content()))), "the package's directory is deleted");
 
         assertEquals(4, deploy(shop).flows().size(), "the name is free: the same package deploys once its consumers start");
     }
@@ -845,8 +843,9 @@ class DeploymentsTest {
     // --- versions on every message
 
     @Test
-    void messagesCarryPackageAndRevisionNoRevisionKeyWithoutOne() throws Exception {
-        deploy("shop", Optional.of("9df3f78"), shop("shop").zipTo(archives));
+    void messagesCarryPackageAndCommitNoCommitKeyWithoutOne() throws Exception {
+        PackageDraft shop = shop("shop");
+        deploy(shop);
 
         Sent m = send("shop/orders");
         assertInstanceOf(Ack.Reply.class, within(m.answer(), "the sync answer"));
@@ -854,7 +853,7 @@ class DeploymentsTest {
         assertFalse(timeline.isEmpty(), "fixture: the flow records its messages");
         for (Snapshot s : timeline) {
             assertEquals("shop/orders", s.flow());
-            assertEquals(Map.of("flow", "shop/orders@2.1.0", "package", "shop@1.0.0", "revision", "9df3f78"), s.versions(), "snapshot " + s.stepName());
+            assertEquals(Map.of("flow", "shop/orders@2.1.0", "package", "shop@1.0.0", "commit", shop.commit()), s.versions(), "snapshot " + s.stepName());
         }
 
         doors.partner().failNext(1, () -> new NackException("partner refused", false));   // CORE-14a: a final failure parks at once
@@ -863,17 +862,18 @@ class DeploymentsTest {
         until(() -> dlq.size() == 1, "the worker parks the message the partner refused");
         Parked row = dlq.get(parked.id()).await().orElseThrow();
         assertEquals("shop/audit", row.flow(), "a DLQ row names the qualified flow");
-        assertEquals(Map.of("flow", "shop/audit@1.0.3", "package", "shop@1.0.0", "revision", "9df3f78"), row.versions(), "a DLQ row carries the same versions");
+        assertEquals(Map.of("flow", "shop/audit@1.0.3", "package", "shop@1.0.0", "commit", shop.commit()), row.versions(), "a DLQ row carries the same versions");
 
         PackageDraft store = shop("store");
         store.manifest().put("version", "3.0.0");
-        deploy(store);
+        Path folder = store.folderIn(tmp.resolve("folders"));
+        OnVirtualThread.call(() -> deployments.deploy("store", folder));   // a deploy from a folder: no commit
         Sent n = send("store/orders");
         assertInstanceOf(Ack.Reply.class, within(n.answer(), "the sync answer"));
-        List<Snapshot> noRevision = messages.timeline(n.id()).await();
-        assertFalse(noRevision.isEmpty(), "fixture: the flow records its messages");
-        for (Snapshot s : noRevision) {
-            assertEquals(Map.of("flow", "store/orders@2.1.0", "package", "store@3.0.0"), s.versions(), "without a revision there is no revision key: " + s.stepName());
+        List<Snapshot> noCommit = messages.timeline(n.id()).await();
+        assertFalse(noCommit.isEmpty(), "fixture: the flow records its messages");
+        for (Snapshot s : noCommit) {
+            assertEquals(Map.of("flow", "store/orders@2.1.0", "package", "store@3.0.0"), s.versions(), "without a commit there is no commit key: " + s.stepName());
         }
     }
 
@@ -910,7 +910,7 @@ class DeploymentsTest {
         assertEquals(Boolean.FALSE, tickLiveAtAuditStop.get(), "the worker was stopped before its consumer: its tick was cancelled first");
         assertFalse(orders.answer().isComplete() || refunds.answer().isComplete(), "both messages are still in flight");
         assertFalse(closing.isDone(), "close waits for them");
-        assertEquals(Kind.STOPPING, refused("store", Optional.empty(), shop("store").zipTo(archives)).kind(), "a deploy while closing is 503");
+        assertEquals(Kind.STOPPING, refused("store", shop("store")).kind(), "a deploy while closing is 503");
         until(() -> timer.all().stream().filter(t -> t.owner().equals("Delivery") && t.delay().equals(STOP_DEADLINE)).count() >= 2,
                 "both deliveries with a message in flight were stopped with the node's stop deadline " + STOP_DEADLINE + " (their deadline timers): " + timer.all());
 
@@ -927,7 +927,7 @@ class DeploymentsTest {
         assertTrue(nack.retryable() && nack.reason().contains(STOP_DEADLINE.toString()), "by the node's stop deadline (RAIL8_STOP_DEADLINE): " + nack);
         OnVirtualThread.join(closing);
 
-        DeployRefusedException after = refused("store", Optional.empty(), shop("store").zipTo(archives));
+        DeployRefusedException after = refused("store", shop("store"));
         assertEquals(Kind.STOPPING, after.kind(), "a deploy after close is 503: " + after.error());
         assertFalse(after.error().isBlank());
     }
@@ -935,15 +935,14 @@ class DeploymentsTest {
     @Test
     void closeWaitsForARunningDeployThenStopsItsFlows() throws Exception {
         Doors.Gate gate = doors.holdStart(1);
-        Path archive = shop("shop").zipTo(archives);
-        OnVirtualThread.Call<DeployResult> deploying = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), archive));
+        OnVirtualThread.Call<DeployResult> deploying = deploying(deployments, "shop", shop("shop"));
         reached(gate.reached(), "the deploy starts its first consumer", deploying);
 
         OnVirtualThread.Call<Void> closing = OnVirtualThread.start(deployments::close);
 
         long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
         while (true) {   // 409 while the deploy holds the lock and close has not begun; 503 once it has
-            DeployRefusedException r = refused("store", Optional.empty(), shop("store").zipTo(archives));
+            DeployRefusedException r = refused("store", shop("store"));
             if (r.kind() == Kind.STOPPING) break;
             assertEquals(Kind.CONFLICT, r.kind(), "before close begins a deploy meets the running one: " + r.error());
             if (System.nanoTime() > deadline) fail("close never began refusing deploys");
@@ -988,7 +987,7 @@ class DeploymentsTest {
         assertEquals(claims, queue.claims().size(), "the at-least-once worker was stopped all the same");
     }
 
-    // --- files (D-060 b)
+    // --- files
 
     @Test
     void aDeployRecordsEveryFileWithItsHash() throws Exception {
@@ -996,20 +995,19 @@ class DeploymentsTest {
         for (int i = 0; i < binary.length; i++) binary[i] = (byte) i;
         PackageDraft p = shop("shop").file("flows/map.xsl", "<xsl:stylesheet version=\"3.0\" xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\"/>")
                 .file("fixtures/deep/sample.bin", binary).file("README.md", "notes");
-        byte[] zip = p.zipWithDirectories(List.of("fixtures/", "fixtures/deep/"));
         rt.clock().advance(Duration.ofMinutes(90));
         Instant at = rt.clock().instant();
 
-        DeployedPackage deployed = deploy("shop", Optional.of("r1"), PackageDraft.write(archives, zip));
+        DeployedPackage deployed = deploy(p);
 
         Map<String, String> expected = new TreeMap<>();
         p.files().forEach((path, bytes) -> expected.put(path, PackageDraft.sha256(bytes)));
-        assertEquals(expected, files(deployed), "every file of the archive (no directory), by its /-separated path from the package root, with its SHA-256");
+        assertEquals(expected, files(deployed), "every file of the commit (no directory), by its /-separated path from the package root, with its SHA-256");
         assertEquals(at, deployed.deployedAt(), "deployedAt is the node's clock at the deploy");
-        assertEquals(Optional.of("r1"), deployed.revision());
+        assertEquals(Optional.of(p.commit()), deployed.commit());
         DeployedPackage listed = deployments.packages().stream().filter(x -> x.name().equals("shop")).findFirst().orElseThrow();
         assertEquals(expected, files(listed), "packages() carries the same files");
         assertEquals(at, listed.deployedAt());
-        assertEquals(PackageDraft.sha256(zip), listed.archiveSha256());
+        assertEquals(p.content(), listed.content());
     }
 }

@@ -167,7 +167,7 @@ class AdminDlqRestartIT {
         rt.withComponent(doors);
         deployments = new Deployments(NodeConfig.from(env), rt.runtime(), Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(probe), List.of(HEADER),
                 store, new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L);
-        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), shop().zipTo(tmp.resolve("archives"))));
+        OnVirtualThread.call(() -> deployments.deploy("shop", shop().folderIn(tmp.resolve("folders"))));
         PgWorkQueue queue = new PgWorkQueue(pool, "node-b");
         server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), store, new PgDlq(pool), rt.blobs(),
                 new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue, new PgFailedMessages(pool, queue), Optional.empty(), new Workers(),

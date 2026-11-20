@@ -9,7 +9,7 @@ import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.runtime.deploy.DeployRefusedException.Kind;
-import dev.rail8.runtime.deploy.DeploymentsDependenciesTest.Zipped;
+import dev.rail8.runtime.deploy.DeploymentsDependenciesTest.Committed;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.pg.PoolRefusedException;
@@ -61,23 +61,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * P2-02c (D-095, D-060 e, D-087): undeploying a package. {@code Deployments.undeploy(name)} checks, in order, the name's pattern
- * (BAD_REQUEST), the environment (a deployed one: FORBIDDEN "manual undeploy is non-production only (ARCHITECTURE §9)"), the node's
- * deploy lock (CONFLICT, or STOPPING while closing), closing (STOPPING), that the package is known (NOT_FOUND "no package '<name>'
- * is deployed") and that no other record pins it, a FAILED one included (CONFLICT "<name>@<version> is in use by <a>, <b>", the
- * dependents sorted, each once). Then, under the lock: the record is deleted — the commit point; a delete that fails is the node's
- * failure (IOException) and changes nothing else — then every flow of the package stops and closes (a stop that fails is a
- * WARNING), the listing drops it and its unpacked directories are pruned (a prune that fails is a WARNING). The archives stay in
- * the archive store: deploying it again is the rollback. A restart does not restore it.
+ * Undeploying a package. {@code Deployments.undeploy(name)} checks, in order, the name's pattern (BAD_REQUEST), the environment (a
+ * deployed one: FORBIDDEN "manual undeploy is non-production only (ARCHITECTURE §9)"), the node's deploy lock (CONFLICT, or
+ * STOPPING while closing), closing (STOPPING), that the package is known (NOT_FOUND "no package '<name>' is deployed") and that no
+ * at-least-once flow of it has items in the work queue (CONFLICT, one line per such flow). A package other records pin is
+ * undeployed as any other: its dependents keep the directories they read and run on. Then, under the lock: the record is deleted —
+ * the commit point; a delete that fails is the node's failure (IOException) and changes nothing else — then every flow of the
+ * package stops and closes (a stop that fails is a WARNING), the listing drops it and its directories are pruned, but for those a
+ * remaining record pins or a remaining flow reads (a prune that fails is a WARNING). Its commits stay in their repository: deploying
+ * one again is the rollback. A restart does not restore it.
  *
- * <p>Fixtures: nodes of one pool as in {@link DeploymentsDependenciesTest} — each with its own data directory and {@link Doors},
- * over one {@link Ledger} and one {@link Shelf} — and its packages ({@code common} with no flows, {@code invoice} and
- * {@code billing} mapping with {@code common:xslt/to-ubl.xsl}, so a reply is the version of common they read). One {@link #log}
+ * <p>Fixtures: nodes of one pool as in {@link DeploymentsDependenciesTest} — each with its own data directory, git cache and
+ * {@link Doors}, over one {@link Ledger} and one {@link GitRepos} — and its packages ({@code common} with no flows, {@code invoice}
+ * and {@code billing} mapping with {@code common:xslt/to-ubl.xsl}, so a reply is the version of common they read). One {@link #log}
  * receives the Ledger's {@code save}/{@code delete} and every node's Doors events, in the order made.
- *
- * <p>The shape assumed (P2-02c test-author): {@code UndeployResult Deployments.undeploy(String name) throws
- * DeployRefusedException, IOException} (blocking: on a virtual thread), {@code record UndeployResult(String name, String version,
- * List<String> flowsRemoved)}, {@code DeployRefusedException.Kind.NOT_FOUND}, {@code Future<Void> DeploymentStore.delete(String name)}.
  */
 class DeploymentsUndeployTest {
 
@@ -86,13 +83,11 @@ class DeploymentsUndeployTest {
     static final String FORBIDDEN = "manual undeploy is non-production only (ARCHITECTURE §9)";
 
     @TempDir Path tmp;
-    Path bucket;
-    Path uploads;
+    GitRepos repos;
     final FakeRuntime rt = FakeRuntime.create();
     /** The Ledger's saves and deletes and every node's Doors events, in the order made. */
     final List<String> log = new CopyOnWriteArrayList<>();
     final Ledger records = new Ledger(log::add);
-    Shelf shelf;
     final List<Node> nodes = new ArrayList<>();
     final List<LogRecord> logged = new CopyOnWriteArrayList<>();
     /** Strongly held: JUL keeps loggers weakly, and a collected logger loses its handler. */
@@ -105,9 +100,7 @@ class DeploymentsUndeployTest {
 
     @BeforeEach
     void wire() {
-        bucket = tmp.resolve("bucket");
-        uploads = tmp.resolve("uploads");
-        shelf = new Shelf(bucket, tmp.resolve("shelf-reads"), trace -> {});
+        repos = new GitRepos(tmp.resolve("repos"));
         capture.setLevel(Level.ALL);
         rail8.addHandler(capture);
     }
@@ -129,8 +122,7 @@ class DeploymentsUndeployTest {
         final String id;
         final Path data;
         final Doors doors = new Doors();
-        final DeploymentsRestoreTest.Fetches fetches = new DeploymentsRestoreTest.Fetches(shelf);
-        /** Its work queue: records every {@code hasItems} call with the rows of that flow at the call (P2-02c r2). */
+        /** Its work queue: records every {@code hasItems} call with the rows of that flow at the call. */
         final CountingQueue queue = new CountingQueue(rt.clock());
         final Deployments deployments;
         private boolean closed;
@@ -139,7 +131,10 @@ class DeploymentsUndeployTest {
             this(id, "dev", tmp.resolve(id));
         }
 
-        /** A node in {@code env} whose data directory is {@code data}: another node's, once that one is closed, is a restart. */
+        /**
+         * A node in {@code env} whose data directory is {@code data}: another node's, once that one is closed, is a restart. In
+         * {@code prod} its git base is one no host serves, so only its git cache answers.
+         */
         Node(String id, String env, Path data) {
             this.id = id;
             this.data = data;
@@ -150,27 +145,29 @@ class DeploymentsUndeployTest {
             e.put("RAIL8_STOP_DEADLINE", "PT5S");
             e.put("RAIL8_BLOB_DURABLE_MAX", "4096");
             e.put("RAIL8_MAX_PACKAGE_BYTES", Long.toString(2L * 1024 * 1024));
+            e.put("RAIL8_GIT_BASE", env.equals("prod") ? GitRepos.UNSERVED : repos.base().toString());
+            if (env.equals("prod")) e.put("RAIL8_GIT_REF", "refs/heads/main");
             doors.trace(log::add);
             SaxonXml xml = new SaxonXml();
             List<StepFactory> steps = Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList();
             Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
             deployments = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), steps, xml.languages(),
-                    new InMemoryMessageStore(), new InMemoryDlq(), queue, () -> 0L, records, fetches);
+                    new InMemoryMessageStore(), new InMemoryDlq(), queue, () -> 0L, records);
             nodes.add(this);
         }
 
-        DeployResult deploy(Zipped p) throws Exception {
-            Path archive = PackageDraft.write(uploads, p.zip());
-            return OnVirtualThread.call(() -> deployments.deploy(p.name(), Optional.empty(), archive));
+        DeployResult deploy(Committed p) throws Exception {
+            return OnVirtualThread.call(() -> deployments.deploy(p.name(), p.commit(), "test"));
         }
 
+        /** Commits {@code p} to the repository of its name and deploys that commit. */
         DeployResult deploy(PackageDraft p) throws Exception {
-            return deploy(Zipped.of(p));
+            return deploy(committed(p));
         }
 
-        OnVirtualThread.Call<DeployResult> deploying(PackageDraft p) throws IOException {
-            Path archive = PackageDraft.write(uploads, p.zip());
-            return OnVirtualThread.start(() -> deployments.deploy(p.name(), Optional.empty(), archive));
+        OnVirtualThread.Call<DeployResult> deploying(PackageDraft p) {
+            Committed c = committed(p);
+            return OnVirtualThread.start(() -> deployments.deploy(c.name(), c.commit(), "test"));
         }
 
         UndeployResult undeploy(String name) throws Exception {
@@ -239,13 +236,23 @@ class DeploymentsUndeployTest {
             return data.resolve("packages").resolve(name);
         }
 
-        /** {@code packages/<name>/<sha>/} of this node's data directory. */
-        Path dir(String name, String sha) {
-            return packageDir(name).resolve(sha);
+        /** {@code packages/<name>/<hex>/} of this node's data directory. */
+        Path dir(String name, String hex) {
+            return packageDir(name).resolve(hex);
+        }
+
+        /** Deletes this node's git cache: a commit it reads next is fetched. */
+        void forgetGit() throws IOException {
+            DeploymentsDependenciesTest.deleteTree(data.resolve("git"));
         }
     }
 
     // --- fixture: packages and helpers
+
+    /** Commits {@code draft} to the repository of its name. */
+    Committed committed(PackageDraft draft) {
+        return new Committed(draft, repos.commit(draft), draft.content());
+    }
 
     /** {@code billing}@1.0.0 mapping with {@code common:xslt/to-ubl.xsl} of {@code common}: flow {@link #BILLING}. */
     static PackageDraft billing(PackageDraft common) {
@@ -264,7 +271,7 @@ class DeploymentsUndeployTest {
 
     static final List<String> SHOP_FLOWS = List.of("shop/audit", "shop/ledger", "shop/orders", "shop/relay");
 
-    /** The 409 line of an at-least-once flow of the package whose items the work queue holds (P2-02c r2, the packet's text). */
+    /** The 409 line of an at-least-once flow of the package whose items the work queue holds. */
     static String itemsLine(String localFlow) {
         return "flow '" + localFlow + "' runs at-least-once and the work queue holds items of it (queued, leased, held or stopped): undeploy it once they are done";
     }
@@ -309,15 +316,14 @@ class DeploymentsUndeployTest {
     /**
      * invoice (pinning common, pinned by nobody) undeploys: the result names it, its version and its flow; its record is deleted
      * before its flow stops; it is no longer listed, its consumer is stopped — a message through it no longer runs — and its
-     * producer closed; its archive stays in the archive store, and deploying it again (the rollback) runs it again. common,
-     * which it pinned, runs on.
+     * producer closed; deploying its commit again (the rollback) runs it again. common, which it pinned, runs on.
      */
     @Test
     void anUnpinnedPackageIsUndeployedAndItsFlowsStop() throws Exception {
         Node node = new Node("node-1");
-        Zipped common = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed common = committed(common("1.2.0", "UBL 1.2.0"));
         node.deploy(common);
-        Zipped invoice = Zipped.of(invoice("1.0.0", common.draft()));
+        Committed invoice = committed(invoice("1.0.0", common.draft()));
         node.deploy(invoice);
         assertEquals("UBL 1.2.0", node.reply(FLOW), "fixture: invoice serves");
         Doors.Door door = node.doors.door(FLOW);
@@ -336,94 +342,66 @@ class DeploymentsUndeployTest {
         List<String> since = all.subList(mark, all.size());
         assertEquals(1, since.stream().filter("delete invoice"::equals).count(), "one delete of invoice's record: " + since);
         assertTrue(since.indexOf("delete invoice") < since.indexOf("stop " + FLOW), "the record delete (the commit point) comes before the stop: " + since);
-        assertTrue(shelf.holds(invoice.sha()), "invoice's archive stays in the archive store");
-        assertTrue(shelf.holds(common.sha()), "and common's");
 
         assertEquals(List.of(FLOW), node.deploy(invoice).added(), "deployed again (the rollback), invoice is a first deploy");
         assertEquals("UBL 1.2.0", node.reply(FLOW), "and serves again");
     }
 
     /**
-     * common pinned by invoice is 409 "common@1.2.0 is in use by invoice"; pinned also by billing, the dependents are named sorted;
-     * base pinned by mid (direct) and top (through mid's lock) names each once. Nothing changes: rows, listing, the flows serve.
+     * common, pinned by invoice and by billing, undeploys: its record goes, it is no longer listed, and the directory its
+     * dependents read stays; both serve on with common 1.2.0. Then invoice and billing undeploy, and no record is left.
      */
     @Test
-    void aPinnedPackageIsRefusedNamingItsDependents() throws Exception {
+    void aDependencyUndeploysWhileItsDependentsRunOn() throws Exception {
         Node node = new Node("node-1");
-        PackageDraft common = common("1.2.0", "UBL 1.2.0");
+        Committed common = committed(common("1.2.0", "UBL 1.2.0"));
         node.deploy(common);
-        node.deploy(invoice("1.0.0", common));
-        List<DeploymentRecord> rows = records.rows();
-        List<DeployedPackage> listed = node.deployments.packages();
-
-        DeployRefusedException one = node.refused("common", Kind.CONFLICT);
-
-        assertEquals("common@1.2.0 is in use by invoice", one.error());
-        assertEquals(rows, records.rows(), "no record is deleted");
-        assertEquals(listed, node.deployments.packages(), "the listing is unchanged");
-        assertFalse(log.contains("delete common"), "no delete was called: " + log);
-        assertFalse(node.doors.door(FLOW).stopped(), "invoice runs on");
-        assertEquals("UBL 1.2.0", node.reply(FLOW), "and maps with common 1.2.0");
-
-        node.deploy(billing(common));   // deployed after invoice: the error's order is the names', not the deploys'
-
-        assertEquals("common@1.2.0 is in use by billing, invoice", node.refused("common", Kind.CONFLICT).error(), "dependents sorted");
-
-        PackageDraft base = library("base", "1.0.0", "base");
-        node.deploy(base);
-        PackageDraft mid = library("mid", "1.0.0", "mid", base);
-        node.deploy(mid);
-        node.deploy(library("top", "1.0.0", "top", mid));
-
-        assertEquals("base@1.0.0 is in use by mid, top", node.refused("base", Kind.CONFLICT).error(), "a dependent through a lock counts, each once");
-        assertEquals("mid@1.0.0 is in use by top", node.refused("mid", Kind.CONFLICT).error());
-        assertEquals(List.of("base", "billing", "common", "invoice", "mid", "top"), rowNames(), "every record stays");
-        assertFalse(log.stream().anyMatch(e -> e.startsWith("delete ")), "no delete was called: " + log);
-    }
-
-    /** invoice listed FAILED after a restart (its archive gone) still pins common: 409; once invoice is undeployed, common undeploys. */
-    @Test
-    void aFailedDependentStillPins() throws Exception {
-        Node first = new Node("node-1");
-        Zipped common = Zipped.of(common("1.2.0", "UBL 1.2.0"));
-        first.deploy(common);
-        Zipped invoice = Zipped.of(invoice("1.0.0", common.draft()));
-        first.deploy(invoice);
-        first.close();
-        Files.delete(bucket.resolve(invoice.sha() + ".zip"));
-        Node restarted = new Node("node-1b", "dev", first.data);
-        restarted.restore();
-        assertEquals(DeployedPackage.State.FAILED, restarted.listed("invoice").orElseThrow().state(), "fixture: invoice is listed FAILED");
-
-        DeployRefusedException refused = restarted.refused("common", Kind.CONFLICT);
-
-        assertEquals("common@1.2.0 is in use by invoice", refused.error(), "a FAILED package's record pins as a running one's does");
-        assertEquals(List.of("common", "invoice"), rowNames(), "no record is deleted");
-        assertEquals(List.of("common", "invoice"), restarted.packageNames());
-
-        restarted.undeploy("invoice");
-        assertEquals(new UndeployResult("common", "1.2.0", List.of()), restarted.undeploy("common"), "witness: with invoice gone, common undeploys");
-    }
-
-    /** invoice and billing pin common: undeploying invoice leaves billing's pin (409 naming billing); undeploying billing frees common. */
-    @Test
-    void undeployingTheLastDependentThenTheDependencyWorks() throws Exception {
-        Node node = new Node("node-1");
-        PackageDraft common = common("1.2.0", "UBL 1.2.0");
-        node.deploy(common);
-        node.deploy(invoice("1.0.0", common));
-        node.deploy(billing(common));
-
-        assertEquals(new UndeployResult("invoice", "1.0.0", List.of(FLOW)), node.undeploy("invoice"));
-        assertEquals("common@1.2.0 is in use by billing", node.refused("common", Kind.CONFLICT).error(), "billing still pins common");
-        assertEquals("UBL 1.2.0", node.reply(BILLING), "billing serves on, with common 1.2.0");
-        assertEquals(new UndeployResult("billing", "1.0.0", List.of(BILLING)), node.undeploy("billing"));
+        node.deploy(invoice("1.0.0", common.draft()));
+        node.deploy(billing(common.draft()));
 
         UndeployResult r = node.undeploy("common");
 
-        assertEquals(new UndeployResult("common", "1.2.0", List.of()), r, "the last dependent gone, common undeploys; it had no flows");
+        assertEquals(new UndeployResult("common", "1.2.0", List.of()), r, "the package and its version; it had no flows");
+        assertEquals(List.of("billing", "invoice"), rowNames(), "common's record is deleted, its dependents' stay");
+        assertEquals(List.of("billing", "invoice"), node.packageNames(), "common is no longer listed");
+        assertTrue(Files.isRegularFile(node.dir("common", common.hex()).resolve("xslt/to-ubl.xsl")), "the directory its dependents pin stays");
+        assertFalse(node.doors.door(FLOW).stopped(), "invoice runs on");
+        assertEquals("UBL 1.2.0", node.reply(FLOW), "and maps with common 1.2.0");
+        assertEquals("UBL 1.2.0", node.reply(BILLING), "billing too");
+
+        assertEquals(new UndeployResult("invoice", "1.0.0", List.of(FLOW)), node.undeploy("invoice"));
+        assertEquals(new UndeployResult("billing", "1.0.0", List.of(BILLING)), node.undeploy("billing"));
         assertEquals(List.of(), records.rows(), "no record is left");
         assertEquals(List.of(), node.packageNames(), "nothing is listed");
+    }
+
+    /**
+     * common undeployed while invoice pins it: a restart on the node's data directory restores invoice from its own commit and
+     * common's directory as it is, and a node with an empty data directory reads common 1.2.0 from the commit invoice's record
+     * pins; neither lists common, and invoice serves on both.
+     */
+    @Test
+    void aDependentIsRestoredAfterItsDependencyIsUndeployed() throws Exception {
+        Node first = new Node("node-1");
+        Committed common = committed(common("1.2.0", "UBL 1.2.0"));
+        first.deploy(common);
+        first.deploy(invoice("1.0.0", common.draft()));
+        first.undeploy("common");
+        first.close();
+
+        Node restarted = new Node("node-1b", "dev", first.data);
+        restarted.restore();
+
+        assertEquals(List.of("invoice"), restarted.packageNames(), "common is not restored");
+        assertEquals(DeployedPackage.State.RUNNING, restarted.listed("invoice").orElseThrow().state());
+        assertEquals("UBL 1.2.0", restarted.reply(FLOW), "invoice maps with common 1.2.0");
+
+        Node fresh = new Node("node-2", "dev", tmp.resolve("node-2"));
+        fresh.restore();
+
+        assertEquals(List.of("invoice"), fresh.packageNames(), "common is not restored");
+        assertEquals("UBL 1.2.0", fresh.reply(FLOW), "invoice maps with common 1.2.0, read from its pinned commit");
+        assertTrue(Files.isDirectory(fresh.dir("common", common.hex())), "written under common, by its content");
     }
 
     /** A name the node has no package of — never deployed, or undeployed already — is NOT_FOUND; nothing is deleted. */
@@ -448,7 +426,8 @@ class DeploymentsUndeployTest {
     }
 
     /**
-     * A node in prod restores invoice and common from the pool's records; an undeploy there is 403 — of a package it runs, of a
+     * A node in prod, restarted on the data directory of the dev node that deployed them, restores invoice and common from the
+     * pool's records and its git cache; an undeploy there is 403 — of a package it runs, of a
      * name it does not have, and while it closes — and only a bad name comes before it (400). invoice serves on, every record stays.
      */
     @Test
@@ -458,7 +437,7 @@ class DeploymentsUndeployTest {
         dev.deploy(common);
         dev.deploy(invoice("1.0.0", common));
         dev.close();
-        Node prod = new Node("node-2", "prod", tmp.resolve("node-2"));
+        Node prod = new Node("node-2", "prod", dev.data);
         prod.restore();
         assertEquals("UBL 1.2.0", prod.reply(FLOW), "fixture: prod restored invoice and it serves");
         List<DeploymentRecord> rows = records.rows();
@@ -595,9 +574,9 @@ class DeploymentsUndeployTest {
     @Test
     void aRecordDeleteThatFailsChangesNothing() throws Exception {
         Node node = new Node("node-1");
-        Zipped common = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed common = committed(common("1.2.0", "UBL 1.2.0"));
         node.deploy(common);
-        Zipped invoice = Zipped.of(invoice("1.0.0", common.draft()));
+        Committed invoice = committed(invoice("1.0.0", common.draft()));
         node.deploy(invoice);
         Doors.Door door = node.doors.door(FLOW);
         List<DeploymentRecord> rows = records.rows();
@@ -616,21 +595,21 @@ class DeploymentsUndeployTest {
         assertFalse(door.stopped(), "its consumer was not stopped: " + door.history());
         assertEquals("UBL 1.2.0", node.reply(FLOW), "it serves on");
         assertEquals(dirs, children(node.packageDir("invoice")), "its directory stays");
-        assertEquals(List.of(invoice.sha()), dirs, "fixture: one directory");
+        assertEquals(List.of(invoice.hex()), dirs, "fixture: one directory");
 
         assertEquals(new UndeployResult("invoice", "1.0.0", List.of(FLOW)), node.undeploy("invoice"), "witness: the next undeploy, whose delete works, undeploys");
     }
 
     /**
      * invoice undeployed on node 1 (billing runs on), then the node restarts on its data directory: the restore starts billing and
-     * common and not invoice, which is neither listed nor built, nor fetched.
+     * common and not invoice, which is neither listed nor built; its commit, deployed again, runs it.
      */
     @Test
     void aRestoreAfterUndeployDoesNotStartIt() throws Exception {
         Node first = new Node("node-1");
-        Zipped common = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed common = committed(common("1.2.0", "UBL 1.2.0"));
         first.deploy(common);
-        Zipped invoice = Zipped.of(invoice("1.0.0", common.draft()));
+        Committed invoice = committed(invoice("1.0.0", common.draft()));
         first.deploy(invoice);
         first.deploy(billing(common.draft()));
         first.undeploy("invoice");
@@ -644,20 +623,20 @@ class DeploymentsUndeployTest {
         assertEquals("UBL 1.2.0", restarted.reply(BILLING), "witness: the restore ran billing");
         assertEquals(List.of(BILLING), restarted.doors.doors().stream().map(Doors.Door::flow).toList(), "no consumer was built for invoice");
         assertEquals(List.of(), children(restarted.packageDir("invoice")), "nothing of invoice is on disk");
-        assertEquals(0, restarted.fetches.fetchesOf(invoice.sha()), "invoice's archive was not fetched");
-        assertTrue(shelf.holds(invoice.sha()), "it stays in the archive store");
+        assertEquals(List.of(FLOW), restarted.deploy(invoice).added(), "witness: its commit, deployed again, is a first deploy");
     }
 
-    /** invoice listed FAILED (its archive gone) undeploys: its version from the record, no flows removed, its record gone; common then undeploys. */
+    /** invoice listed FAILED (its commit gone) undeploys: its version from the record, no flows removed, its record gone; common then undeploys. */
     @Test
     void aFailedPackageUndeploys() throws Exception {
         Node first = new Node("node-1");
-        Zipped common = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed common = committed(common("1.2.0", "UBL 1.2.0"));
         first.deploy(common);
-        Zipped invoice = Zipped.of(invoice("1.0.0", common.draft()));
+        Committed invoice = committed(invoice("1.0.0", common.draft()));
         first.deploy(invoice);
         first.close();
-        Files.delete(bucket.resolve(invoice.sha() + ".zip"));
+        repos.delete("invoice");
+        first.forgetGit();
         Node restarted = new Node("node-1b", "dev", first.data);
         restarted.restore();
         assertEquals(DeployedPackage.State.FAILED, restarted.listed("invoice").orElseThrow().state(), "fixture: invoice is listed FAILED");
@@ -669,7 +648,7 @@ class DeploymentsUndeployTest {
         assertEquals(List.of("common"), restarted.packageNames(), "it is no longer listed");
         assertEquals(List.of(), children(restarted.packageDir("invoice")), "its directory is pruned");
         assertEquals(List.of(), restarted.doors.doors(), "no consumer was ever built for it");
-        assertEquals(new UndeployResult("common", "1.2.0", List.of()), restarted.undeploy("common"), "its pin went with its record");
+        assertEquals(new UndeployResult("common", "1.2.0", List.of()), restarted.undeploy("common"));
     }
 
     /**
@@ -679,24 +658,23 @@ class DeploymentsUndeployTest {
     @Test
     void itsDirectoriesArePrunedButAPinnedOnesKept() throws Exception {
         Node node = new Node("node-1");
-        Zipped c120 = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed c120 = committed(common("1.2.0", "UBL 1.2.0"));
         node.deploy(c120);
-        Zipped v1 = Zipped.of(invoice("1.0.0", c120.draft()));
+        Committed v1 = committed(invoice("1.0.0", c120.draft()));
         node.deploy(v1);
         node.deploy(billing(c120.draft()));
         node.deploy(common("1.3.0", "UBL 1.3.0"));
         node.deploy(common("1.4.0", "UBL 1.4.0"));
-        Zipped v2 = Zipped.of(invoice("1.0.1", c120.draft()));
+        Committed v2 = committed(invoice("1.0.1", c120.draft()));
         node.deploy(v2);
-        assertEquals(List.of(v1.sha(), v2.sha()).stream().sorted().toList(), children(node.packageDir("invoice")), "fixture: invoice's current and previous directories");
-        assertTrue(Files.isDirectory(node.dir("common", c120.sha())), "fixture: common 1.2.0 is on disk, pinned");
+        assertEquals(List.of(v1.hex(), v2.hex()).stream().sorted().toList(), children(node.packageDir("invoice")), "fixture: invoice's current and previous directories");
+        assertTrue(Files.isDirectory(node.dir("common", c120.hex())), "fixture: common 1.2.0 is on disk, pinned");
 
         assertEquals(new UndeployResult("invoice", "1.0.1", List.of(FLOW)), node.undeploy("invoice"));
 
         assertEquals(List.of(), children(node.packageDir("invoice")), "both of invoice's directories are pruned");
-        assertTrue(Files.isRegularFile(node.dir("common", c120.sha()).resolve("xslt/to-ubl.xsl")), "common 1.2.0, pinned by billing's record, is kept");
+        assertTrue(Files.isRegularFile(node.dir("common", c120.hex()).resolve("xslt/to-ubl.xsl")), "common 1.2.0, pinned by billing's record, is kept");
         assertEquals("UBL 1.2.0", node.reply(BILLING), "billing maps with it");
-        assertTrue(shelf.holds(v1.sha()) && shelf.holds(v2.sha()), "both of invoice's archives stay in the archive store");
     }
 
     /**
@@ -708,12 +686,12 @@ class DeploymentsUndeployTest {
         Node node = new Node("node-1");
         PackageDraft common = common("1.2.0", "UBL 1.2.0");
         node.deploy(common);
-        Zipped invoice = Zipped.of(invoice("1.0.0", common));
+        Committed invoice = committed(invoice("1.0.0", common));
         node.deploy(invoice);
         Doors.Door door = node.doors.door(FLOW);
         Path work = Files.createDirectories(tmp.resolve("w"));
         Path chain = DeploymentsRedeployTest.deepChain(work);
-        Path deep = node.dir("invoice", invoice.sha()).resolve("deep");
+        Path deep = node.dir("invoice", invoice.hex()).resolve("deep");
         Files.move(chain, deep);
         try {
             UndeployResult r = node.undeploy("invoice");
@@ -754,12 +732,12 @@ class DeploymentsUndeployTest {
     @Test
     void aFailedPackageNeverUnpackedUndeploysWithoutAPruneWarning() throws Exception {
         Node first = new Node("node-1");
-        Zipped common = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        Committed common = committed(common("1.2.0", "UBL 1.2.0"));
         first.deploy(common);
-        Zipped invoice = Zipped.of(invoice("1.0.0", common.draft()));
+        Committed invoice = committed(invoice("1.0.0", common.draft()));
         first.deploy(invoice);
         first.close();
-        Files.delete(bucket.resolve(invoice.sha() + ".zip"));
+        repos.delete("invoice");
         Node fresh = new Node("node-2", "dev", tmp.resolve("node-2"));
         fresh.restore();
         assertEquals(DeployedPackage.State.FAILED, fresh.listed("invoice").orElseThrow().state(), "fixture: invoice is listed FAILED");
@@ -774,7 +752,7 @@ class DeploymentsUndeployTest {
         assertEquals(List.of("common"), rowNames(), "its record is deleted");
     }
 
-    // --- P2-02c r2: an at-least-once flow whose items the work queue holds
+    // --- an at-least-once flow whose items the work queue holds
 
     /**
      * shop runs audit, ledger and relay at-least-once and orders sync; one message of audit and one of relay are leased, their

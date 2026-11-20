@@ -47,6 +47,10 @@ sample under the new names:
 | `src/test/java/…/AcmeMockContractTest.java` | the adapter's mock against the same suite |
 | `src/test/java/…/AcmeComponentTest.java` | what the suite leaves to the component: its own answers and refusals |
 | `package/` | a package that uses the adapter: an in endpoint, an out endpoint, a flow, a test case and a fixture |
+| `.gitattributes`, `.gitignore` | `* -text`, so git keeps every file's bytes as written, and the build's `target/` left out |
+
+The folder is a git repository on `main`, and its first commit holds every file above; the commit's author is your git
+identity. A node deploys the package from a commit, never from the files beside it: commit what you want deployed.
 
 The adapter's own address on the node's HTTP port is its prefix, `/<scheme>` in the template (`Component.httpPrefix()`), as
 `/http` is the http adapter's: the node opens one HTTP port, shared by every adapter that takes HTTP requests, and routes a
@@ -85,7 +89,8 @@ bin/run-adapter ~/acme-adapter
 ```
 
 It builds the adapter's jar, starts an empty Postgres of its own in Docker, starts a node with the adapter's
-`target/plugin` as its plugins (admin API on `127.0.0.1:18081`), deploys `package/`, starts a partner that answers every
+`target/plugin` as its plugins (admin API on `127.0.0.1:18081`), deploys `package/` as the adapter's `HEAD` commit holds it
+(the node reads the folder's repository, with `RAIL8_GIT_PATH=package`), starts a partner that answers every
 request with the body it was sent on `127.0.0.1:18091`, and runs the UI on **http://localhost:5173**. The node's HTTP
 port, where the adapter's in endpoints are served, is `127.0.0.1:18090`. The ports 18081, 18090, 18091 and 5173 must be
 free; the quickstart's node may keep running, its UI may not.
@@ -103,7 +108,8 @@ free; the quickstart's node may keep running, its UI may not.
 - **Messages** finds it: key name `orderId`, value `7`. Its timeline shows the steps `ingress`, `orderId` and `partner`.
 
 Ctrl+C stops everything and removes the Postgres container. The node's log is `target/run-adapter/node.log`. Every run
-starts empty: after a change to the adapter, or a Save you want deployed, run `bin/run-adapter` again.
+starts empty: after a change to the adapter, or a Save you want deployed, commit it and run `bin/run-adapter` again. When
+`package/` differs from `HEAD`, it says so in one line before the deploy: the uncommitted changes are not deployed.
 
 ## Install it on a node
 

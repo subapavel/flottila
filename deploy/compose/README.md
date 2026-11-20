@@ -2,7 +2,7 @@
 
 A demo stack for GATE checks 1-2 (D-085), not production: the node runs `RAIL8_ENV=dev`. Services: `postgres`, `valkey`
 (persistence off), `s3` (SeaweedFS), `sftp-keys` (one-shot: the SFTP host key), `sftp`, `netns` (holds the published ports and the network namespace of the node and the echo), `rail8` (the node), `echo` (the demo's partner),
-`deploy` (one-shot: `rail8 deploy /packages/demo`), `clickhouse` under the `history` profile (not wired), and `kafka` (KRaft, the optional event-broker add-on, O-1) under the
+`deploy` (one-shot: `rail8 deploy rail8 HEAD`), `clickhouse` under the `history` profile (not wired), and `kafka` (KRaft, the optional event-broker add-on) under the
 `kafka` profile, off by default and not wired: a plain `up` does not start it.
 
 ```sh
@@ -22,7 +22,7 @@ docker compose --profile history --profile kafka down -v   # stop and remove eve
 
 Postgres runs `postgres:18.6` with its volume at `/var/lib/postgresql` (D-129). A `pg-data` volume made by the earlier
 `postgres:17.11` cannot be reused (the 18 image refuses to start on it): run `docker compose --profile history --profile kafka down -v` once
-before the first `up` after the upgrade; it deletes every volume of this demo stack (database, node archives, S3 objects, SFTP keys and files, ClickHouse).
+before the first `up` after the upgrade; it deletes every volume of this demo stack (database, the node's git cache and packages, S3 objects, SFTP keys and files, ClickHouse).
 
 A stack that was started before the rename to Rail8 (2026-11-15, D-148) needs the same once, with `--remove-orphans` added, before the first
 `up`: `docker compose --profile history --profile kafka down -v --remove-orphans`. Its `pg-data` volume holds the role and the database of
@@ -31,6 +31,10 @@ the former name and Postgres initialises only an empty volume, so the node canno
 `down -v` leaves it, and while it exists it keeps its volumes in use. The old node-data volume is no longer declared in this file and stays
 after that: `docker volume ls` shows it under the former name, `docker volume rm` removes it.
 
+- The package: the node reads this checkout as the git repository `rail8` (the repository's root mounted read-only at
+  `/repos/rail8`, `RAIL8_GIT_BASE=file:///repos/`) and deploys its folder `examples/demo` (`RAIL8_GIT_PATH`). `deploy` deploys
+  the checkout's `HEAD`: a change to the demo is deployed once it is committed, by `docker compose up deploy`. The checkout
+  needs its full history and its own `.git` folder: a shallow clone or a `git worktree` of Rail8 cannot be deployed from.
 - Admin API and `/health`: `localhost:8081`. The node's HTTP port, shared by every inbound HTTP endpoint: `localhost:8080`; the demo's http-in at `/http/in`, its async door `http-in-async` at `/http/invoice/async` (answers 202).
 - Postgres password: `RAIL8_PG_PASSWORD` (default `rail8`). S3: bucket `rail8`, one Admin identity written at start
   from `RAIL8_S3_ACCESS_KEY` / `RAIL8_S3_SECRET_KEY` (an http endpoint, allowed in `dev`).

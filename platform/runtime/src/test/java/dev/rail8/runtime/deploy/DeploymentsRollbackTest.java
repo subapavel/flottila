@@ -104,7 +104,9 @@ class DeploymentsRollbackTest {
 
     @TempDir Path tmp;
     Path data;
-    Path archives;
+    GitRepos repos;
+    /** The commit each deploy's label named, by its label. */
+    final Map<String, String> commits = new HashMap<>();
 
     final FakeRuntime rt = FakeRuntime.create();
     final Doors doors = new Doors();
@@ -130,7 +132,7 @@ class DeploymentsRollbackTest {
     @BeforeEach
     void wire() {
         data = tmp.resolve("data");
-        archives = tmp.resolve("archives");
+        repos = new GitRepos(tmp.resolve("repos"));
         timer = new TracingTimer(rt.timer()).trace(log::add);
         queue = new CountingQueue(rt.clock());
         doors.trace(log::add);
@@ -150,7 +152,7 @@ class DeploymentsRollbackTest {
             };
         };
         Runtime runtime = new Runtime(rt.clock(), ticksMayThrow, rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
-        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), ticksMayThrow, List.of(), List.of(), messages, dlq,
+        deployments = new Deployments(NodeConfig.from(repos.env(env)), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), ticksMayThrow, List.of(), List.of(), messages, dlq,
                 queue, () -> 0L);
         capture.setLevel(Level.ALL);
         rail8.addHandler(capture);
@@ -175,30 +177,42 @@ class DeploymentsRollbackTest {
         return data.resolve("packages").resolve("shop");
     }
 
-    DeployResult deploy(PackageDraft p, String revision) throws Exception {
-        return deploy(p.zip(), revision);
+    /** The commit the deploy labelled {@code label} deployed. */
+    String commit(String label) {
+        String id = commits.get(label);
+        if (id == null) throw new AssertionError("fixture: no deploy labelled " + label);
+        return id;
     }
 
-    DeployResult deploy(byte[] zip, String revision) throws Exception {
-        Path archive = PackageDraft.write(archives, zip);
-        return OnVirtualThread.call(() -> deployments.deploy("shop", Optional.of(revision), archive));
+    static String hex(String content) {
+        return content.substring("sha256:".length());
     }
 
-    OnVirtualThread.Call<DeployResult> deploying(PackageDraft p, String revision) {
-        return deploying(p.zip(), revision);
+    DeployResult deploy(PackageDraft p, String label) throws Exception {
+        return deploy(p.files(), label);
     }
 
-    OnVirtualThread.Call<DeployResult> deploying(byte[] zip, String revision) {
-        Path archive = PackageDraft.write(archives, zip);
-        return OnVirtualThread.start(() -> deployments.deploy("shop", Optional.of(revision), archive));
+    /** Commits {@code files} to the repository {@code shop}, {@code label} naming the commit, and deploys it. */
+    DeployResult deploy(Map<String, byte[]> files, String label) throws Exception {
+        return OnVirtualThread.join(deploying(files, label));
     }
 
-    DeployRefusedException refused(PackageDraft p, String revision) throws Exception {
-        return joinRefused(deploying(p, revision), "the deploy of shop " + revision + " is refused");
+    OnVirtualThread.Call<DeployResult> deploying(PackageDraft p, String label) {
+        return deploying(p.files(), label);
+    }
+
+    OnVirtualThread.Call<DeployResult> deploying(Map<String, byte[]> files, String label) {
+        String id = repos.commit("shop", files);
+        commits.put(label, id);
+        return OnVirtualThread.start(() -> deployments.deploy("shop", id, "test"));
+    }
+
+    DeployRefusedException refused(PackageDraft p, String label) throws Exception {
+        return joinRefused(deploying(p, label), "the deploy of shop " + label + " is refused");
     }
 
     static DeployedFlow failed(DeployedFlow f) {
-        return new DeployedFlow(f.id(), f.pkg(), f.packageVersion(), f.revision(), f.flowVersion(), f.delivery(), f.hash(), DeployedFlow.State.FAILED);
+        return new DeployedFlow(f.id(), f.pkg(), f.packageVersion(), f.commit(), f.flowVersion(), f.delivery(), f.hash(), DeployedFlow.State.FAILED);
     }
 
     /** The flows the error names as FAILED ({@code "flows [<id>, <id>] FAILED"}), sorted; fails when it names none. */
@@ -361,13 +375,13 @@ class DeploymentsRollbackTest {
      */
     @Test
     void aFailedStartRollsBackFromTheKeptDirAnd500s() throws Exception {
-        String sha1 = deploy(shop(), "r1").pkg().archiveSha256();
+        String sha1 = hex(deploy(shop(), "r1").pkg().content());
         PackageDraft v2 = shop();
         v2.flowDoc("ping").put("steps", to("archive"));
         v2.manifest().put("version", "1.1.0");
         DeployResult second = deploy(v2, "r2");
         assertResult(List.of(), List.of("shop/ping"), List.of(), second);
-        String sha2 = second.pkg().archiveSha256();
+        String sha2 = hex(second.pkg().content());
         Map<String, DeployedFlow> flowsBefore = byId(deployments.flows());
         List<DeployedPackage> packagesBefore = deployments.packages();
         Object key1 = fileKey(packageDir(sha1));
@@ -380,13 +394,13 @@ class DeploymentsRollbackTest {
         PackageDraft v3 = changed(changed(removed(shop(), "ping"), "orders", "v3"), "audit", "v3")
                 .endpoint("extra-in", "in", new JsonObject().put("path", "/extra")).flow("extra", "1.0.0", "sync", "extra-in", 1024, to("partner"));
         v3.manifest().put("version", "2.0.0");
-        byte[] zip3 = v3.zip();
+        Map<String, byte[]> pkg3 = v3.files();
         int doorsBefore = doors.doors().size();
         int producersBefore = doors.producers().size();
         Doors.Gate extraStart = doors.holdStartOf("shop/extra");
         int mark = mark();
 
-        OnVirtualThread.Call<DeployResult> d = deploying(zip3, "r3");
+        OnVirtualThread.Call<DeployResult> d = deploying(pkg3, "r3");
 
         reachedWhile(d, extraStart.reached(), "phase B calls v3 extra's start");
         Doors.Door ordersV3 = doors.door("shop/orders");
@@ -446,7 +460,7 @@ class DeploymentsRollbackTest {
             assertEquals(DeployedFlow.State.RUNNING, is.state(), retired + " runs again after the 500, not FAILED: " + is);
             assertEquals(was.hash(), is.hash(), retired + " is listed with the hash it ran with before v3: " + is);
             assertEquals(was.packageVersion(), is.packageVersion(), retired + " is listed with the package version it ran with before v3: " + is);
-            assertEquals(was.revision(), is.revision(), retired + " is listed with the revision it ran with before v3: " + is);
+            assertEquals(was.commit(), is.commit(), retired + " is listed with the commit it ran with before v3: " + is);
             assertEquals(was.flowVersion(), is.flowVersion(), retired + " is listed with the flow version it ran with before v3: " + is);
         }
         assertEquals(packagesBefore, deployments.packages(), "the package record is v2's");
@@ -459,17 +473,17 @@ class DeploymentsRollbackTest {
 
         Sent sync = send("shop/orders");
         assertInstanceOf(Ack.Reply.class, within(sync.answer(), "orders' answer"), "orders serves again");
-        assertEquals(Map.of("flow", "shop/orders@2.1.0", "package", "shop@1.0.0", "revision", "r1"), versions(sync.id()), "orders runs with v1's stamps");
+        assertEquals(Map.of("flow", "shop/orders@2.1.0", "package", "shop@1.0.0", "commit", commit("r1")), versions(sync.id()), "orders runs with v1's stamps");
         Sent ping = send("shop/ping");
         assertInstanceOf(Ack.Accepted.class, within(ping.answer(), "ping's answer"));
-        assertEquals(Map.of("flow", "shop/ping@0.0.1", "package", "shop@1.1.0", "revision", "r2"), versions(ping.id()), "ping runs with v2's stamps");
+        assertEquals(Map.of("flow", "shop/ping@0.0.1", "package", "shop@1.1.0", "commit", commit("r2")), versions(ping.id()), "ping runs with v2's stamps");
         assertEquals("archive", producerOf(ping).endpoint(), "ping runs v2's build, rebuilt from v2's directory: it sends to archive");
         long claimsBefore = claimsOf("shop/audit");
         Sent alo = send("shop/audit");
         assertEquals(new Ack.Accepted(alo.id()), within(alo.answer(), "audit's answer"));
         Doors.Out auditOut = producerOf(alo);
         assertTrue(auditOut.ordinal() > producersBefore + v3Producers.size(), "audit's rebuilt worker sends it: " + auditOut);
-        assertEquals(Map.of("flow", "shop/audit@1.0.3", "package", "shop@1.0.0", "revision", "r1"), versions(alo.id()), "audit runs with v1's stamps");
+        assertEquals(Map.of("flow", "shop/audit@1.0.3", "package", "shop@1.0.0", "commit", commit("r1")), versions(alo.id()), "audit runs with v1's stamps");
         completedAndPolledAfter("shop/audit", claimsBefore);
         assertOneClaimOnTheFirstTick("shop/audit", settledClaimsOf("shop/audit"), "one worker polls audit per tick, the rebuilt one");
         assertRefusesRetryable(extraV3, within(extraV3.deliver(envelope("shop/extra")), "a message on v3's extra"));
@@ -485,11 +499,11 @@ class DeploymentsRollbackTest {
      */
     @Test
     void aFailedStartOfAKeptArchiveLeavesItsDirectory() throws Exception {
-        byte[] zip1 = changed(syncFlows("a"), "a", "v1").zip();
-        String sha1 = deploy(zip1, "r1").pkg().archiveSha256();
+        Map<String, byte[]> pkg1 = changed(syncFlows("a"), "a", "v1").files();
+        String sha1 = hex(deploy(pkg1, "r1").pkg().content());
         PackageDraft v2 = changed(syncFlows("a"), "a", "v2");
         v2.manifest().put("version", "2.0.0");
-        String sha2 = deploy(v2, "r2").pkg().archiveSha256();
+        String sha2 = hex(deploy(v2, "r2").pkg().content());
         Object key1 = fileKey(packageDir(sha1));
         List<String> files1 = regularFiles(packageDir(sha1));
         assertEquals(sorted(sha1, sha2), children(shopDir()), "fixture: v1's directory is kept as the previous one");
@@ -497,7 +511,7 @@ class DeploymentsRollbackTest {
         List<DeployedPackage> packagesBefore = deployments.packages();
         doors.failStartOf("shop/a", "address in use");
 
-        DeployRefusedException refused = joinRefused(deploying(zip1, "r3"), "v1 again, whose a does not start");
+        DeployRefusedException refused = joinRefused(deploying(pkg1, "r3"), "v1 again, whose a does not start");
 
         assertEquals(Kind.FAILED, refused.kind(), refused.error() + " " + refused.problems());
         assertTrue(refused.error().contains("version 1.0.0 did not start") && refused.error().contains("2.0.0 runs again"), refused.error());
@@ -508,7 +522,7 @@ class DeploymentsRollbackTest {
         assertEquals(packagesBefore, deployments.packages(), "the package record is v2's");
         Sent s = send("shop/a");
         assertInstanceOf(Ack.Reply.class, within(s.answer(), "a's answer"));
-        assertEquals("r2", versions(s.id()).get("revision"), "v2's a runs again");
+        assertEquals(commit("r2"), versions(s.id()).get("commit"), "v2's a runs again");
     }
 
     // --- FAILED flows
@@ -523,13 +537,13 @@ class DeploymentsRollbackTest {
      */
     @Test
     void aFailedRollbackListsFailedAnd500sNamingIt() throws Exception {
-        String sha1 = deploy(shop(), "r1").pkg().archiveSha256();
+        String sha1 = hex(deploy(shop(), "r1").pkg().content());
         assertOneClaimOnTheFirstTick("shop/audit", settledClaimsOf("shop/audit"), "fixture: a running audit worker shows as one claim per tick");
         Map<String, DeployedFlow> before = byId(deployments.flows());
         List<DeployedPackage> packagesBefore = deployments.packages();
         PackageDraft v2 = changed(changed(removed(shop(), "ping"), "orders", "v2"), "audit", "v2");
         v2.manifest().put("version", "2.0.0");
-        byte[] zip2 = v2.zip();
+        Map<String, byte[]> pkg2 = v2.files();
         doors.failStartOf("shop/orders", "address in use");          // v2's orders
         doors.holdStartOf("shop/audit").release();                   // v2's audit starts
         AtomicInteger pingBuilds = new AtomicInteger();
@@ -540,7 +554,7 @@ class DeploymentsRollbackTest {
             if ("shop/audit".equals(cfg.options().get("flow")) && auditBuilds.incrementAndGet() == 2) throw new IllegalArgumentException("audit cannot be built again");
         });
 
-        DeployRefusedException refused = joinRefused(deploying(zip2, "r2"), "v2, whose orders does not start");
+        DeployRefusedException refused = joinRefused(deploying(pkg2, "r2"), "v2, whose orders does not start");
 
         assertEquals(Kind.FAILED, refused.kind(), refused.error() + " " + refused.problems());
         assertTrue(refused.error().contains("version 2.0.0 did not start"), refused.error());
@@ -573,7 +587,7 @@ class DeploymentsRollbackTest {
         assertEquals(polls, claimsOf("shop/audit"), "no worker of the FAILED audit polls: " + queue.claims());
         Sent sync = send("shop/orders");
         assertInstanceOf(Ack.Reply.class, within(sync.answer(), "orders' answer"));
-        assertEquals("r1", versions(sync.id()).get("revision"), "orders runs v1's build again");
+        assertEquals(commit("r1"), versions(sync.id()).get("commit"), "orders runs v1's build again");
         assertNothingClosedTwice();
     }
 
@@ -599,7 +613,7 @@ class DeploymentsRollbackTest {
         assertEquals("version 2.0.0 did not start; 1.0.0 runs again", refused.error(), "no flow is FAILED");
         assertProblem(refused, "orders", "did not start:", "address in use");
         assertProblem(refused, "orders", "did not start again", "still in use", "its consumer is tried again");
-        assertEquals(new DeployedFlow(o.id(), o.pkg(), o.packageVersion(), o.revision(), o.flowVersion(), o.delivery(), o.hash(), DeployedFlow.State.RESTARTING),
+        assertEquals(new DeployedFlow(o.id(), o.pkg(), o.packageVersion(), o.commit(), o.flowVersion(), o.delivery(), o.hash(), DeployedFlow.State.RESTARTING),
                 byId(deployments.flows()).get("shop/orders"), "orders is listed under its v1 record, RESTARTING");
         Health waiting = deployments.health();
         assertEquals(new Health(Health.Status.DEGRADED, "RESTARTING: flow shop/orders (failure 1, next attempt at " + rt.clock().instant().plusSeconds(1) + ")"),
@@ -614,7 +628,7 @@ class DeploymentsRollbackTest {
         assertEquals(Health.up(), deployments.health());
         Sent sync = send("shop/orders");
         assertInstanceOf(Ack.Reply.class, within(sync.answer(), "orders' answer"));
-        assertEquals("r1", versions(sync.id()).get("revision"), "orders runs v1's build again");
+        assertEquals(commit("r1"), versions(sync.id()).get("commit"), "orders runs v1's build again");
     }
 
     /**
@@ -625,8 +639,8 @@ class DeploymentsRollbackTest {
      */
     @Test
     void theNextDeployStartsAFailedFlow() throws Exception {
-        byte[] zip1 = shop().zip();
-        String sha1 = deploy(zip1, "r1").pkg().archiveSha256();
+        Map<String, byte[]> pkg1 = shop().files();
+        String sha1 = hex(deploy(pkg1, "r1").pkg().content());
         Object key1 = fileKey(packageDir(sha1));
         Map<String, DeployedFlow> before = byId(deployments.flows());
         Doors.Door auditDoor = doors.door("shop/audit");
@@ -642,28 +656,28 @@ class DeploymentsRollbackTest {
         rt.clock().advance(Duration.ofSeconds(30));
         int mark = mark();
 
-        DeployResult r = deploy(zip1, "r3");
+        DeployResult r = deploy(pkg1, "r3");
 
         assertResult(List.of("shop/orders"), List.of(), List.of(), r);
         assertEquals(List.of("consumer shop/orders", "start shop/orders"), consumerEvents(since(mark)), "only orders is built and started; nothing stops");
         assertEquals(key1, fileKey(packageDir(sha1)), "v1's kept directory is reused");
         assertEquals(List.of(sha1), children(shopDir()));
-        assertEquals(sha1, r.pkg().archiveSha256());
+        assertEquals(sha1, hex(r.pkg().content()));
         assertEquals("1.0.0", r.pkg().version());
-        assertEquals(Optional.of("r3"), r.pkg().revision(), "the package record carries the new revision");
+        assertEquals(Optional.of(commit("r3")), r.pkg().commit(), "the package record carries the new commit");
         assertEquals(rt.clock().instant(), r.pkg().deployedAt(), "and the new time");
         assertEquals(List.of(r.pkg()), deployments.packages());
         Map<String, DeployedFlow> after = byId(deployments.flows());
         DeployedFlow orders = after.get("shop/orders");
         assertEquals(DeployedFlow.State.RUNNING, orders.state(), "orders runs: " + orders);
-        assertEquals(Optional.of("r3"), orders.revision(), "with the deploy's stamps: " + orders);
+        assertEquals(Optional.of(commit("r3")), orders.commit(), "with the deploy's stamps: " + orders);
         assertEquals("1.0.0", orders.packageVersion());
         assertEquals(before.get("shop/orders").hash(), orders.hash(), "v1's build of it");
         assertEquals(before.get("shop/audit"), after.get("shop/audit"), "audit runs on as it was");
         assertEquals(before.get("shop/ping"), after.get("shop/ping"), "ping runs on as it was");
         Sent sync = send("shop/orders");
         assertInstanceOf(Ack.Reply.class, within(sync.answer(), "orders' answer"), "orders serves");
-        assertEquals(Map.of("flow", "shop/orders@2.1.0", "package", "shop@1.0.0", "revision", "r3"), versions(sync.id()));
+        assertEquals(Map.of("flow", "shop/orders@2.1.0", "package", "shop@1.0.0", "commit", commit("r3")), versions(sync.id()));
         assertTrue(auditDoor == doors.door("shop/audit") && !auditDoor.stopped(), "audit's consumer runs on, untouched");
         assertTrue(pingDoor == doors.door("shop/ping") && !pingDoor.stopped(), "ping's consumer runs on, untouched");
     }
@@ -701,11 +715,11 @@ class DeploymentsRollbackTest {
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {"rolled back", "FAILED"})
     void aRePutOfV1AfterAFailedV2RestartsItsStoppedFlows(String outcome) throws Exception {
-        byte[] zip1 = shop().zip();
-        deploy(zip1, "r1");
+        Map<String, byte[]> pkg1 = shop().files();
+        deploy(pkg1, "r1");
         failV2(outcome);
 
-        DeployResult r = deploy(zip1, "r3");
+        DeployResult r = deploy(pkg1, "r3");
 
         assertResult(outcome.equals("FAILED") ? List.of("shop/audit", "shop/ping") : List.of(), List.of(), List.of(), r);
         for (String flow : List.of("shop/orders", "shop/audit", "shop/ping")) {
@@ -785,7 +799,7 @@ class DeploymentsRollbackTest {
             assertEquals(DeployedFlow.State.RUNNING, b.state(), "b runs: " + b);
             assertFalse(bBefore.hash().equals(b.hash()), "b is listed with v2's hash once the deploy returned: " + b + " (v1: " + bBefore + ")");
             assertEquals("2.0.0", b.packageVersion(), "with v2's stamps: " + b);
-            assertEquals(Optional.of("r2"), b.revision(), "with v2's stamps: " + b);
+            assertEquals(Optional.of(commit("r2")), b.commit(), "with v2's stamps: " + b);
             assertEquals(List.of(r.pkg()), deployments.packages(), "the package record is v2's once the deploy returned");
         } else {
             startOfB.fail("address in use");
@@ -1104,8 +1118,8 @@ class DeploymentsRollbackTest {
     @ValueSource(strings = {"running", "previous"})
     void anUnreadableKeptFileIsAMismatch(String kept) throws Exception {
         PackageDraft v1 = shop();
-        byte[] zip1 = v1.zip();
-        String sha1 = deploy(zip1, "r1").pkg().archiveSha256();
+        Map<String, byte[]> pkg1 = v1.files();
+        String sha1 = hex(deploy(pkg1, "r1").pkg().content());
         List<String> swapped = List.of();
         if (kept.equals("previous")) {
             assertResult(List.of(), List.of("shop/orders"), List.of(), deploy(changed(shop(), "orders", "v2"), "r2"));
@@ -1117,7 +1131,7 @@ class DeploymentsRollbackTest {
         Files.createSymbolicLink(yaml, Path.of("/proc/self/mem"));
         assertThrows(IOException.class, () -> Files.readAllBytes(yaml), "fixture: the kept file cannot be read");
 
-        DeployResult again = deploy(zip1, "r3");
+        DeployResult again = deploy(pkg1, "r3");
 
         assertResult(List.of(), swapped, List.of(), again);
         assertFalse(Files.isSymbolicLink(yaml), "the archive was unpacked afresh over the kept directory");
@@ -1136,22 +1150,22 @@ class DeploymentsRollbackTest {
      */
     @Test
     void aRePutOfTheSameArchiveKeepsTheRealPreviousDir() throws Exception {
-        byte[] zip1 = changed(syncFlows("a"), "a", "v1").zip();
-        byte[] zip2 = changed(syncFlows("a"), "a", "v2").zip();
-        String sha1 = deploy(zip1, "r1").pkg().archiveSha256();
-        String sha2 = deploy(zip2, "r2").pkg().archiveSha256();
+        Map<String, byte[]> pkg1 = changed(syncFlows("a"), "a", "v1").files();
+        Map<String, byte[]> pkg2 = changed(syncFlows("a"), "a", "v2").files();
+        String sha1 = hex(deploy(pkg1, "r1").pkg().content());
+        String sha2 = hex(deploy(pkg2, "r2").pkg().content());
         Object key1 = fileKey(packageDir(sha1));
         List<String> files1 = regularFiles(packageDir(sha1));
         assertEquals(sorted(sha1, sha2), children(shopDir()), "fixture: current and previous");
 
-        DeployResult again = deploy(zip2, "r3");
+        DeployResult again = deploy(pkg2, "r3");
 
         assertResult(List.of(), List.of(), List.of(), again);
         assertEquals(sorted(sha1, sha2), children(shopDir()), "v1's directory stays the previous one: the current one is not its own previous");
         assertEquals(key1, fileKey(packageDir(sha1)), "the same directory");
         assertEquals(files1, regularFiles(packageDir(sha1)), "whole");
 
-        DeployResult back = deploy(zip1, "r4");
+        DeployResult back = deploy(pkg1, "r4");
 
         assertResult(List.of(), List.of("shop/a"), List.of(), back);
         assertEquals(key1, fileKey(packageDir(sha1)), "v1's archive reuses its kept directory, as unpacked");
@@ -1166,12 +1180,12 @@ class DeploymentsRollbackTest {
      */
     @Test
     void aRePutAfterAFailedDeployKeepsTheRealPreviousDir() throws Exception {
-        byte[] zip1 = changed(syncFlows("a"), "a", "v1").zip();
+        Map<String, byte[]> pkg1 = changed(syncFlows("a"), "a", "v1").files();
         PackageDraft v2 = changed(syncFlows("a"), "a", "v2");
         v2.manifest().put("version", "2.0.0");
-        byte[] zip2 = v2.zip();
-        String sha1 = deploy(zip1, "r1").pkg().archiveSha256();
-        String sha2 = deploy(zip2, "r2").pkg().archiveSha256();
+        Map<String, byte[]> pkg2 = v2.files();
+        String sha1 = hex(deploy(pkg1, "r1").pkg().content());
+        String sha2 = hex(deploy(pkg2, "r2").pkg().content());
         Object key1 = fileKey(packageDir(sha1));
         List<String> files1 = regularFiles(packageDir(sha1));
         assertEquals(sorted(sha1, sha2), children(shopDir()), "fixture: current and previous");
@@ -1183,15 +1197,15 @@ class DeploymentsRollbackTest {
         assertEquals(List.of("shop/a"), failedIn(refused.error()), "fixture: a is FAILED: " + refused.error());
         assertEquals(sorted(sha1, sha2), children(shopDir()), "fixture: v3's directory is deleted");
 
-        DeployResult again = deploy(zip2, "r4");
+        DeployResult again = deploy(pkg2, "r4");
 
         assertResult(List.of("shop/a"), List.of(), List.of(), again);
-        assertEquals(sha2, again.pkg().archiveSha256(), "fixture: the running archive again");
+        assertEquals(sha2, hex(again.pkg().content()), "fixture: the running archive again");
         assertEquals(sorted(sha1, sha2), children(shopDir()), "v1's directory stays the previous one: the failed deploy did not lose it");
         assertEquals(key1, fileKey(packageDir(sha1)), "the same directory");
         assertEquals(files1, regularFiles(packageDir(sha1)), "whole");
 
-        DeployResult back = deploy(zip1, "r5");
+        DeployResult back = deploy(pkg1, "r5");
 
         assertResult(List.of(), List.of("shop/a"), List.of(), back);
         assertEquals(key1, fileKey(packageDir(sha1)), "v1's archive reuses its kept directory, as unpacked");

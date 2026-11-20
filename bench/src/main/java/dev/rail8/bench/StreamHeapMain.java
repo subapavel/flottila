@@ -184,11 +184,12 @@ public final class StreamHeapMain {
         int admin = NodeBenchMain.freePort();
         Path log = o.out().resolveSibling(o.out().getFileName() + ".node.log");
         JsonObject json = new JsonObject();
-        Process node = startNode(command(o.xmx()), nodeEnv(o, Files.createDirectories(run.resolve("node")), admin, in), log);
+        Path repos = Files.createDirectories(run.resolve("repos"));
+        Process node = startNode(command(o.xmx()), nodeEnv(o, Files.createDirectories(run.resolve("node")), repos, admin, in), log);
         try {
             NodeBenchMain.Harness h = new NodeBenchMain.Harness(bench(o), vertx, null, client, Buffer.buffer(), in, echo.actualPort());
             LedgerMain.awaitServing(vertx, h, node, admin, START, log);
-            h.deploy(admin, streamPackage(size, echo.actualPort()));
+            h.deploy(admin, NodeBenchMain.commit(repos, streamPackage(size, echo.actualPort())));
             PrintStream asks = new PrintStream(node.getOutputStream(), true, StandardCharsets.UTF_8);
             BufferedReader answers = node.inputReader(StandardCharsets.UTF_8);
             send(client, in, WARMUP_BYTES);
@@ -222,14 +223,16 @@ public final class StreamHeapMain {
 
     /**
      * The node's environment: env dev, the run's database, admin on 127.0.0.1:{@code admin}, its HTTP port on 127.0.0.1:{@code http}
-     * (0: any free port), its data directory, the run's journal key, the peer link on any free port.
+     * (0: any free port), its data directory, its package repositories under {@code repos}, the run's journal key, the peer link
+     * on any free port.
      */
-    static Map<String, String> nodeEnv(Options o, Path data, int admin, int http) {
+    static Map<String, String> nodeEnv(Options o, Path data, Path repos, int admin, int http) {
         return Map.ofEntries(Map.entry("RAIL8_ENV", "dev"), Map.entry("RAIL8_NODE_ID", "stream-heap-node"),
                 Map.entry("RAIL8_ADMIN_PORT", String.valueOf(admin)), Map.entry("RAIL8_DATA_DIR", data.toString()),
                 Map.entry("RAIL8_PG_HOST", o.host()), Map.entry("RAIL8_PG_PORT", String.valueOf(o.port())), Map.entry("RAIL8_PG_DATABASE", o.db()),
                 Map.entry("RAIL8_PG_USER", o.user()), Map.entry("RAIL8_PG_PASSWORD", o.password()),
-                Map.entry("RAIL8_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY), Map.entry("RAIL8_PEER_PORT", "0"), Map.entry("RAIL8_HTTP_PORT", String.valueOf(http)));
+                Map.entry("RAIL8_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY), Map.entry("RAIL8_PEER_PORT", "0"), Map.entry("RAIL8_HTTP_PORT", String.valueOf(http)),
+                Map.entry("RAIL8_GIT_BASE", NodeBenchMain.gitBase(repos)));
     }
 
     /**
@@ -259,11 +262,11 @@ public final class StreamHeapMain {
     }
 
     /**
-     * The package: the in endpoint at {@value NodeBenchMain#IN_PATH} on the node's HTTP port, the partner at the echo, and the sync flow {@code stream-heap},
+     * The package's files by their paths: the in endpoint at {@value NodeBenchMain#IN_PATH} on the node's HTTP port, the partner at the echo, and the sync flow {@code stream-heap},
      * every step recorded with its payload, {@code [stream-copy copy, to partner]}; the flow's and the partner's max body
      * {@code maxBodyBytes}.
      */
-    static byte[] streamPackage(long maxBodyBytes, int echo) throws IOException {
+    static Map<String, byte[]> streamPackage(long maxBodyBytes, int echo) {
         Map<String, byte[]> files = new TreeMap<>();
         files.put("package.yaml", NodeBenchMain.yaml(NodeBenchMain.doc("package").put("name", "bench").put("version", "0.1.0")));
         files.put("endpoints/in.yaml", NodeBenchMain.yaml(NodeBenchMain.doc("endpoint").put("id", "in").put("scheme", "http").put("direction", "in")
@@ -277,7 +280,7 @@ public final class StreamHeapMain {
                 .put("limits", new JsonObject().put("maxBodyBytes", maxBodyBytes).put("maxInFlight", 4))
                 .put("steps", new JsonArray().add(new JsonObject().put("type", StreamCopy.TYPE).put("name", STEP))
                         .add(new JsonObject().put("type", "to").put("name", "partner").put("endpoint", "partner")))));
-        return NodeBenchMain.zip(files);
+        return files;
     }
 
     /** Asks the child for a heap sample (one line out) and reads its answer; -1 and -1 when it answered nothing (it exited). */
