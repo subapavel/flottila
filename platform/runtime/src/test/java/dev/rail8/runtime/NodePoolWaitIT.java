@@ -641,12 +641,12 @@ class NodePoolWaitIT {
     }
 
     /**
-     * {@code POST /admin/deploy} (the deployed package's commit again) under the work pool held by two parks, PT0.2S,
-     * answers 503 with an {@code error} while the parks hold the pool — retryable, never 500; after the release the same deploy
-     * answers 200.
+     * {@code POST /admin/deploy} (the deployed package's commit again) under the work pool held by two parks, PT0.2S, answers
+     * 200 while the parks hold the pool: the deploy's record is written on the pool lock's own connection, never one of the work
+     * pool, and a redeploy that changes no flow asks the work queue nothing.
      */
     @Test
-    void aDeployRefusedByTheWorkPoolAnswers503() throws Exception {
+    void aDeployUnderAHeldWorkPoolWritesItsRecordOnTheLocksOwnConnection() throws Exception {
         try (HttpClient client = NodeIT.http()) {
             Node node = startDeployed(client, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
             int httpPort = node.httpPort();
@@ -654,16 +654,13 @@ class NodePoolWaitIT {
 
             PgConnection locker = lock("dlq");
             holdTheWorkPool(client, httpPort);
-            HttpResponse<String> refused = NodeIT.send(client, "POST", node.adminPort(), "/admin/deploy", body, "application/json");
-            assertEquals(503, refused.statusCode(), "a deploy the pool refused is retryable, 503, never 500: " + refused.body());
-            String error = new JsonObject(refused.body()).getString("error");
-            assertTrue(error != null && !error.isBlank(), "an error body {error, ..}: " + refused.body());
-            assertEquals(2, waitingOnALock(WORK), "the refusal came while the parks still held the work pool");
+            HttpResponse<String> deployed = NodeIT.send(client, "POST", node.adminPort(), "/admin/deploy", body, "application/json");
+            assertEquals(200, deployed.statusCode(), "the deploy's record does not wait for the work pool: " + deployed.body());
+            assertEquals(2, waitingOnALock(WORK), "the deploy answered while the parks still held the work pool");
+            assertEquals(1, count("select count(*) from deployments where package = 'demo'"), "one record");
 
             locker.query("rollback").execute().await();
             NodeIT.until(() -> count("select count(*) from dlq") == 2, "the parks go through once the lock is gone");
-            HttpResponse<String> deployed = NodeIT.send(client, "POST", node.adminPort(), "/admin/deploy", body, "application/json");
-            assertEquals(200, deployed.statusCode(), "witness: the same deploy once the pool is free: " + deployed.body());
         }
     }
 
@@ -773,21 +770,14 @@ class NodePoolWaitIT {
     }
 
     /**
-     * FIX-234 (the CI sighting of {@link #aFullIntakeWaitQueueRefusesTheNextWaitingSaveAtOnce}, staged): {@code RAIL8_PG_POOL_SIZE}
-     * 2 (one work connection), {@code RAIL8_PG_POOL_QUEUE} 1, PT1M, and {@code messages} locked in access exclusive mode by the
-     * test before the node starts. The retention's first batch — begun by {@code Node.start}, not awaited — holds the work pool's
-     * one connection, its statement over {@code messages} waiting on the lock; the first deploy's worker claims at its start
-     * (not refused: it takes the queue's one place) and the deploy's record, the third user, is refused at once: 503 with the
-     * sighting's text. That refused first deploy leaves no record row, no listed package or flow, and its path answers 404 on the
-     * node's HTTP port; it
-     * does leave its commit in the node's git cache (a second send reads it again) and its stopped
-     * worker's start claim, in flight in the queue's one place until the pool frees it — with no row of the flow in {@code work}
-     * that claim claims nothing, so a second send is sound. The fixture's deploy, sent while the hold lasts, is refused too (its
-     * worker's start claim refused by the queue that leftover claim fills) and sent again; once the lock goes it is accepted and
-     * recorded.
+     * {@code RAIL8_PG_POOL_SIZE} 2 (one work connection), {@code RAIL8_PG_POOL_QUEUE} 1, PT1M, and {@code messages} locked in
+     * access exclusive mode by the test before the node starts. The retention's first batch, begun by {@code Node.start} and not
+     * awaited, holds the work pool's one connection, its statement over {@code messages} waiting on the lock. The first deploy's
+     * worker claims at its start (not refused: it takes the queue's one place), and its record is written on the pool lock's own
+     * connection, no user of the work pool: the deploy is accepted and recorded while the hold lasts, and its flow is listed.
      */
     @Test
-    void aFirstDeployRefusedByTheNodesStartUpWorkOnTheWorkPoolLeavesNoRecordFlowOrListenerAndIsSentAgainUntilAccepted() throws Exception {
+    void aFirstDeployWhileTheNodesStartUpWorkHoldsTheWorkPoolIsRecordedOnTheLocksOwnConnection() throws Exception {
         try (HttpClient client = NodeIT.http()) {
             List<String> startClaimsRefused = new CopyOnWriteArrayList<>();
             Handler capture = new Handler() {
@@ -810,41 +800,14 @@ class NodePoolWaitIT {
             byte[] body = asyncDeploy();
 
             HttpResponse<String> first = NodeIT.send(client, "POST", node.adminPort(), "/admin/deploy", body, "application/json");
-            assertEquals(503, first.statusCode(), "the first deploy meets the node's start-up work on the work pool: " + first.body());
-            assertEquals(new JsonObject().put("error", UNRECORDED + "Connection pool reached max wait queue size of 1"), new JsonObject(first.body()),
-                    "the sighting's refusal: the record is the third user of a pool of one connection and one place to wait");
-            assertEquals(List.of(), startClaimsRefused, "the first deploy's worker claim was not refused: it waits in the queue's one place");
-            assertEquals(1, waitingOnALock(WORK), "the refusal came while the retention's batch still held the connection");
-
-            // what the refused first deploy leaves a second one does not meet: no record, nothing listed, no path served, no work row for
-            // its leftover start claim to take (its commit stays in the node's git cache: the second send reads it again)
-            assertEquals(0, count("select count(*) from deployments"), "no deployment row");
-            assertEquals(0, count("select count(*) from work"), "no work row: the stopped worker's start claim, still in flight, claims nothing");
-            assertEquals(new JsonArray(), items(client, node, "/admin/packages"), "no package listed");
-            assertEquals(new JsonArray(), items(client, node, "/admin/flows"), "no flow listed");
-            assertEquals(404, client.send(post(node.httpPort(), NO_XML, "probe"), HttpResponse.BodyHandlers.ofString()).statusCode(),
-                    "no flow takes requests at the refused flow's path on the node's HTTP port");
-
-            List<HttpResponse<String>> answers = new CopyOnWriteArrayList<>();
-            CompletableFuture<Void> deployed = new CompletableFuture<>();
-            Thread.ofVirtual().name("fixture-deploy").start(() -> {
-                try {
-                    deploy(client, node, body, answers);
-                    deployed.complete(null);
-                } catch (Throwable failed) {
-                    deployed.completeExceptionally(failed);
-                }
-            });
-            NodeIT.until(() -> !answers.isEmpty() && !startClaimsRefused.isEmpty(), "the fixture's deploy answered once and its worker's start claim refused while the hold lasts");
-            assertTrue(refusedByThePool(answers.getFirst()), "the fixture's first send is refused alike: " + answers.getFirst().statusCode() + " " + answers.getFirst().body());
-            assertEquals(1, waitingOnALock(WORK), "still held by the retention's batch");
+            assertEquals(200, first.statusCode(), "the first deploy's record does not wait for the work pool: " + first.body());
+            assertEquals(List.of(), startClaimsRefused, "its worker's start claim was not refused: it waits in the queue's one place");
+            assertEquals(1, waitingOnALock(WORK), "accepted while the retention's batch still held the connection");
+            assertEquals(1, count("select count(*) from deployments where package = 'demo'"), "recorded once");
+            assertEquals(List.of("demo/invoice-async"), items(client, node, "/admin/flows").stream().map(f -> ((JsonObject) f).getString("id")).toList(), "its flow runs");
 
             locker.query("rollback").execute().await();
-            deployed.get(30, TimeUnit.SECONDS);
-            assertTrue(answers.size() >= 2, "sent again after the refusal: " + answers.size());
-            assertEquals(200, answers.getLast().statusCode(), "accepted once the pool is free: " + answers.getLast().body());
-            assertEquals(1, count("select count(*) from deployments where package = 'demo'"), "and recorded once");
-            assertEquals(List.of("demo/invoice-async"), items(client, node, "/admin/flows").stream().map(f -> ((JsonObject) f).getString("id")).toList(), "its flow runs");
+            NodeIT.until(() -> waitingOnALock(WORK) == 0, "the retention's batch goes through once the lock is gone");
         }
     }
 
