@@ -17,10 +17,6 @@ public final class OuterVarOp extends Op {
   /** The cell of the same frame that keeps the cell's path, or -1 when it keeps none. */
   private final int pathCell;
 
-  public OuterVarOp(boolean valueForm, int level, int cell) {
-    this(valueForm, level, cell, -1);
-  }
-
   /** The Var of {@code cell} of the frame {@code level} links out, whose path waits in {@code pathCell} there, or -1. */
   public OuterVarOp(boolean valueForm, int level, int cell, int pathCell) {
     super(valueForm);

@@ -41,7 +41,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * Seeded property: the path variant of a tree runs as its {@code run} does. Each seed takes the root of
  * {@link BindsPropertyTest}'s seed, sets the tracking of each of its Bind and Binds values to VALUE or PATH and the path
  * rule of each of its operations to NONE or SAME at random, and puts it in the else branch of an If whose condition is false and whose then branch is a PathOf, so the program
- * holds paths and its frames their hidden cells. The parts are the toy ones of {@link RandomParts}, none of whose
+ * compiles as one that holds paths. The parts are the toy ones of {@link RandomParts}, none of whose
  * operations is a step, so no path variant raises where {@code run} does not. Over the main tree's path
  * variant, in both compile modes, in push form and on the trampoline (a declared stack of 0), the results, their order,
  * the answer to a sink that stops, the error or termination, the steps and the bytes built must be {@code run}'s, and

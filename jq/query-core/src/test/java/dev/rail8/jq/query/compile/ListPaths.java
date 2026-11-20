@@ -370,7 +370,7 @@ final class ListPaths implements PathFormat {
     return new Intrinsic(AT, new Operation(name, (Fn0) (state, in) -> fn.apply(in), new Facts(rule)), List.of());
   }
 
-  /** An untracked Fn0 that writes {@code line} into {@link #log}, then gives its input: a debug with the input's path. */
+  /** An Fn0 that writes {@code line} into {@link #log}, then gives its input at its input's path, as a debug does. */
   Node debug(String line) {
     return new Intrinsic(
         AT,

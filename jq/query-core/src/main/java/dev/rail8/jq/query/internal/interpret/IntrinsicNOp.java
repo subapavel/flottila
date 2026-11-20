@@ -19,11 +19,6 @@ public final class IntrinsicNOp extends Op {
   /** Whether the result has the input's path in a path variant. */
   private final boolean same;
 
-  /** A call whose result is untracked in a path variant. */
-  public IntrinsicNOp(boolean valueForm, FnN fn, Argument[] args) {
-    this(valueForm, fn, args, false);
-  }
-
   /** A call whose result has the input's path in a path variant when {@code same}, and is untracked otherwise. */
   public IntrinsicNOp(boolean valueForm, FnN fn, Argument[] args, boolean same) {
     super(valueForm);

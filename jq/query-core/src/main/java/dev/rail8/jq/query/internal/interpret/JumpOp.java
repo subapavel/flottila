@@ -31,13 +31,9 @@ public final class JumpOp extends Op {
 
   /**
    * A jump to {@code fn}, its value arguments {@code values} and its closure arguments {@code closures}, each a closure
-   * parameter passed on or {@link ClosureArgument#closed}.
+   * parameter passed on or {@link ClosureArgument#closed}, from a frame whose input-path cell is {@code pathCell}, or -1
+   * when it has none.
    */
-  public JumpOp(boolean valueForm, LiftedFunction fn, ClosureArgument[] closures, Argument[] values) {
-    this(valueForm, fn, closures, values, -1);
-  }
-
-  /** As {@link #JumpOp(boolean, LiftedFunction, ClosureArgument[], Argument[])}, from a frame whose input-path cell is {@code pathCell}. */
   public JumpOp(boolean valueForm, LiftedFunction fn, ClosureArgument[] closures, Argument[] values, int pathCell) {
     super(valueForm);
     this.fn = fn;
