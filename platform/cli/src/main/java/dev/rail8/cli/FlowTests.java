@@ -81,9 +81,10 @@ import java.util.stream.Stream;
  * {@linkplain Calls#ingest sent through a direct producer} as a caller at depth 0 would; a case without one is fed by that
  * endpoint's mock, whose {@code files} or {@code messages} its consumer polls from its start (the package's cross-check refuses
  * a case that neither sends nor is fed). The case settles on virtual time ({@link VirtualTime}: settled = the answer
- * complete — a fed case has none —, no file of the from endpoint {@linkplain MockComponent#undelivered undelivered} and no
- * work-queue row that can still run, of any flow the case's message reached, on a quiet world: a stopped key's rows wait for an
- * operator, who never comes in a test) and its {@code expect} is evaluated ({@link Expectations}; {@code steps} and {@code keys}
+ * complete — a fed case has none —, no file of the from endpoint {@linkplain MockComponent#undelivered undelivered}, no
+ * work-queue row that can still run, of any flow the case's message reached, and no delivery of the node still
+ * {@linkplain Deployments#inFlight in flight} — an at-most-once run waiting on a timer, a retry's backoff say, answered Accepted
+ * at once and left no row —, on a quiet world: a stopped key's rows wait for an operator, who never comes in a test) and its {@code expect} is evaluated ({@link Expectations}; {@code steps} and {@code keys}
  * read the first message the from endpoint delivered; {@code sent}, {@code retries} and {@code dlq} count every flow's sends and
  * rows, a real call between flows a send too); then the node is closed, on virtual time too.
  *
@@ -322,10 +323,10 @@ final class FlowTests {
                 BooleanSupplier answered = done(answer);   // the answer's monitor stays out of the sampling: read through this only
                 VirtualTime.Outcome outcome = new VirtualTime(rt.clock(), rt.timer(),
                         Quiescence.ofJvm(watched::inside, STEADY, world(watched, rt.clock(), door, from, sent, answered)), WALL_GUARD)
-                        .settle(() -> answered.getAsBoolean() && door.undelivered(from).isEmpty() && queue.moving() == 0);
+                        .settle(() -> answered.getAsBoolean() && door.undelivered(from).isEmpty() && queue.moving() == 0 && node.inFlight() == 0);
                 if (!outcome.settled()) {
                     return Verdict.failed(outcome.flowTime(), "did not settle: " + outcome.reason() + " (answer complete: " + answered.getAsBoolean()
-                            + ", undelivered files: " + door.undelivered(from).size() + ", work queue items that can still run: " + queue.moving() + ")");
+                            + ", undelivered files: " + door.undelivered(from).size() + ", work queue items that can still run: " + queue.moving() + ", deliveries in flight: " + node.inFlight() + ")");
                 }
                 List<Envelope> taken = door.delivered(from);
                 if (answer.failed() && taken.isEmpty()) return Verdict.failed(outcome.flowTime(), "send refused: " + Cli.oneLine(answer.cause().getMessage()));

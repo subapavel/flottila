@@ -83,6 +83,50 @@ class TestCommandCallsTest {
         assertEquals(1, ran.exit(), ran.toString());
     }
 
+    /**
+     * An at-most-once callee answers Accepted at once and leaves no work row: the case still waits for its run, on the timer of
+     * the archive mock's 50 ms and of its retry's backoff of 100 + 200 + 400 ms (700ms, 4 sends, 3 retries, no DLQ row).
+     */
+    @Test
+    void aCaseWaitsForAnAtMostOnceCalleeOnItsTimers() throws IOException {
+        Path pkg = CliRuns.copy(CALLS, tmp.resolve("calls"));
+        CliRuns.rewrite(pkg.resolve("flows/archive.yaml"), Map.of("""
+                delivery:
+                  mode: at-least-once
+                  retries: { count: 1, interval: 1s }
+                """, "delivery: { mode: at-most-once }\n"));
+        Files.writeString(pkg.resolve("flows/order.test.yaml"), """
+                schemaVersion: 1
+                kind: test
+                flow: order
+                mocks:
+                  partner: { reply: fixtures/ack.xml }
+                  archive: { delay: 50ms }
+                cases:
+                  - name: the chain
+                    send: fixtures/order.xml
+                    expect:
+                      sent: { archive: { count: 1, contains: "Ack" } }
+                  - name: archive down
+                    send: fixtures/order.xml
+                    mocks:
+                      archive: { fail: 503 }
+                    expect:
+                      sent: { archive: { count: 4 } }
+                      dlq: 0
+                      retries: 3
+                """);
+
+        Ran ran = run("test", pkg.toString());
+
+        assertEquals(List.of(
+                "PASS check: called (flow time 0ms)",
+                "PASS order: the chain (flow time 50ms)",
+                "PASS order: archive down (flow time 700ms)",
+                "3 cases: 3 passed, 0 failed"), ran.outLines(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+    }
+
     /** A body above the called flow's maxBodyBytes (the order is 56 bytes, the limit 16) is refused by the call: the send is refused. */
     @Test
     void aSendAboveTheCalleesLimitIsRefused() throws IOException {

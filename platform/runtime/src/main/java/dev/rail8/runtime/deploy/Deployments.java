@@ -613,6 +613,14 @@ public final class Deployments {
         return Collections.unmodifiableSortedMap(all);
     }
 
+    /**
+     * The deliveries in flight now, summed over every flow that runs ({@link Delivery#inFlight}): an at-most-once run counts until
+     * it ended and its trail closed, though it answered Accepted at once. During a deploy, those of the flows listed before it.
+     */
+    public int inFlight() {
+        return deployed.values().stream().flatMap(d -> d.flows().stream()).filter(Flow::runs).mapToInt(f -> f.delivery().inFlight()).sum();
+    }
+
     /** Every package deployed, sorted by name; during a deploy as before it. */
     public List<DeployedPackage> packages() {
         return deployed.values().stream().map(Deployed::pkg).toList();

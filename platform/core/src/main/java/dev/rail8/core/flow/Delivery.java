@@ -355,6 +355,16 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
     }
 
     /**
+     * The deliveries in flight now: admitted and not yet landed. A sync or at-most-once run is in flight until its {@link Trail}
+     * closed, after its answer; an at-least-once delivery until its answer is decided.
+     */
+    public int inFlight() {
+        synchronized (lock) {
+            return flights.size();
+        }
+    }
+
+    /**
      * Stops the flow's deliveries: from this call on {@link #apply} answers a retryable Nack before admission; the
      * deliveries in flight finish as usual until {@code deadline} on the injected timer, then are cancelled — a sync or
      * at-most-once run's thread is interrupted (a sync failure after that answers a retryable Nack "cancelled: ..." whatever
