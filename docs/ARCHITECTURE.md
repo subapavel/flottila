@@ -426,7 +426,9 @@ a dependency by its content among the packages it holds.
 `rail8 deploy <repository> <commit|ref> [--check]` asks a node's admin API to deploy that commit of
 that repository (`POST /admin/deploy`) and prints the node's answer; `--check` deploys nothing.
 `rail8 new-adapter` writes the skeleton of a new adapter as a git repository with a first commit
-(part 5).
+(part 5). `rail8 <module> [arguments]` runs the command that the module of that name brings, and
+`rail8 help` lists each module's command after the CLI's own (part 5); both load the modules of the
+CLI's class path only, never `RAIL8_PLUGINS`.
 
 ### Deployment
 
@@ -558,7 +560,7 @@ language (XPath today) is registered the same way.
 ### Plugins
 
 A plugin adds components, step factories and expression languages to the node's built-in steps;
-a module may also bring services of the admin API.
+a module may also bring services of the admin API and a command of the command line.
 The components and step modules that ship with the platform (`direct`, `http`, `sftp`, `jq`,
 `mapping`, `xsd`, `xslt`) are plugins on the node's class path, called modules; the node names none
 of them in code. The node's distribution is a build of its own, `platform/node`, with no code: its
@@ -573,7 +575,8 @@ At start the node finds its modules on its class path (Java's `ServiceLoader`), 
 then loads every entry of `RAIL8_PLUGINS`, in name order. Modules and plugins share one space of
 names, and `rail8` stands for the platform itself. The node logs each one: module or plugin, its
 name, its version (its jar's `Implementation-Version`, else `-`), its api version, the SHA-256 of
-its jars (`-` for a directory) and where it came from. Their components are built over the node's
+its jars (`-` for a directory) and where it came from; `GET /admin/modules` lists the same, with
+what each brings. Their components are built over the node's
 `ComponentContext` (Vert.x, blob store, ids, timer, clock, the node's HTTP port), inside the node's
 start; building them opens nothing.
 
@@ -613,8 +616,23 @@ start; building them opens nothing.
   path. The call's thread is interrupted when its client goes away and when the node stops. The
   node's own answers are problems of type `urn:rail8:admin:problem:<slug>`: `too-large`,
   `unsupported-media-type`, `not-utf-8`, `busy` and `invalid-reply`.
+- **A command of the command line.** A module may bring one command (`Plugin.command()`), named
+  after the module: `rail8 mapping compile <dir>` would be the `mapping` module's, with `compile`
+  its own argument. Every load takes it and its usage once, after the steps and languages: the
+  node's start, `rail8 validate`, `rail8 test`, `rail8 help`, `rail8 new-adapter` and
+  `rail8 <module>`. Refused, naming it: a plugin of `RAIL8_PLUGINS` that brings one, a module named
+  `validate`, `test`, `lock`, `deploy`, `new-adapter` or `help` that brings one, and a usage of more
+  than 16 lines, a line over 120 characters, or a control or format character other than the line
+  break. Only the CLI runs a command, once, on its own thread, given the arguments after the name,
+  the process's environment, stdout, stderr and the clock. It returns the exit code: 0 done,
+  1 problems, 2 a usage error, after which the CLI prints the command's usage. Any other code, and
+  what it throws, is one line on stderr and 1. No shipped module brings one yet.
+- **The list.** `GET /admin/modules` answers each module, then each plugin, as they loaded: its
+  kind, name, version, api, SHA-256 and where it came from (`null` where the log line says `-` or
+  the class path), and what it brings: the schemes of its components, its step types, its
+  languages, its admin services and whether it brings a command.
 
-A refused module, plugin, setting, step type, language or admin service stops the node with exit 2
+A refused module, plugin, setting, step type, language, admin service or command stops the node with exit 2
 before Vert.x starts; a refused component, with exit 1. `rail8 validate` and `rail8 test` load the same plugins, from `--plugins` or
 `RAIL8_PLUGINS`.
 
@@ -740,8 +758,6 @@ a file to poll; a deployed node refuses it.
 **Planned**
 - Plugins for custom mapping code and custom services, and a plugin that replaces a shipped
   component or step.
-- The admin API lists the loaded modules and plugins (`GET /admin/modules`).
-- Commands of the command line that a module brings; a plugin of `RAIL8_PLUGINS` brings none.
 - A deferred acknowledgement in the adapter contract: system and application acknowledgements as
   in SAP XI.
 - Custom code sends through an outbound endpoint of its package.
@@ -1088,6 +1104,7 @@ Bearer token; without one the API may only listen on loopback. There are no user
 | `GET /admin/targets`, `GET /admin/flows/{flow}/cpu` | limits per target system, CPU by step |
 | `GET /admin/components` | the components the node serves and their settings descriptions |
 | `GET /admin/steps` | the step types of the node's modules and plugins, each with its `configSchema`, sorted by type |
+| `GET /admin/modules` | the loaded modules and plugins, each with its version, api, SHA-256, where it came from and what it brings (part 5) |
 | `GET`, `POST /admin/modules/{module}/{path}` | the admin services of the node's modules (part 5) |
 
 The list of recent messages reads Postgres only. `from` and `to` are ISO-8601 instants at most 31 days

@@ -182,9 +182,9 @@ import java.util.stream.Collectors;
  * <p>With {@link Modules}, each admin service a module brings is a route, {@code <method> /admin/modules/<plugin>/<path>}, that
  * runs the service's calls on virtual threads of their own, at most 4 of one plugin at once ({@link ModuleCalls}); its own
  * answers are problems ({@code application/problem+json}), not {@code {error}}. {@code GET /admin/modules} lists the node's
- * modules, then its plugins, as they loaded: 200 {@code {items:[{kind, name, version|null, api, sha256|null, from, brings:
- * {schemes, steps, languages, services:[{method, path}]}}]}}, each list of {@code brings} sorted, and {@code items} empty
- * without modules.
+ * modules, then its plugins, as they loaded: 200 {@code {items:[{kind, name, version|null, api, sha256|null, from|null, brings:
+ * {schemes, steps, languages, services:[{method, path}], command}}]}}, each list of {@code brings} sorted, {@code command} true
+ * when it brings a command of the command line, and {@code items} empty without modules.
  *
  * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
  * is 403 {@code {error}} before the token check and the route, token or no token: what a browser sends, never the CLI.
@@ -1052,9 +1052,9 @@ public final class AdminServer {
                     .sorted(Comparator.comparing(AdminService::path).thenComparing(AdminService::method))
                     .forEach(s -> services.add(new JsonObject().put("method", s.method()).put("path", s.path())));
             JsonObject brings = new JsonObject().put("schemes", new JsonArray(l.schemes())).put("steps", new JsonArray(l.steps()))
-                    .put("languages", new JsonArray(l.languages())).put("services", services);
+                    .put("languages", new JsonArray(l.languages())).put("services", services).put("command", l.command());
             items.add(new JsonObject().put("kind", l.kind()).put("name", l.name()).put("version", l.version().orElse(null)).put("api", l.api())
-                    .put("sha256", l.sha256().orElse(null)).put("from", l.from()).put("brings", brings));
+                    .put("sha256", l.sha256().orElse(null)).put("from", l.from().orElse(null)).put("brings", brings));
         }
         return Json.of(200, new JsonObject().put("items", items));
     }

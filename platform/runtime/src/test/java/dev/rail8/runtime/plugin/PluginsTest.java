@@ -5,6 +5,7 @@ import dev.rail8.api.Envelope;
 import dev.rail8.api.Expressions;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.plugin.AdminService;
+import dev.rail8.api.plugin.CommandContext;
 import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.api.plugin.Plugin;
@@ -17,9 +18,12 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -281,18 +285,18 @@ class PluginsTest {
         try (URLClassLoader classPath = classPath(modules); Plugins plugins = Plugins.load(classPath, Optional.of(dir), Map.of())) {
             Optional<String> moduleDigest = Optional.of(HexFormat.of().formatHex(sha256(Files.readAllBytes(modules))));
             Optional<String> pluginDigest = Optional.of(HexFormat.of().formatHex(sha256(Files.readAllBytes(settled))));
-            Plugins.Listed serves = new Plugins.Listed("module", "serves", Optional.of("2.0.1"), Plugin.API, moduleDigest, "modules.jar", List.of(),
-                    List.of(), List.of());
-            Plugins.Listed settledPlugin = new Plugins.Listed("plugin", "settled", Optional.of("1.2.0"), Plugin.API, pluginDigest, "settled.jar", List.of(),
-                    List.of("depth-5"), List.of());
-            List<Plugins.Listed> before = List.of(new Plugins.Listed("module", "acme", Optional.of("2.0.1"), Plugin.API, moduleDigest, "modules.jar",
-                    List.of(), List.of("sign"), List.of("upper")), serves, settledPlugin);
+            Plugins.Listed serves = new Plugins.Listed("module", "serves", Optional.of("2.0.1"), Plugin.API, moduleDigest, Optional.of("modules.jar"),
+                    List.of(), List.of(), List.of(), false);
+            Plugins.Listed settledPlugin = new Plugins.Listed("plugin", "settled", Optional.of("1.2.0"), Plugin.API, pluginDigest, Optional.of("settled.jar"),
+                    List.of(), List.of("depth-5"), List.of(), false);
+            List<Plugins.Listed> before = List.of(new Plugins.Listed("module", "acme", Optional.of("2.0.1"), Plugin.API, moduleDigest,
+                    Optional.of("modules.jar"), List.of(), List.of("sign"), List.of("upper"), false), serves, settledPlugin);
             assertEquals(before, plugins.list(), "no scheme before the components are built");
             plugins.components("acme", context());
             assertEquals(before, plugins.list(), "nor once one module's alone are built");
             plugins.components(context());
-            assertEquals(List.of(new Plugins.Listed("module", "acme", Optional.of("2.0.1"), Plugin.API, moduleDigest, "modules.jar", List.of("acme"),
-                    List.of("sign"), List.of("upper")), serves, settledPlugin), plugins.list(), "the schemes once every component is built");
+            assertEquals(List.of(new Plugins.Listed("module", "acme", Optional.of("2.0.1"), Plugin.API, moduleDigest, Optional.of("modules.jar"),
+                    List.of("acme"), List.of("sign"), List.of("upper"), false), serves, settledPlugin), plugins.list(), "the schemes once every component is built");
         }
     }
 
@@ -304,8 +308,8 @@ class PluginsTest {
         try (URLClassLoader classPath = new URLClassLoader(new URL[] {elsewhere.toUri().toURL()}, PluginsTest.class.getClassLoader());
              Plugins plugins = Plugins.load(classPath, Optional.empty(), Map.of())) {
             Plugins.Listed acme = plugins.list().stream().filter(l -> l.name().equals("acme")).findFirst().orElseThrow();
-            assertEquals(new Plugins.Listed("module", "acme", Optional.empty(), Plugin.API, Optional.empty(), classes.toString(), List.of(), List.of("sign"),
-                    List.of("upper")), acme);
+            assertEquals(new Plugins.Listed("module", "acme", Optional.empty(), Plugin.API, Optional.empty(), Optional.of(classes.toString()), List.of(),
+                    List.of("sign"), List.of("upper"), false), acme);
         }
     }
 
@@ -450,6 +454,76 @@ class PluginsTest {
         for (String path : List.of("", "/a", "a/", "a//b", "A", "a_b", "a.b", "..", "a/../b", "a b", "a/b/c/d/e", "a".repeat(33), "é")) {
             assertTrue(!Plugins.servicePath(path), path);
         }
+    }
+
+    @Test
+    void aModulesCommandIsTakenWithItsUsageAndRunsWithTheModulesContextClassLoader() throws Exception {
+        try (URLClassLoader classPath = classPath(moduleJar("modules.jar", PluginFixtures.Commands.class, PluginFixtures.Acme.class));
+             Plugins plugins = Plugins.load(classPath, Optional.empty(), Map.of())) {
+            assertEquals(Map.of("sample", "<words>\nsay the words"), plugins.commands());
+            assertEquals(List.of(false, true), plugins.list().stream().map(Plugins.Listed::command).toList(), "acme brings none, sample one");
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ClassLoader before = Thread.currentThread().getContextClassLoader();
+            try (PrintStream o = new PrintStream(out, true, StandardCharsets.UTF_8)) {
+                assertEquals(0, plugins.run("sample", new CommandContext(List.of("a", "b"), Map.of(), o, o, RT.clock())));
+            }
+            assertEquals(List.of("a b at " + RT.clock().instant() + ", own loader true"), out.toString(StandardCharsets.UTF_8).lines().toList());
+            assertSame(before, Thread.currentThread().getContextClassLoader(), "the caller's context class loader back");
+            String none = assertThrows(IllegalArgumentException.class,
+                    () -> plugins.run("acme", new CommandContext(List.of(), Map.of(), System.out, System.err, RT.clock()))).getMessage();
+            assertEquals("module acme brings no command", none);
+        }
+    }
+
+    @Test
+    void aPluginOfTheDirectoryThatBringsACommandIsRefusedNamingIt() throws IOException {
+        jar("sample.jar", PluginFixtures.Commands.class);
+        assertRefused("plugin sample: command() brings a command; only a module brings one, no plugin of RAIL8_PLUGINS", () -> load().close());
+    }
+
+    @Test
+    void aModuleNamedAsACommandOfTheCommandLinesOwnBringsNoCommand() throws IOException {
+        assertEquals(List.of("validate", "test", "lock", "deploy", "new-adapter", "help"), Plugins.CLI_COMMANDS);
+        try (URLClassLoader deploy = classPath(moduleJar("deploy.jar", PluginFixtures.CommandsAsDeploy.class))) {
+            assertRefused("module deploy: its command is the CLI's own deploy", () -> Plugins.load(deploy, Optional.empty(), Map.of()).close());
+        }
+        try (URLClassLoader named = classPath(moduleJar("named.jar", PluginFixtures.NamedDeploy.class));
+             Plugins plugins = Plugins.load(named, Optional.empty(), Map.of())) {
+            assertEquals(Map.of(), plugins.commands(), "without a command it loads");
+        }
+    }
+
+    @Test
+    void aCommandOutsideTheRulesIsRefusedNamingTheModule() throws IOException {
+        String says = PluginFixtures.Says.class.getName();
+        Map<Class<?>, String> refusals = Map.of(
+                PluginFixtures.NullCommand.class, "module null-command: command() is null",
+                PluginFixtures.FailingCommand.class, "module failing-command: command() failed: java.lang.IllegalStateException: no command today",
+                PluginFixtures.NullUsage.class, "module null-usage: the usage of " + says + " is null",
+                PluginFixtures.TabbedUsage.class, "module tabbed: the usage of " + says + " holds U+0009 on line 1; no control or format character");
+        for (Map.Entry<Class<?>, String> refused : refusals.entrySet()) {
+            try (URLClassLoader classPath = classPath(moduleJar(refused.getKey().getSimpleName() + ".jar", refused.getKey()))) {
+                assertRefused(refused.getValue(), () -> Plugins.load(classPath, Optional.empty(), Map.of()).close());
+            }
+        }
+    }
+
+    @Test
+    void aUsageIsAtMostSixteenLinesOfAHundredAndTwentyCharsWithNoControlOrFormatCharacter() {
+        String sixteen = String.join("\n", java.util.Collections.nCopies(16, "x"));
+        for (String usage : List.of("", "<file> [--twice]", "<file>\nprint the file", "\n", sixteen, "x".repeat(120), "é ü 日本 ✓")) {
+            assertEquals(Optional.empty(), Plugins.usageRefusal(usage), usage);
+        }
+        Map<String, String> refused = Map.of(
+                sixteen + "\nx", "has 17 lines; at most 16",
+                sixteen + "\n", "has 17 lines; at most 16",
+                "a\n" + "x".repeat(121), "has 121 chars on line 2; at most 120",
+                "a\tb", "holds U+0009 on line 1; no control or format character",
+                "a\r\nb", "holds U+000D on line 1; no control or format character",
+                "a\u0085b", "holds U+0085 on line 1; no control or format character",
+                "a\nb\u202Ec", "holds U+202E on line 2; no control or format character",
+                "\u200B", "holds U+200B on line 1; no control or format character");
+        refused.forEach((usage, why) -> assertEquals(Optional.of(why), Plugins.usageRefusal(usage), usage));
     }
 
     // --- refused while loading: IllegalArgumentException, the configuration is refused

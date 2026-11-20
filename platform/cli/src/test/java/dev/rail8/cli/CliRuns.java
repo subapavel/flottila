@@ -11,6 +11,7 @@ import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -40,11 +41,16 @@ final class CliRuns {
     }
 
     static Ran run(Map<String, String> env, String... args) {
+        return run(Cli.class.getClassLoader(), Clock.systemUTC(), env, args);
+    }
+
+    /** A run over the modules {@code modules} names, a module's command given {@code clock}. */
+    static Ran run(ClassLoader modules, Clock clock, Map<String, String> env, String... args) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
         int exit;
         try (PrintStream o = new PrintStream(out, true, StandardCharsets.UTF_8); PrintStream e = new PrintStream(err, true, StandardCharsets.UTF_8)) {
-            exit = Cli.run(args, env, o, e);
+            exit = Cli.run(args, env, o, e, modules, clock);
         }
         return new Ran(exit, out.toString(StandardCharsets.UTF_8), err.toString(StandardCharsets.UTF_8));
     }
