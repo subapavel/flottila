@@ -127,6 +127,7 @@ jq.test#3d3a7eb53022	interpreter
 jq.test#3d43d38e601c	interpreter
 jq.test#3da339a812bc	interpreter
 jq.test#3ead88245eb4	interpreter
+jq.test#3eb79e3bd51d	interpreter
 jq.test#40004c3489e3	interpreter
 jq.test#4044256b989a	interpreter
 jq.test#40e366edcb59	interpreter
@@ -137,6 +138,8 @@ jq.test#417b92383173	interpreter
 jq.test#42bb6d48d50f	interpreter
 jq.test#455026d40aaf	interpreter
 jq.test#4556621475e5	interpreter
+jq.test#469e210bdd60	interpreter
+jq.test#479662df5c5a	interpreter
 jq.test#4828f53331c1	interpreter
 jq.test#4884b6263bed	interpreter
 jq.test#48dc62c8585b	interpreter
@@ -340,6 +343,7 @@ jq.test#a8bf5263d5fe	interpreter
 jq.test#a8fe56a989c6	interpreter
 jq.test#a93de5828dcf	interpreter
 jq.test#aa118a89c242	interpreter
+jq.test#aa30c9b4fbcb	interpreter
 jq.test#ab1dbfe8d888	interpreter
 jq.test#ab498811856f	interpreter
 jq.test#ab86f854cabe	interpreter
@@ -366,6 +370,7 @@ jq.test#b1b4da0a8506	interpreter
 jq.test#b1be0da4d125	interpreter
 jq.test#b1cdbc4fb01d	interpreter
 jq.test#b24ef7229d56	interpreter
+jq.test#b26e91765cab	interpreter
 jq.test#b30d0e7c5084	interpreter
 jq.test#b32787a520de	interpreter
 jq.test#b4000d93b993	interpreter
@@ -379,6 +384,7 @@ jq.test#b9801667df8d	interpreter
 jq.test#b99a5b261547	interpreter
 jq.test#b99f9c43f5d6	interpreter
 jq.test#b9cbb578cf37	interpreter
+jq.test#b9cf8164f9b2	interpreter
 jq.test#b9d51fb64b51	interpreter
 jq.test#b9dde8dddfea	interpreter
 jq.test#ba8f650a5ecb	interpreter
@@ -394,6 +400,7 @@ jq.test#bf2c165a43b3	interpreter
 jq.test#bf36da34ff87	interpreter
 jq.test#bfbd4ab97f65	interpreter
 jq.test#bfebdc6a90e3	interpreter
+jq.test#c0986b6016ba	interpreter
 jq.test#c25920696c9d	interpreter
 jq.test#c29b16cc2c6d	interpreter
 jq.test#c2a8cb6b0b12	interpreter
@@ -489,6 +496,7 @@ jq.test#e83227797827	interpreter
 jq.test#e91d87fa364e	interpreter
 jq.test#e9512ef8e30c	interpreter
 jq.test#e9c4a135de33	interpreter
+jq.test#e9d3112af647	interpreter
 jq.test#e9f541befc2b	interpreter
 jq.test#ea556b956973	interpreter
 jq.test#eaab1d801a76	interpreter
@@ -516,6 +524,7 @@ jq.test#f9a2df08b3db	interpreter
 jq.test#f9db0e72c836	interpreter
 jq.test#fa7636e30059	interpreter
 jq.test#fac015c9b4bf	interpreter
+jq.test#fbd802aa76da	interpreter
 jq.test#fc2f46d9c2c1	interpreter
 jq.test#fc7c9b4ff99f	interpreter
 jq.test#fdef00aa92fd	interpreter
@@ -661,8 +670,10 @@ man.test#8e68b00c42c8	interpreter
 man.test#8f1ad2b27469	interpreter
 man.test#912fff0227a2	interpreter
 man.test#9185ea7d847a	interpreter
+man.test#918d3948fb48	interpreter
 man.test#9208750748b1	interpreter
 man.test#9428d54f82a8	interpreter
+man.test#97467707884c	interpreter
 man.test#977bbe6eaa1e	interpreter
 man.test#99f352c7bbf8	interpreter
 man.test#9ab267182966	interpreter
