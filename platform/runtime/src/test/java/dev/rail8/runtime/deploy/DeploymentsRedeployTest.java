@@ -79,9 +79,9 @@ import static org.junit.jupiter.api.Assertions.fail;
  * running objects and its {@code DeployedFlow} stamps are not touched, the new build is closed and no consumer is built for
  * it), changed, or removed. Under the node-wide deploy lock phase A stops every changed and removed flow at once — worker stop;
  * delivery stop with the node's stop deadline and consumer stop; delivery close awaited; worker close asked — and only once all
- * of A settled, phase B starts every changed and added flow: consumer start, then worker start. An invalid version, or one that
- * removes an at-least-once flow (or makes it non-at-least-once) while the queue holds items of it, is 422 before anything stops.
- * A removed at-least-once flow is checked again once its worker drained: items left are a WARNING, never a delay. The kept
+ * of A settled, phase B starts every changed and added flow: consumer start, then worker start. An invalid version is 422 before
+ * anything stops. An at-least-once flow the new version removes or runs otherwise gets a drain: its worker built again, with no
+ * consumer, running what the work queue holds of it until a tick finds nothing of it left. The kept
  * directory of the running content is reused; the data directory keeps the current, the previous, and every directory a
  * running flow was built from.
  *
@@ -838,8 +838,8 @@ class DeploymentsRedeployTest {
     /**
      * v2 keeps {@code orders} as it was, removes {@code audit} (at-least-once, nothing queued) and {@code ping}, and adds
      * {@code refunds}. The removed flows stop — consumers, audit's worker, their producers — and are no longer listed; refunds
-     * starts and serves; orders is not touched. The removed at-least-once flow is checked again once its worker drained: nothing
-     * is left, so nothing is logged.
+     * starts and serves; orders is not touched. Audit's drain polls until a tick finds nothing of audit left; then nothing of
+     * audit polls.
      */
     @Test
     void addedStartsRemovedStops() throws Exception {
@@ -873,15 +873,27 @@ class DeploymentsRedeployTest {
         assertInstanceOf(Ack.Reply.class, within(send("shop/refunds").answer(), "refunds' answer"), "the added flow serves");
         Ack gone = within(send(auditDoor).answer(), "an answer through the removed audit's consumer");
         assertTrue(gone instanceof Ack.Nack n && n.retryable(), "the removed flow's delivery is stopped: " + gone);
-        long polls = queue.claims().stream().filter((NODE + " shop/audit")::equals).count();
-        rt.clock().advance(firstTick("shop/audit"));   // three ticks of the removed worker had it run on (B5): its first, then two periods
-        for (int i = 0; i < 2; i++) rt.clock().advance(TICK);
-        assertEquals(polls, queue.claims().stream().filter((NODE + " shop/audit")::equals).count(), "the removed worker no longer polls: " + queue.claims());
+        assertTrue(auditPolls(), "audit's drain polls the work queue: " + queue.claims());
 
-        until(() -> hasItemsCalls("shop/audit").size() == 2, "the removed at-least-once flow is checked before the swap and again once its worker drained: "
-                + queue.hasItemsCalls());
-        assertEquals(List.of("shop/audit rows=0", "shop/audit rows=0"), hasItemsCalls("shop/audit"));
-        assertEquals(List.of(), warningsNaming("shop/audit"), "nothing left: no warning");
+        follow();
+
+        assertFalse(auditPolls(), "a tick found nothing of audit left and ended its drain: " + queue.claims());
+    }
+
+    /** Whether a worker of {@code shop/audit} on this node claims while the clock moves on by the first tick and two periods. */
+    boolean auditPolls() {
+        long before = queue.claims().stream().filter((NODE + " shop/audit")::equals).count();
+        rt.clock().advance(firstTick("shop/audit"));
+        for (int i = 0; i < 2; i++) rt.clock().advance(TICK);
+        return queue.claims().stream().filter((NODE + " shop/audit")::equals).count() > before;
+    }
+
+    /** One tick that follows the pool's records. */
+    void follow() throws Exception {
+        OnVirtualThread.call(() -> {
+            deployments.follow();
+            return null;
+        });
     }
 
     /** One row of {@code shop/audit} in the queue, as {@code state}: queued, leased by another worker, or held. Returns its seq. */
@@ -902,60 +914,42 @@ class DeploymentsRedeployTest {
     }
 
     /**
-     * A row of the at-least-once {@code audit} is in the queue — queued, leased, held or stopped — and v2 removes the flow: 422 naming it,
-     * before anything stops; v1 keeps serving. Witness: once the row is gone the same package deploys and removes audit.
+     * A row of the at-least-once {@code audit} is held and v2 removes the flow: the deploy goes through and audit's consumer stops,
+     * and audit's drain polls the work queue; a tick leaves it running while the row is there. Once the row is gone, a tick ends
+     * the drain.
      */
-    @ParameterizedTest(name = "{0}")
-    @ValueSource(strings = {"queued", "leased", "held"})
-    void removingAnAtLeastOnceFlowWithItemsIs422(String state) throws Exception {
+    @Test
+    void removingAnAtLeastOnceFlowWithItemsLeavesADrainUntilTheyAreGone() throws Exception {
         deploy(shop());
-        Doors.Door orders = doors.door("shop/orders");
         Doors.Door audit = doors.door("shop/audit");
-        List<DeployedFlow> flowsBefore = deployments.flows();
-        List<DeployedPackage> packagesBefore = deployments.packages();
-        long seq = rowOfAudit(state);
+        long seq = rowOfAudit("held");
         Path folder = removed(shop(), "audit").without("endpoints/archive.yaml").folderIn(folders);
-        int mark = mark();
 
-        DeployRefusedException refused = refused("shop", folder);
-
-        assertEquals(Kind.INVALID, refused.kind(), state + ": " + refused.error() + " " + refused.problems());
-        assertTrue(refused.problems().stream().anyMatch(l -> l.contains("audit")), state + ": a problem names the flow: " + refused.problems());
-        assertEquals(List.of(), since(mark).stream().filter(e -> e.startsWith("stop ") || e.startsWith("start ")).toList(), "nothing stops or starts: " + since(mark));
-        assertFalse(audit.stopped());
-        assertEquals(flowsBefore, deployments.flows());
-        assertEquals(packagesBefore, deployments.packages());
-        assertInstanceOf(Ack.Reply.class, within(send(orders).answer(), "v1's sync answer"), "v1 keeps serving");
-        assertEquals(1, queue.rows().size(), "the row is still there");
-
-        queue.drop(seq);
         assertResult(List.of(), List.of(), List.of("shop/audit"), deploy("shop", folder));
+
+        assertTrue(audit.stopped(), "audit's consumer is stopped");
+        assertTrue(auditPolls(), "audit's drain polls the work queue: " + queue.claims());
+        follow();
+        assertTrue(auditPolls(), "a tick leaves the drain running while the row is there: " + queue.claims());
+        queue.drop(seq);
+        follow();
+        assertFalse(auditPolls(), "once the row is gone a tick ends the drain: " + queue.claims());
     }
 
-    /** A row of {@code audit} is queued and v2 makes the flow sync or at-most-once: 422 naming it; witness: without the row it swaps. */
+    /** A row of {@code audit} is held and v2 makes the flow sync or at-most-once: it swaps, and audit's drain polls for the row. */
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {"sync", "at-most-once"})
-    void atLeastOnceTurnedSyncWithItemsIs422(String mode) throws Exception {
+    void atLeastOnceTurnedSyncWithItemsSwapsAndDrains(String mode) throws Exception {
         deploy(shop());
-        Doors.Door audit = doors.door("shop/audit");
-        List<DeployedFlow> flowsBefore = deployments.flows();
-        long seq = rowOfAudit("queued");
+        rowOfAudit("held");
         PackageDraft v2 = shop();
         v2.flowDoc("audit").getJsonObject("delivery").put("mode", mode);
         Path folder = v2.folderIn(folders);
-        int mark = mark();
 
-        DeployRefusedException refused = refused("shop", folder);
-
-        assertEquals(Kind.INVALID, refused.kind(), mode + ": " + refused.error() + " " + refused.problems());
-        assertTrue(refused.problems().stream().anyMatch(l -> l.contains("audit")), mode + ": a problem names the flow: " + refused.problems());
-        assertEquals(List.of(), since(mark).stream().filter(e -> e.startsWith("stop ") || e.startsWith("start ")).toList(), "nothing stops or starts: " + since(mark));
-        assertFalse(audit.stopped());
-        assertEquals(flowsBefore, deployments.flows());
-
-        queue.drop(seq);
         assertResult(List.of(), List.of("shop/audit"), List.of(), deploy("shop", folder));
+
         assertEquals(mode, byId(deployments.flows()).get("shop/audit").delivery());
+        assertTrue(auditPolls(), mode + ": audit's drain polls the work queue: " + queue.claims());
     }
 
     /**
@@ -1011,193 +1005,43 @@ class DeploymentsRedeployTest {
     }
 
     /**
-     * FIX-172c: v2 removes the at-least-once {@code audit}, and the work queue's question about it is refused by the node's Postgres
-     * pool — its wait elapsed (exactly VertxException), its queue full, a transaction's acquire refused: the deploy is
-     * {@link Kind#BUSY} (503), retryable, its error naming the flow and the cause, no problem lines, and nothing changes: nothing
-     * stops or starts, the flows, the package record and shop's directory as they were. A VertxException subclass is no pool
-     * refusal: the node's IOException, as before. Witness: the queue answering, the same package deploys and removes audit.
+     * v1 runs two at-least-once flows, {@code audit} and {@code relay}, each running one item at most; v2 removes both. Audit's A
+     * runs held at the partner with B queued behind it, relay's C runs held, when v2 is deployed: the deploy answers without
+     * waiting for them. Released, A and C finish on v1's worker, and B runs on audit's drain: nothing is left, nothing parked.
      */
     @Test
-    void aQueueQuestionThePoolRefusedIsBusyAndChangesNothing() throws Exception {
-        deploy(shop());
-        Doors.Door audit = doors.door("shop/audit");
-        List<DeployedFlow> flowsBefore = deployments.flows();
-        List<DeployedPackage> packagesBefore = deployments.packages();
-        Path shopDir = data.resolve("packages").resolve("shop");
-        List<String> dirsBefore = children(shopDir);
-        Path folder = removed(shop(), "audit").without("endpoints/archive.yaml").folderIn(folders);
-        Map<String, Throwable> refusals = new LinkedHashMap<>();
-        refusals.put("the wait elapsed", new VertxException("Timeout waiting for connection", true));
-        refusals.put("the queue full", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
-        refusals.put("the acquire refused", new PoolRefusedException(new VertxException("Timeout", true)));
-        int mark = mark();
-        for (Map.Entry<String, Throwable> r : refusals.entrySet()) {
-            int asked = hasItemsCalls("shop/audit").size();
-            queue.failHasItems(r.getValue());
-            DeployRefusedException refused = refused("shop", folder);
-            assertEquals(Kind.BUSY, refused.kind(), r.getKey() + ": " + refused.error() + " " + refused.problems());
-            assertTrue(hasItemsCalls("shop/audit").size() > asked, r.getKey() + ": witness, the queue was asked about audit: " + queue.hasItemsCalls());
-            assertTrue(refused.error().contains(r.getValue().getMessage()) && refused.error().contains("shop/audit"),
-                    r.getKey() + ": the refusal names the flow and the cause: " + refused.error());
-            assertEquals(List.of(), refused.problems(), r.getKey() + ": no problem lines");
-        }
-        VertxException closed = new VertxException("connection closed by the server") { };
-        queue.failHasItems(closed);
-        IOException failed = assertThrows(IOException.class, () -> deploy("shop", folder),
-                "a VertxException subclass is no pool refusal: the node's failure, as before");
-        assertSame(closed, failed.getCause(), "the IOException carries the queue's failure: " + failed);
-
-        assertEquals(List.of(), since(mark).stream().filter(e -> e.startsWith("stop ") || e.startsWith("start ")).toList(), "nothing stops or starts: " + since(mark));
-        assertFalse(audit.stopped(), "audit's consumer is not stopped: " + audit.history());
-        assertEquals(flowsBefore, deployments.flows(), "the flows are v1's");
-        assertEquals(packagesBefore, deployments.packages(), "the package record is v1's");
-        assertEquals(dirsBefore, children(shopDir), "shop's directory holds v1's only");
-        assertEquals(List.of(), children(deployments.incomingDir()), "no unpack is left behind");
-
-        queue.failHasItems(null);
-        assertResult(List.of(), List.of(), List.of("shop/audit"), deploy("shop", folder));
-    }
-
-    /**
-     * FIX-172c: v2 removes the at-least-once {@code audit} and is invalid besides (an endpoint its schema refuses), and the pool
-     * refuses the queue's question about audit: the package's problems come first, its 422, not the BUSY of the question (503).
-     * Witness: the queue was asked.
-     */
-    @Test
-    void aQueueQuestionThePoolRefusedOnAnInvalidPackageIs422() throws Exception {
-        deploy(shop());
-        PackageDraft v2 = removed(shop(), "audit").without("endpoints/archive.yaml");
-        v2.endpoint("spare", "sideways", new JsonObject());
-        Path folder = v2.folderIn(folders);
-        DeployRefusedException answering = refused("shop", folder);
-        assertEquals(Kind.INVALID, answering.kind(), "fixture: " + answering.error() + " " + answering.problems());
-        int asked = hasItemsCalls("shop/audit").size();
-        queue.failHasItems(new PoolRefusedException(new VertxException("Timeout", true)));
-
-        DeployRefusedException refused = refused("shop", folder);
-
-        assertEquals(Kind.INVALID, refused.kind(), "the package's problems before the pool's refusal: " + refused.error() + " " + refused.problems());
-        assertEquals(answering.problems(), refused.problems(), "the 422 lists the package's problems");
-        assertTrue(hasItemsCalls("shop/audit").size() > asked, "witness, the queue was asked about audit: " + queue.hasItemsCalls());
-    }
-
-    /**
-     * FIX-173: v1 runs two at-least-once flows, {@code audit} and {@code relay}; v2 removes both, so the work queue is asked about
-     * each. One question fails for real (the queue is down), the other is refused by the node's Postgres pool: in either assignment
-     * — so in either flow order — the deploy is the node's IOException naming the flow whose question really failed and carrying
-     * its cause, never {@link Kind#BUSY}; only when both are pool refusals is it BUSY (503). Nothing stops or starts. Witness: the
-     * queue answering, the same package removes both.
-     */
-    @Test
-    void aRealQueueFailureOutranksAPoolRefusalInEitherFlowOrder() throws Exception {
-        PackageDraft v1 = shop().endpoint("relay-in", "in", new JsonObject().put("path", "/relay")).flow("relay", "1.0.0", "at-least-once", "relay-in", 1024, to("archive"));
-        deploy(v1);
-        Doors.Door audit = doors.door("shop/audit");
-        Doors.Door relay = doors.door("shop/relay");
-        List<DeployedFlow> flowsBefore = deployments.flows();
-        List<DeployedPackage> packagesBefore = deployments.packages();
-        PackageDraft v2 = removed(shop(), "audit"); // shop() never had relay: v2 drops it with its relay-in
-        Path folder = v2.without("endpoints/archive.yaml").folderIn(folders);
-        int mark = mark();
-        for (List<String> order : List.of(List.of("shop/audit", "shop/relay"), List.of("shop/relay", "shop/audit"))) {
-            String really = order.get(0);
-            String pooled = order.get(1);
-            IllegalStateException down = new IllegalStateException("the work queue is down for " + really);
-            queue.failHasItems(really, down);
-            queue.failHasItems(pooled, new PoolRefusedException(new VertxException("Timeout", true)));
-
-            IOException failed = assertThrows(IOException.class, () -> deploy("shop", folder),
-                    really + " fails, " + pooled + " is refused by the pool: the node's failure, whatever the flow order");
-
-            assertSame(down, failed.getCause(), "the IOException carries the real failure, not the pool's refusal: " + failed);
-            assertTrue(failed.getMessage().contains("'" + really + "'") && failed.getMessage().contains(down.getMessage()),
-                    "it names the flow whose question really failed and the cause: " + failed.getMessage());
-        }
-        queue.failHasItems("shop/audit", new PoolRefusedException(new VertxException("Timeout", true)));
-        queue.failHasItems("shop/relay", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
-        DeployRefusedException busy = refused("shop", folder);
-        assertEquals(Kind.BUSY, busy.kind(), "every question refused by the pool: retryable, " + busy.error() + " " + busy.problems());
-        assertEquals(List.of(), busy.problems(), "no problem lines");
-
-        assertEquals(List.of(), since(mark).stream().filter(e -> e.startsWith("stop ") || e.startsWith("start ")).toList(), "nothing stops or starts: " + since(mark));
-        assertFalse(audit.stopped(), "audit's consumer is not stopped: " + audit.history());
-        assertFalse(relay.stopped(), "relay's consumer is not stopped: " + relay.history());
-        assertEquals(flowsBefore, deployments.flows(), "the flows are v1's");
-        assertEquals(packagesBefore, deployments.packages(), "the package record is v1's");
-
-        queue.failHasItems("shop/audit", null);
-        queue.failHasItems("shop/relay", null);
-        assertResult(List.of(), List.of(), List.of("shop/audit", "shop/relay"), deploy("shop", folder));
-    }
-
-    /**
-     * v1 runs two at-least-once flows, {@code audit} and {@code relay}, each running one item at most; v2 removes both. Right after
-     * each one's check found nothing queued, messages arrive: audit's A runs held at the partner with B queued behind it, relay's
-     * C runs held. The deploy answers without waiting for them. Once audit's worker drained (A finished) it is checked again: B is
-     * still there, and a WARNING names audit; relay's check finds nothing and names nothing.
-     */
-    @Test
-    void itemsLeftAfterTheRemovedWorkerDrainedWarn() throws Exception {
+    void itemsLeftByTheRemovedWorkerRunOnItsDrain() throws Exception {
         PackageDraft v1 = shop().endpoint("relay-in", "in", new JsonObject().put("path", "/relay")).flow("relay", "1.0.0", "at-least-once", "relay-in", 1024, to("archive"));
         v1.flowDoc("audit").getJsonObject("limits").put("maxInFlight", 1);
         v1.flowDoc("relay").getJsonObject("limits").put("maxInFlight", 1);
         deploy(v1);
         Doors.Door audit = doors.door("shop/audit");
         Doors.Door relay = doors.door("shop/relay");
-        List<CountDownLatch> releases = new CopyOnWriteArrayList<>();
-        Map<String, Sent> arrived = new java.util.concurrent.ConcurrentHashMap<>();
-        queue.afterFirstHasItems("shop/audit", () -> {
-            try {
-                int sent = doors.partner().sent().size();
-                releases.add(hold());
-                Sent a = send(audit);
-                assertInstanceOf(Ack.Accepted.class, within(a.answer(), "A's accept"), "fixture: A is accepted after audit's check");
-                doors.partner().awaitSent(sent + 1);
-                Sent b = send(audit);
-                assertInstanceOf(Ack.Accepted.class, within(b.answer(), "B's accept"), "fixture: B is accepted after audit's check");
-                arrived.put("A", a);
-                arrived.put("B", b);
-            } catch (Exception e) {
-                throw new AssertionError("fixture: messages arriving after audit's check", e);
-            }
-        });
-        queue.afterFirstHasItems("shop/relay", () -> {
-            try {
-                int sent = doors.partner().sent().size();
-                releases.add(hold());
-                Sent c = send(relay);
-                assertInstanceOf(Ack.Accepted.class, within(c.answer(), "C's accept"), "fixture: C is accepted after relay's check");
-                doors.partner().awaitSent(sent + 1);
-                arrived.put("C", c);
-            } catch (Exception e) {
-                throw new AssertionError("fixture: a message arriving after relay's check", e);
-            }
-        });
+        CountDownLatch release = hold();
+        int sent = doors.partner().sent().size();
+        Sent a = send(audit);
+        assertInstanceOf(Ack.Accepted.class, within(a.answer(), "A's accept"), "fixture: A is accepted");
+        doors.partner().awaitSent(sent + 1);
+        Sent b = send(audit);
+        assertInstanceOf(Ack.Accepted.class, within(b.answer(), "B's accept"), "fixture: B is accepted");
+        CountDownLatch releaseC = hold();
+        Sent c = send(relay);
+        assertInstanceOf(Ack.Accepted.class, within(c.answer(), "C's accept"), "fixture: C is accepted");
+        doors.partner().awaitSent(sent + 2);
+        assertEquals(Set.of(a.id(), c.id()), Set.copyOf(queue.claimedIds()), "fixture: A and C run, B waits behind A (audit runs one at most)");
         PackageDraft v2 = removed(shop(), "audit"); // shop() never had relay: v2 drops it with its relay-in
         v2.without("endpoints/archive.yaml");
 
         DeployResult r = deploy(v2);
 
         assertResult(List.of(), List.of(), List.of("shop/audit", "shop/relay"), r);
-        assertEquals(Set.of("A", "B", "C"), arrived.keySet(), "fixture: A, B and C arrived after the checks: " + queue.hasItemsCalls());
-        Sent b = arrived.get("B");
-        assertEquals(Set.of(arrived.get("A").id(), arrived.get("C").id()), Set.copyOf(queue.claimedIds()), "fixture: A and C run, B waits behind A (audit runs one at most)");
-        assertEquals(2, queue.claimedIds().size(), "fixture: each claimed once: " + queue.claimedIds());
-        assertEquals(List.of(), warningsNaming("shop/audit"), "no warning while A still runs: the check comes after the drain");
-        assertEquals(List.of("shop/audit rows=0"), hasItemsCalls("shop/audit"), "audit is not checked again before its worker drained");
 
-        releases.forEach(CountDownLatch::countDown);
+        release.countDown();
+        releaseC.countDown();
 
-        until(() -> hasItemsCalls("shop/audit").size() == 2 && hasItemsCalls("shop/relay").size() == 2,
-                "each removed flow is checked again once its worker drained: " + queue.hasItemsCalls());
-        assertEquals(List.of("shop/audit rows=0", "shop/audit rows=1"), hasItemsCalls("shop/audit"),
-                "audit's second check sees B alone: A finished before it, the worker drained");
-        assertEquals(List.of("shop/relay rows=0", "shop/relay rows=0"), hasItemsCalls("shop/relay"));
-        until(() -> !warningsNaming("shop/audit").isEmpty(), "a WARNING names the flow whose items are left: "
-                + logged.stream().map(x -> x.getLevel() + " " + texts(x)).toList());
-        assertEquals(List.of(b.id()), queue.rows().stream().map(WorkQueue.Item::messageId).toList(), "B is the item left");
-        assertEquals(0, dlq.size(), "A and C finished on v1's producers: nothing parked");
-        assertEquals(List.of(), warningsNaming("shop/relay"), "relay left nothing: no warning names it");
+        until(() -> queue.size() == 0, "A and C finish, B runs on audit's drain: " + queue.rows());
+        assertTrue(doors.partner().sent().stream().anyMatch(e -> e.id().equals(b.id())), "B reached the partner");
+        assertEquals(0, dlq.size(), "nothing parked");
     }
 
     // --- disk

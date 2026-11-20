@@ -87,6 +87,8 @@ public final class Doors implements Component {
     private final List<Door> doors = new CopyOnWriteArrayList<>();
     private final List<EndpointConfig> producerConfigs = new CopyOnWriteArrayList<>();
     private final Map<String, String> stopFailures = new ConcurrentHashMap<>();
+    /** The endpoints whose {@link #listensOn} throws from now on, each with its text. */
+    private final Map<String, String> listenRefusals = new ConcurrentHashMap<>();
     private final List<Gate> gates = new CopyOnWriteArrayList<>();
     private volatile java.util.function.Consumer<Door> onStop = d -> {};
     private final List<Out> outs = new CopyOnWriteArrayList<>();
@@ -230,11 +232,14 @@ public final class Doors implements Component {
      * Where a consumer of {@code cfg} would listen (P1-09g, {@code Component.listensOn}): empty without a {@code port} option, else
      * {@code host} (default {@code 127.0.0.1}) and {@code port}, unresolved, the host as configured. {@code listenRefuse} makes it
      * throw an {@link IllegalStateException} with that text; a {@code port} that is no number (a config its schema refuses) an
-     * {@link IllegalArgumentException}. Every call is recorded first ({@link #listensOnAsked()}).
+     * {@link IllegalArgumentException}; so does an endpoint {@link #refuseListen} names. Every call is recorded first
+     * ({@link #listensOnAsked()}).
      */
     public Optional<InetSocketAddress> listensOn(EndpointConfig cfg) {
         listensOnAsked.add(cfg.name());
         if (cfg.options().get("listenRefuse") instanceof String why) throw new IllegalStateException(why);
+        String refused = listenRefusals.get(cfg.name());
+        if (refused != null) throw new IllegalStateException(refused);
         Object port = cfg.options().get("port");
         if (port == null) return Optional.empty();
         if (!(port instanceof Number n)) throw new IllegalArgumentException("endpoint '" + cfg.name() + "': port " + port + " is no number");
@@ -248,6 +253,12 @@ public final class Doors implements Component {
     /** The target a producer of {@code cfg} calls: what the naming set by {@link #targets} answers, empty by default. */
     @Override
     public Optional<String> target(EndpointConfig cfg) { return naming.apply(cfg); }
+
+    /** From now on {@link #listensOn} of the endpoint {@code endpoint} throws an {@link IllegalStateException} with {@code why}; null stops it. */
+    public void refuseListen(String endpoint, String why) {
+        if (why == null) listenRefusals.remove(endpoint);
+        else listenRefusals.put(endpoint, why);
+    }
 
     /** The name of the endpoint of every {@link #listensOn} call, in order. */
     public List<String> listensOnAsked() { return List.copyOf(listensOnAsked); }

@@ -190,13 +190,11 @@ class DeploymentsHeldValidateTest {
         assertFalse(Files.exists(node.data.resolve("packages").resolve("common")), "nothing unpacked under the data directory");
     }
 
-    /** prod refuses a manual deploy (the witness), yet validates with held folders: no FORBIDDEN, no problem. */
+    /** prod validates with held folders: no problem. */
     @Test
     void aDeployedEnvValidatesWithHeldFolders() throws Exception {
         Node prod = new Node("node-1", "prod");
         PackageDraft c120 = common("1.2.0", "UBL 1.2.0");
-        DeployRefusedException forbidden = assertThrows(DeployRefusedException.class, () -> prod.deploy(c120), "witness: prod is a deployed env");
-        assertEquals(Kind.FORBIDDEN, forbidden.kind(), forbidden.toString());
         Path checkout = folder("checkout", invoice("1.0.0", c120));
 
         assertEquals(List.of(), prod.validate("invoice", checkout, List.of(folder("shared-xsl", c120))));

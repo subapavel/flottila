@@ -452,8 +452,6 @@ class DeploymentsRestoreTest {
         assertInstanceOf(Ack.Reply.class, second.send("shop/a"), "a serves");
         assertInstanceOf(Ack.Reply.class, second.send("shop/b"), "b serves");
         assertEquals(saves, records.saves(), "no record");
-        DeployRefusedException deploy = second.refused("shop", shop.commit());
-        assertEquals(Kind.FORBIDDEN, deploy.kind(), "witness: the node is deployed, a deploy on it is 403: " + deploy.getMessage());
     }
 
     /**

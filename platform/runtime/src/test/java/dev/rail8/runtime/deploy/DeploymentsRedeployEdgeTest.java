@@ -260,15 +260,15 @@ class DeploymentsRedeployEdgeTest {
         Path dir1 = packageDir(sha1);
         Object key1 = fileKey(dir1);
         List<String> files1 = regularFiles(dir1);
-        counting.enqueue("m-left", "shop/relay", 1, null).await();
+        doors.refuseListen("orders-in", "the listener question fails");
         List<DeployedFlow> flowsBefore = deployments.flows();
         List<DeployedPackage> packagesBefore = deployments.packages();
 
         DeployRefusedException refused = assertThrows(DeployRefusedException.class,
-                () -> deploy("shop", folder1), "v1 again removes relay, which has an item");
+                () -> deploy("shop", folder1), "v1 again, its check refused by the component");
 
         assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
-        assertTrue(refused.problems().stream().anyMatch(l -> l.contains("relay")), "a problem names relay: " + refused.problems());
+        assertTrue(refused.problems().stream().anyMatch(l -> l.contains("the listener question fails")), "a problem names the refusal: " + refused.problems());
         assertEquals(key1, fileKey(dir1), "v1's directory, kept as the previous one and reused by the refused deploy, is still the same directory");
         assertEquals(files1, regularFiles(dir1), "whole");
         assertTrue(Files.isDirectory(packageDir(sha2)), "the current directory stays");
@@ -276,9 +276,9 @@ class DeploymentsRedeployEdgeTest {
         assertEquals(packagesBefore, deployments.packages());
         assertEquals(List.of(), children(deployments.incomingDir()));
 
-        counting.drop(counting.rows().get(0).seq());
+        doors.refuseListen("orders-in", null);
         DeployResult again = deploy("shop", folder1);
-        assertEquals(List.of("shop/relay"), again.removed(), "witness: without the item v1 deploys again: " + again);
+        assertEquals(List.of("shop/relay"), again.removed(), "witness: the component answering, v1 deploys again: " + again);
         assertEquals(key1, fileKey(dir1), "from the same directory");
     }
 
@@ -296,11 +296,11 @@ class DeploymentsRedeployEdgeTest {
         Path dir1 = packageDir(sha1);
         List<String> files1 = regularFiles(dir1);
         Files.writeString(dir1.resolve("written.txt"), "written after the deploy");
-        counting.enqueue("m-left", "shop/relay", 1, null).await();
+        doors.refuseListen("orders-in", "the listener question fails");
         List<DeployedFlow> flowsBefore = deployments.flows();
 
         DeployRefusedException refused = assertThrows(DeployRefusedException.class,
-                () -> deploy("shop", folder1), "v1 again removes relay, which has an item");
+                () -> deploy("shop", folder1), "v1 again, its check refused by the component");
 
         assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
         assertEquals(files1, regularFiles(dir1), "v1's directory stays, unpacked afresh: v1's files and nothing written after them");
@@ -397,57 +397,16 @@ class DeploymentsRedeployEdgeTest {
         assertInstanceOf(Ack.Reply.class, answer("shop/orders"), "and serves");
     }
 
+    /** The redeploy that removes the at-least-once audit asks the work queue nothing: one that fails every question changes nothing of it. */
     @Test
-    void aFlowMadeNonAtLeastOnceIsCheckedAgainOnceItsWorkerDrained() throws Exception {
+    void aRedeployAsksTheQueueNothing() throws Exception {
         deploy(shop());
-        counting.afterFirstHasItems("shop/audit", () -> counting.enqueue("m-late", "shop/audit", 1, null).await());   // arrives after the check
-        PackageDraft v2 = shop();
-        v2.flowDoc("audit").getJsonObject("delivery").put("mode", "sync");
-
-        DeployResult r = deploy(v2);
-
-        assertEquals(List.of("shop/audit"), r.swapped(), r.toString());
-        until(() -> counting.hasItemsCalls().size() == 2, "audit is checked before the swap and again once its old worker drained: " + counting.hasItemsCalls());
-        assertEquals(List.of("shop/audit rows=0", "shop/audit rows=1"), counting.hasItemsCalls());
-        until(() -> !warnings("shop/audit", "still holds items").isEmpty(), "a WARNING names the flow whose item is left: "
-                + logged.stream().map(DeploymentsProducersTest::texts).toList());
-    }
-
-    @Test
-    void aQueueThatCannotAnswerTheCheckAfterTheDrainIsAWarning() throws Exception {
-        deploy(shop());
-        failHasItemsFrom = 2;   // the check before the swap answers, the one after the drain fails
+        failHasItemsFrom = 1;
 
         DeployResult r = deploy(removed(shop(), "audit").without("endpoints/archive.yaml"));
 
         assertEquals(List.of("shop/audit"), r.removed(), r.toString());
-        until(() -> !warnings("shop/audit", "could not say", "queue down at hasItems #2").isEmpty(), "a WARNING names the flow and the queue's failure: "
-                + logged.stream().map(DeploymentsProducersTest::texts).toList());
-    }
-
-    @Test
-    void aQueueThatCannotAnswerTheCheckBeforeTheSwapFailsTheDeployAndNothingStops() throws Exception {
-        deploy(shop());
-        Doors.Door audit = doors.door("shop/audit");
-        List<DeployedFlow> flowsBefore = deployments.flows();
-        List<DeployedPackage> packagesBefore = deployments.packages();
-        failHasItemsFrom = 1;
-        PackageDraft v2 = removed(shop(), "audit").without("endpoints/archive.yaml");
-        Path folder = v2.folderIn(folders);
-        int events = doors.events().size();
-
-        Exception failed = assertThrows(Exception.class, () -> deploy("shop", folder));
-
-        assertFalse(failed instanceof DeployRefusedException, "the queue's failure is the node's, not a refusal of the package: " + failed);
-        List<String> chain = new ArrayList<>();
-        for (Throwable t = failed; t != null; t = t.getCause()) chain.add(String.valueOf(t.getMessage()));
-        assertTrue(chain.stream().anyMatch(m -> m.contains("queue down at hasItems #1")), "it is the queue's failure: " + chain);
-        assertEquals(List.of(), doors.events().subList(events, doors.events().size()), "nothing was built, stopped or started");
-        assertFalse(audit.stopped());
-        assertEquals(flowsBefore, deployments.flows());
-        assertEquals(packagesBefore, deployments.packages());
-        assertFalse(Files.exists(packageDir(hex(Package.content(folder)))), "the new directory is deleted");
-        assertEquals(List.of(), children(deployments.incomingDir()));
+        assertEquals(0, hasItemsCalls.get(), "the work queue was asked nothing");
     }
 
     /**
