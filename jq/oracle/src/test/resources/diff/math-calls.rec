@@ -1,0 +1,99 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case math-calls/floor-kinds
+def eaab5d8adc0d
+rc 0
+stdout "null (null) number required"\n"boolean (true) number required"\n"string (\\"1\\") number required"\n"array ([1]) number required"\n"object ({\\"a\\":1}) number required"\n
+stderr
+end
+
+case math-calls/sqrt-kinds
+def 62d51c954634
+rc 0
+stdout "null (null) number required"\n"boolean (true) number required"\n"string (\\"1\\") number required"\n"array ([1]) number required"\n"object ({\\"a\\":1}) number required"\n
+stderr
+end
+
+case math-calls/sin-kinds
+def b87d0adc132a
+rc 0
+stdout "null (null) number required"\n"boolean (true) number required"\n"string (\\"1\\") number required"\n"array ([1]) number required"\n"object ({\\"a\\":1}) number required"\n
+stderr
+end
+
+case math-calls/frexp-kinds
+def a971c790b88c
+rc 0
+stdout "null (null) number required"\n"boolean (true) number required"\n"string (\\"1\\") number required"\n"array ([1]) number required"\n"object ({\\"a\\":1}) number required"\n
+stderr
+end
+
+case math-calls/modf-kinds
+def 9195889e449b
+rc 0
+stdout "null (null) number required"\n"boolean (true) number required"\n"string (\\"1\\") number required"\n"array ([1]) number required"\n"object ({\\"a\\":1}) number required"\n
+stderr
+end
+
+case math-calls/pow-kinds
+def 62f67230f9d3
+rc 0
+stdout ["string (\\"a\\") number required","string (\\"a\\") number required","string (\\"a\\") number required","null (null) number required"]\n
+stderr
+end
+
+case math-calls/ldexp-kinds
+def edef84899037
+rc 0
+stdout ["string (\\"a\\") number required","string (\\"a\\") number required","object ({}) number required"]\n
+stderr
+end
+
+case math-calls/fma-kinds
+def 5c8ad4049cd7
+rc 0
+stdout ["string (\\"a\\") number required","string (\\"a\\") number required","string (\\"a\\") number required","null (null) number required"]\n
+stderr
+end
+
+case math-calls/arguments-order
+def a273620ad02f
+rc 0
+stdout [2,3,4,9]\n[10,20,20,40,110,120,120,140]\n[0.7853981633974483,0]\n
+stderr
+end
+
+case math-calls/input-ignored
+def 078a571bd465
+rc 0
+stdout 1024\n10\n1024\n
+stderr
+end
+
+case math-calls/arguments-from-input
+def 7bf7b7544d79
+rc 0
+stdout 5\n-3\n
+stderr
+end
+
+case math-calls/document-numbers
+def 3c1cf2ac1991
+rc 0
+stdout [[2,1.4142135623730951,2,2,[0.5,2]],[1,1.224744871391589,1.5,2,[0.75,1]],[0,0,0,0,[0,0]],[1e+20,10000000000,1e+20,1e+20,[0.6776263578034403,67]],[1.7976931348623157e+308,1.7976931348623157e+308,1.7976931348623157e+308,1.7976931348623157e+308,[1.7976931348623157e+308,0]]]\n
+stderr
+end
+
+case math-calls/uncaught-error
+def 506c7051d651
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") number required\n
+end
+
+case math-calls/uncaught-binary-error
+def 31289a1f33c8
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") number required\n
+end

@@ -1,0 +1,11 @@
+dev/rail8/jq/internal/op/Erfc.class is translated from FreeBSD's msun, lib/msun/src/s_erf.c at revision
+9a6e1be71bf3a628b1cec4afbf7cd1b66b4c86c8 (https://github.com/freebsd/freebsd-src), whose notice is:
+
+====================================================
+Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+
+Developed at SunPro, a Sun Microsystems, Inc. business.
+Permission to use, copy, modify, and distribute this
+software is freely granted, provided that this notice
+is preserved.
+====================================================

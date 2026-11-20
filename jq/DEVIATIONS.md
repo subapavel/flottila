@@ -471,19 +471,49 @@ of `CollectOp.grown` pin the engine's side.
 
 ## libm last digits (ADR-0051, spec 4)
 
-The 36 computed math builtins print the engine's own last digits, the same on every platform:
+The computed math builtins print the engine's own last digits, the same on every platform:
 `StrictMath` for `acos`, `asin`, `atan`, `atan2`, `cbrt`, `cos`, `cosh`, `exp`, `expm1`, `hypot`,
-`log`, `log10`, `log1p`, `pow`, `sin`, `sinh`, `tan` and `tanh`; definitions over `StrictMath` for
-`acosh`, `asinh`, `atanh`, `exp2`, `exp10` and `log2`; Arm's port for `erf`; published formulas, or
-the owner's answer on issue #105, for `erfc`, `gamma`, `lgamma`, `lgamma_r`, `tgamma`, `j0`, `j1`,
-`jn`, `y0`, `y1` and `yn`. jq-ref's digits are glibc's on its CPU and change with the CPU's
-features (F-65). Each function's row gives its measured bound in ulp over its recorded sample; the
-math tickets add the rows.
+`log`, `log10`, `log1p`, `pow`, `sin`, `sinh`, `tan` and `tanh` (`pow` gives C's 1 for a base of 1
+whatever the exponent and for a base of -1 with an infinite exponent, where Java gives NaN);
+definitions over `StrictMath` for `acosh`, `asinh`, `atanh`, `exp2`, `exp10` and `log2`; Arm's
+optimized-routines for `erf`; FreeBSD's msun, fdlibm's code, for `erfc`; published formulas, or the
+owner's answer on issue #105, for `gamma`, `lgamma`, `lgamma_r`, `tgamma`, `j0`, `j1`, `jn`, `y0`,
+`y1` and `yn`. jq-ref's digits are glibc's on its CPU and change with the CPU's features (F-65).
+Each function's row gives its bound: the largest distance in ulp between jq's digits and the
+engine's over its recorded sample, `math-sample/<name>`, and its edges, `math-computed/<name>-edges`.
+A case whose digits differ pins the row; a case whose digits agree is an ordinary differential case.
+The rows of `gamma`, `lgamma`, `lgamma_r`, `tgamma` and the Bessel functions come with those
+functions.
 
 | case | filter | input | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- | --- |
-| none yet | `27\|cbrt` | `null` | `3.0000000000000004` | `StrictMath`'s digits, recorded by the computed-math ticket |
-| `test:` the bound test (named by its ticket) | each of the 36 over its recorded sample | — | glibc's digits | within the function's measured ulp bound |
+| `math-sample/acos` (`deviation libm-digits`) | `0.125\|acos` | `null` | `1.4454684956268313` | `1.445468495626831`; at most 1 ulp |
+| `math-sample/acosh` (`deviation libm-digits`) | `2.625\|acosh` | `null` | `1.6197962748565` | `1.6197962748564998`; at most 1 ulp |
+| `math-sample/asin` (`deviation libm-digits`) | `0.3359375\|asin` | `null` | `0.34260039885596516` | `0.3426003988559651`; at most 1 ulp |
+| `math-sample/asinh` (`deviation libm-digits`) | `21.5\|asinh` | `null` | `3.7617405103524564` | `3.761740510352456`; at most 1 ulp |
+| `math-sample/atan` (`deviation libm-digits`) | `0.375\|atan` | `null` | `0.35877067027057225` | `0.3587706702705722`; at most 1 ulp |
+| `math-sample/atan2` (`deviation libm-digits`), `math-computed/atan2-edges` (`deviation libm-digits`) | `atan2(0.25; 1.25)` | `null` | `0.19739555984988075` | `0.19739555984988078`; at most 1 ulp |
+| `math-sample/atanh` | `0.5\|atanh` | `null` | `0.5493061443340548` | `0.5493061443340548`; at most 0 ulp |
+| `math-sample/cbrt` (`deviation libm-digits`), `math-computed/cbrt-edges` (`deviation libm-digits`) | `27\|cbrt` | `null` | `3.0000000000000004` | `3`; at most 2 ulp |
+| `math-sample/cos` (`deviation libm-digits`) | `0.875\|cos` | `null` | `0.6409968581633251` | `0.6409968581633252`; at most 1 ulp |
+| `math-sample/cosh` (`deviation libm-digits`), `math-computed/cosh-edges` (`deviation libm-digits`) | `1\|cosh` | `null` | `1.5430806348152437` | `1.543080634815244`; at most 1 ulp |
+| `math-sample/erf` (`deviation libm-digits`) | `0.125\|erf` | `null` | `0.1403162048013338` | `0.14031620480133383`; at most 1 ulp |
+| `math-sample/erfc` (`deviation libm-digits`), `math-computed/erfc-edges` (`deviation libm-digits`) | `1.09375\|erfc` | `null` | `0.12191242484819001` | `0.12191242484818998`; at most 2 ulp |
+| `math-sample/exp` (`deviation libm-digits`), `math-computed/exp-edges` (`deviation libm-digits`) | `1\|exp` | `null` | `2.718281828459045` | `2.7182818284590455`; at most 1 ulp |
+| `math-sample/exp10` (`deviation libm-digits`) | `0.1875\|exp10` | `null` | `1.539926526059492` | `1.5399265260594919`; at most 1 ulp |
+| `math-sample/exp2` (`deviation libm-digits`), `math-computed/exp2-edges` (`deviation libm-digits`) | `0.625\|exp2` | `null` | `1.5422108254079407` | `1.542210825407941`; at most 1 ulp |
+| `math-sample/expm1` (`deviation libm-digits`) | `18.375\|expm1` | `null` | `95534690.37891196` | `95534690.37891197`; at most 1 ulp |
+| `math-sample/hypot` (`deviation libm-digits`) | `hypot(0.3333333333333333; 0.7142857142857143)` | `null` | `0.7882354932022309` | `0.788235493202231`; at most 1 ulp |
+| `math-sample/log` (`deviation libm-digits`) | `0.8125\|log` | `null` | `-0.2076393647782445` | `-0.20763936477824452`; at most 1 ulp |
+| `math-sample/log10` (`deviation libm-digits`) | `0.8125\|log10` | `null` | `-0.090176630349088` | `-0.09017663034908802`; at most 1 ulp |
+| `math-sample/log1p` | `0.5\|log1p` | `null` | `0.4054651081081644` | `0.4054651081081644`; at most 0 ulp |
+| `math-sample/log2` (`deviation libm-digits`) | `0.625\|log2` | `null` | `-0.6780719051126377` | `-0.6780719051126376`; at most 1 ulp |
+| `math-sample/pow` (`deviation libm-digits`) | `pow(0.25; 1.3333333333333333)` | `null` | `0.15749013123685915` | `0.15749013123685918`; at most 1 ulp |
+| `math-sample/sin` (`deviation libm-digits`) | `1.0625\|sin` | `null` | `0.8735749351670711` | `0.8735749351670712`; at most 1 ulp |
+| `math-sample/sinh` (`deviation libm-digits`) | `18.375\|sinh` | `null` | `47767345.68945597` | `47767345.68945598`; at most 1 ulp |
+| `math-sample/tan` (`deviation libm-digits`) | `1.875\|tan` | `null` | `-3.185238919501229` | `-3.1852389195012294`; at most 1 ulp |
+| `math-sample/tanh` | `0.5\|tanh` | `null` | `0.46211715726000974` | `0.46211715726000974`; at most 0 ulp |
+| `test:` `LibmBoundTest` | each function above over its sample and its edges | — | glibc's digits | exactly at its row's bound |
 
 Reason: only jq-ref's own build on its own CPU gives jq-ref's digits. `Math`'s digits are not fixed
 across platforms, and glibc's code is LGPL. jq.test rounds every transcendental it checks
