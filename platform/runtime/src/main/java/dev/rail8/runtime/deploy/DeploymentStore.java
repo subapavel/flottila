@@ -41,9 +41,8 @@ public interface DeploymentStore {
     Future<Snapshot> read();
 
     /**
-     * Ends the mark of each retired flow whose work rows are gone, and raises the generation when one ended, in one transaction:
-     * only while no holder has the pool's lock, which it takes without waiting, and for each flow only while no write of a message
-     * for it is between its admission and its commit (the flow's admission lock, taken without waiting). Does nothing otherwise.
+     * Ends the mark of each retired flow whose work rows are gone, in one transaction, each only while no write of a message for
+     * it is between its admission and its commit (the flow's admission lock, taken without waiting): a mark it cannot lock stays.
      */
     Future<Void> endMarks();
 

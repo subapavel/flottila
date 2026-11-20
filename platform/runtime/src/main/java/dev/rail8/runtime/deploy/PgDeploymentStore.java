@@ -28,10 +28,9 @@ import java.util.function.Supplier;
  * <p>The flows the pool retires are rows of {@code retiring}, one per flow, each with a copy of the record it ran under: a save
  * marks each flow the replaced row ran at-least-once and the new one does not, by an {@code insert ... select} from the old row
  * before the upsert, and deletes the marks of the flows the new row runs at-least-once; a delete marks every flow the row ran
- * at-least-once. {@link #endMarks} runs on {@code pool}: the pool's lock as a transaction lock, taken without waiting, then for
- * each mark the flow's exclusive admission lock {@code (295, hashtext(flow))} ({@code 0x0127}), taken without waiting, and in a
- * later statement — its snapshot taken after the lock, under READ COMMITTED — the mark deleted when no {@code work} row of the
- * flow is left. A write of a message holds that lock shared from before its admission check to its commit, so a mark never ends
+ * at-least-once. {@link #endMarks} runs on {@code pool}, in one transaction: for each mark the flow's exclusive admission lock
+ * {@code (295, hashtext(flow))} ({@code 0x0127}), taken without waiting, and in a later statement — its snapshot taken after the
+ * lock, under READ COMMITTED — the mark deleted when no {@code work} row of the flow is left. A write of a message holds that lock shared from before its admission check to its commit, so a mark never ends
  * between a message's admission and its commit.
  *
  * <p>The pool's lock is the session advisory lock {@code (294, 0)} ({@code 0x0126}), taken with {@code pg_try_advisory_lock} on
@@ -59,11 +58,9 @@ public final class PgDeploymentStore implements DeploymentStore {
             + "from deployments d cross join unnest(d.at_least_once) as u(f) where d.package = $1 and not (f = any($2::text[])) on conflict (flow) do nothing";
     /** Ends the marks of the flows in $1: a new row runs them at-least-once again. */
     private static final String REVIVE = "delete from retiring where flow = any($1::text[])";
-    private static final String TRY_POOL = "select pg_try_advisory_xact_lock(294, 0)";
     private static final String MARKED = "select flow from retiring order by flow";
     private static final String TRY_FLOW = "select pg_try_advisory_xact_lock(295, hashtext($1))";
     private static final String END = "delete from retiring where flow = $1 and not exists (select 1 from work where flow = $1)";
-    private static final String RAISE_ANY = "update deploy_pool set generation = generation + 1";
     private static final String AUDIT = "insert into audit (at, actor, action, subject, detail) values (now(), $1, 'deploy', $2, $3)";
 
     private final Pool pool;
@@ -93,19 +90,16 @@ public final class PgDeploymentStore implements DeploymentStore {
 
     @Override
     public Future<Void> endMarks() {
-        return pool.withTransaction(tx -> tx.query(TRY_POOL).execute().compose(pooled -> {
-            if (!pooled.iterator().next().getBoolean(0)) return Future.succeededFuture();   // a deploy or an undeploy holds the pool's lock
-            return tx.query(MARKED).execute().compose(marks -> {
-                Future<Integer> ended = Future.succeededFuture(0);
-                for (Row mark : marks) {
-                    String flow = mark.getString(0);
-                    ended = ended.compose(n -> tx.preparedQuery(TRY_FLOW).execute(Tuple.of(flow)).compose(locked -> {
-                        if (!locked.iterator().next().getBoolean(0)) return Future.succeededFuture(n);   // a write of a message for it is open
-                        return tx.preparedQuery(END).execute(Tuple.of(flow)).map(gone -> n + gone.rowCount());
-                    }));
-                }
-                return ended.compose(n -> n == 0 ? Future.<Void>succeededFuture() : tx.query(RAISE_ANY).execute().<Void>mapEmpty());
-            });
+        return pool.withTransaction(tx -> tx.query(MARKED).execute().compose(marks -> {
+            Future<Void> ended = Future.succeededFuture();
+            for (Row mark : marks) {
+                String flow = mark.getString(0);
+                ended = ended.compose(n -> tx.preparedQuery(TRY_FLOW).execute(Tuple.of(flow)).compose(locked -> {
+                    if (!locked.iterator().next().getBoolean(0)) return Future.succeededFuture();   // a write of a message for it is open
+                    return tx.preparedQuery(END).execute(Tuple.of(flow)).mapEmpty();
+                }));
+            }
+            return ended;
         }));
     }
 

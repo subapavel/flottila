@@ -86,7 +86,6 @@ class AdminServerDeployTest {
     static final long MAX = 16 * 1024;
     /** The largest body of {@code POST /admin/deploy}. */
     static final int BODY_MAX = 4 * 1024;
-    static final String FORBIDDEN = "manual deploy is non-production only (ARCHITECTURE §9)";
 
     static Vertx vertx;
     static HttpClientAgent client;
@@ -536,9 +535,6 @@ class AdminServerDeployTest {
         OnVirtualThread.call(() -> { closed.close(); return null; });
         assertError(503, deploy(serve(Optional.of(closed)), pkg("store", "1.0.0", Map.of("ping", "sync"))), "STOPPING");
 
-        Answer forbidden = deploy(serve(Optional.of(deployments("prod"))), pkg("store", "1.0.0", Map.of("ping", "sync")));
-        assertError(403, forbidden, "FORBIDDEN");
-        assertEquals(FORBIDDEN, forbidden.json().getString("error"));
         Answer noBase = deploy(serve(Optional.of(deployments(tmp.resolve("node-nobase"), new InMemoryDeploymentStore(), false))), shop());
         assertError(403, noBase, "FORBIDDEN: the node has no git base");
         assertEquals("the node has no RAIL8_GIT_BASE: it deploys nothing", noBase.json().getString("error"));
@@ -909,7 +905,6 @@ class AdminServerDeployTest {
 
     // --- DELETE /admin/packages/{name} undeploys; the deploy's guards, its status map plus 404
 
-    static final String UNDEPLOY_FORBIDDEN = "manual undeploy is non-production only (ARCHITECTURE §9)";
 
     Answer delete(int at, String path, String authorization) throws Exception {
         return request(at, HttpMethod.DELETE, path, authorization, null);
@@ -984,11 +979,11 @@ class AdminServerDeployTest {
     }
 
     /**
-     * shop's at-least-once flow audit holds an item (its send held at the partner): DELETE shop is 409 {error} with the flow's
-     * line, and shop stays listed and runs; the item done, DELETE undeploys.
+     * shop's at-least-once flow audit holds an item (its send held at the partner): DELETE shop undeploys it all the same, and
+     * the item runs on to its end.
      */
     @Test
-    void deleteOfAPackageWhoseAtLeastOnceFlowHasQueueItemsIs409() throws Exception {
+    void deleteOfAPackageWhoseAtLeastOnceFlowHasQueueItemsUndeploysIt() throws Exception {
         assertJson(200, deploy(pkg("shop", "1.0.0", Map.of("orders", "sync", "audit", "at-least-once"))), "fixture");
         CountDownLatch release = doors.partner().holdNext(1);
         try {
@@ -998,31 +993,20 @@ class AdminServerDeployTest {
 
             Answer a = delete("/admin/packages/shop");
 
-            assertError(409, a, "audit's item is in the work queue");
-            assertEquals("flow 'audit' runs at-least-once and the work queue holds items of it (queued, leased, held or stopped): undeploy it once they are done",
-                    a.json().getString("error"));
-            assertEquals(List.of("shop"), names(get("/admin/packages")), "shop stays listed");
-            assertTrue(!doors.door("shop/audit").stopped() && !doors.door("shop/orders").stopped(), "shop runs on: " + doors.events());
+            assertJson(200, a, "shop undeploys with audit's item in the work queue");
+            assertEquals(List.of(), names(get("/admin/packages")), "shop is no longer listed");
+            assertTrue(doors.door("shop/audit").stopped() && doors.door("shop/orders").stopped(), "its consumers stopped: " + doors.events());
         } finally {
             release.countDown();
         }
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
-        Answer done;
-        while ((done = delete("/admin/packages/shop")).status() == 409 && System.nanoTime() < deadline) {
-            Thread.onSpinWait();   // the item finishes on its worker once released: retried until it is gone, bounded
-        }
-        assertJson(200, done, "witness: the item done, DELETE undeploys");
     }
 
-    /** A node in a deployed environment answers DELETE 403 {error}, as it answers a deploy. */
+    /** A node in a deployed environment takes DELETE as any other: one of a package it does not list is 404. */
     @Test
-    void deleteInADeployedEnvironmentIs403() throws Exception {
+    void deleteInADeployedEnvironmentIsTaken() throws Exception {
         int prod = serve(Optional.of(deployments("prod")));
 
-        Answer a = delete(prod, "/admin/packages/shop", AUTH);
-
-        assertError(403, a, "FORBIDDEN");
-        assertEquals(UNDEPLOY_FORBIDDEN, a.json().getString("error"));
+        assertError(404, delete(prod, "/admin/packages/shop", AUTH), "NOT_FOUND");
     }
 
     /** Without the token, or with a wrong one, DELETE is 401 and undeploys nothing; with it, 200. */

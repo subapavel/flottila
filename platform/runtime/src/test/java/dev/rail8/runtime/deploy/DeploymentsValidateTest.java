@@ -360,54 +360,29 @@ class DeploymentsValidateTest {
     }
 
     /**
-     * validate checks against what the node runs, as a deploy does (M08): shop runs the at-least-once audit and the work queue holds a
-     * row of it (leased by another node); a version without audit answers the deploy's own "work queue holds items" problem — the
-     * same lines the deploy of that version is refused with — and leaves the listing, the doors and the queue's rows as they were.
+     * shop runs the at-least-once audit and the work queue holds a row of it (leased by another node): a version without audit
+     * validates — the drain of a deploy of it runs the row — and the listing, the doors and the queue's rows stay as they were.
+     * validate asks the work queue nothing: one that fails every question gives the same answer.
      */
     @Test
-    void validateChecksAgainstTheFlowsTheNodeRuns() throws Exception {
+    void aVersionWithoutAnAtLeastOnceFlowWithItemsValidates() throws Exception {
         Deployments deployments = overDoors();
         OnVirtualThread.call(() -> deployments.deploy("shop", DeploymentsTest.shop("shop").folderIn(tmp.resolve("folders"))));
         queue.enqueue("m-left", "shop/audit", 1, null).await();
         assertEquals(1, queue.claim("node-2", "shop/audit", 1, Duration.ofMinutes(5)).await().size(), "fixture: node-2 leases the row");
-        PackageDraft withoutAudit = DeploymentsTest.shop("shop").without("flows/audit.yaml").without("endpoints/audit-in.yaml");
-        Path dir = written(withoutAudit, "shop-without-audit");
+        Path dir = written(DeploymentsTest.shop("shop").without("flows/audit.yaml").without("endpoints/audit-in.yaml"), "shop-without-audit");
         List<?> flows = deployments.flows();
         List<?> packages = deployments.packages();
         List<String> events = doors.events();
         String rows = queue.rows().toString();
 
-        List<String> problems = validate(deployments, "shop", dir);
+        assertEquals(List.of(), validate(deployments, "shop", dir), "no problem");
 
-        assertEquals(1, problems.size(), "one problem: " + problems);
-        assertTrue(problems.getFirst().startsWith("flow 'audit' runs at-least-once and the work queue holds items of it"), problems.getFirst());
         assertEquals(flows, deployments.flows(), "the listing is the one before");
         assertEquals(packages, deployments.packages());
         assertEquals(events, doors.events(), "nothing stopped or started");
         assertEquals(rows, queue.rows().toString(), "the queue's rows are as they were");
-        DeployRefusedException refused = assertThrows(DeployRefusedException.class,
-                () -> OnVirtualThread.call(() -> deployments.deploy("shop", withoutAudit.folderIn(tmp.resolve("folders")))));
-        assertEquals(refused.problems(), problems, "the same problem lines a deploy of that version is refused with");
-    }
-
-    /**
-     * FIX-172c: a deploy turns a work-queue question the node's Postgres pool refused into BUSY (503), a refusal with no problem
-     * lines; validate asks the same question and answers only problems, so that refusal is the node's IOException there, as any
-     * other queue failure is — never an empty list that says "valid". Witness: the queue answering, the version without audit validates.
-     */
-    @Test
-    void aQueueQuestionThePoolRefusedFailsTheValidateAsTheNodes() throws Exception {
-        Deployments deployments = overDoors();
-        OnVirtualThread.call(() -> deployments.deploy("shop", DeploymentsTest.shop("shop").folderIn(tmp.resolve("folders"))));
-        Path dir = written(DeploymentsTest.shop("shop").without("flows/audit.yaml").without("endpoints/audit-in.yaml"), "shop-without-audit");
-        PoolRefusedException refusal = new PoolRefusedException(new VertxException("Timeout", true));
-        queue.failHasItems(refusal);
-
-        IOException failed = assertThrows(IOException.class, () -> validate(deployments, "shop", dir), "the pool's refusal is the node's failure");
-
-        assertTrue(failed.getMessage().contains("shop/audit") && failed.getMessage().contains(refusal.getMessage()),
-                "it names the flow and the pool's refusal: " + failed.getMessage());
-        queue.failHasItems(null);
-        assertEquals(List.of(), validate(deployments, "shop", dir), "witness: the queue answering, the version validates");
+        queue.failHasItems(new PoolRefusedException(new VertxException("Timeout", true)));
+        assertEquals(List.of(), validate(deployments, "shop", dir), "validate asks the work queue nothing");
     }
 }

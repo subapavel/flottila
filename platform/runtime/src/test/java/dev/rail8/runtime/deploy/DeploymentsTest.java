@@ -653,25 +653,24 @@ class DeploymentsTest {
 
     // --- refusals before the unpack
 
+    /**
+     * A deployed environment takes deploys: a bad repository name, a bad commit and a ref are 400 before anything is fetched, and a
+     * commit goes on to its fetch, here from a git host no one serves: the node's FAILED, never a 403.
+     */
     @Test
-    void aDeployInADeployedEnvironmentIs403() throws Exception {
+    void aDeployInADeployedEnvironmentGoesOnToTheFetch() throws Exception {
         NodeConfig prod = NodeConfig.from(env("prod"));
         assertTrue(prod.deployed(), "fixture: prod is a deployed environment");
         Deployments d = deployments(prod);
         String commit = repos.commit(shop("shop"));
+        assertEquals(Kind.BAD_REQUEST, refused(d, "Shop!", commit).kind(), "the repository is checked first (deploy order 1)");
+        assertEquals(Kind.BAD_REQUEST, refused(d, "shop", "not a ref").kind(), "and the commit");
+        assertEquals(Kind.BAD_REQUEST, refused(d, "shop", "refs/heads/main").kind(), "a ref is refused in a deployed environment");
 
         DeployRefusedException refused = refused(d, "shop", commit);
 
-        assertEquals(Kind.FORBIDDEN, refused.kind(), refused.error());
-        assertEquals("manual deploy is non-production only (ARCHITECTURE §9)", refused.error());
-        assertEquals(List.of(), refused.problems(), "a 403 is {error} only");
-        assertEquals(Kind.FORBIDDEN, refused(d, "no-such-repository", commit).kind(), "refused before anything is fetched: a repository that is not there gives the same 403");
-        assertEquals(Kind.BAD_REQUEST, refused(d, "Shop!", commit).kind(), "the repository is checked first (deploy order 1)");
-        assertEquals(Kind.BAD_REQUEST, refused(d, "shop", "not a ref").kind(), "and the commit");
-        OnVirtualThread.call(() -> { d.close(); return null; });
-        assertEquals(Kind.FORBIDDEN, refused(d, "shop", commit).kind(), "a closing node in a deployed environment answers 403 too (order 2 before 3)");
+        assertEquals(Kind.FAILED, refused.kind(), "the deploy fetched, and the unserved git host failed it: " + refused.error());
         assertEquals(List.of(), doors.events(), "no consumer was built");
-        assertEquals(List.of(), regularFiles(data), "nothing was written");
     }
 
     // --- identity (D-060 a)

@@ -65,8 +65,7 @@ public final class InMemoryDeploymentStore implements DeploymentStore {
 
     @Override
     public synchronized Future<Void> endMarks() {
-        if (holder != null) return Future.succeededFuture();
-        if (marked.removeIf(flow -> !hasRows.test(flow))) generation++;
+        marked.removeIf(flow -> !hasRows.test(flow));
         return Future.succeededFuture();
     }
 
