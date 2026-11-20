@@ -11458,6 +11458,12 @@ path-update/del-indices	808f07045686	conservative
 path-update/del-indices	808f07045686	trampoline
 path-update/deviation-altbind-edit	c99914dd180e	conservative
 path-update/deviation-altbind-edit	c99914dd180e	trampoline
+path-update/deviation-modify-in-path	6dc1421a83b5	conservative
+path-update/deviation-modify-in-path	6dc1421a83b5	trampoline
+path-update/deviation-modify-in-path-unused	3010295df560	conservative
+path-update/deviation-modify-in-path-unused	3010295df560	trampoline
+path-update/getpath-untracked	0b7949489842	conservative
+path-update/getpath-untracked	0b7949489842	trampoline
 path-update/map-values	6039b22bf29f	conservative
 path-update/map-values	6039b22bf29f	trampoline
 path-update/modify-altbind	0e73a2cba32f	conservative

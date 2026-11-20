@@ -4908,6 +4908,9 @@ path-update/assign-two-paths	dfb1a400fe57	interpreter
 path-update/del	bdee733867bf	interpreter
 path-update/del-indices	808f07045686	interpreter
 path-update/deviation-altbind-edit	c99914dd180e	interpreter
+path-update/deviation-modify-in-path	6dc1421a83b5	interpreter
+path-update/deviation-modify-in-path-unused	3010295df560	interpreter
+path-update/getpath-untracked	0b7949489842	interpreter
 path-update/map-values	6039b22bf29f	interpreter
 path-update/modify-altbind	0e73a2cba32f	interpreter
 path-update/modify-builds-null	f1e55918bf64	interpreter
