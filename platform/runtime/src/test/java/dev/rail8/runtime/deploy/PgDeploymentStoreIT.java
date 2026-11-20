@@ -1,6 +1,10 @@
 package dev.rail8.runtime.deploy;
 
 import dev.rail8.runtime.db.Migrations;
+import dev.rail8.runtime.queue.NotAdmittedException;
+import dev.rail8.runtime.queue.PgWorkQueue;
+import dev.rail8.testkit.FakeClock;
+import dev.rail8.testkit.FakeTimer;
 import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
@@ -11,6 +15,7 @@ import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.SqlConnection;
+import io.vertx.sqlclient.Transaction;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -18,17 +23,23 @@ import org.junit.jupiter.api.Test;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The Postgres record store passes the store contract over the {@code deployments} table, on a container whose database collates
  * en_US.utf8 (the image's default): {@code listIsSortedByName} holds there too. {@link #aDeleteRemovesTheTableRow} reads the
  * table itself, so a store that only hides the row from its own {@code list} shows; {@link #aLockIsFreedWithItsConnection} closes a
- * holder's connection under it.
+ * holder's connection under it. A work queue built with admission admits a write for a flow a record runs at-least-once, a mark
+ * retires or the node names, and refuses the rest; a mark ends only once no work row of its flow is left and no write admitted for
+ * it is open.
  */
 class PgDeploymentStoreIT extends DeploymentStoreContract {
 
@@ -62,7 +73,8 @@ class PgDeploymentStoreIT extends DeploymentStoreContract {
 
     @Override
     protected DeploymentStore emptyStore() {
-        pool.query("truncate deployments").execute().await();
+        pool.query("truncate deployments, retiring").execute().await();
+        pool.query("delete from work").execute().await();
         return store(pool, connect);
     }
 
@@ -126,6 +138,66 @@ class PgDeploymentStoreIT extends DeploymentStoreContract {
         assertEquals(List.of("common"), left, "shop's row is deleted from the table, common's stays");
     }
 
+    /**
+     * A write is admitted for the flows a record runs at-least-once, a mark retires or the node runs without a record yet; one that
+     * names any other flow is refused with the flows refused. A queue built without admission admits every flow.
+     */
+    @Test
+    void aWriteIsAdmittedOnlyForAFlowThePoolRunsRetiresOrTheNodeNames() {
+        save(record("shop", "1.0.0", C_1, SHA_1, AT));
+        save(new DeploymentRecord("shop", "2.0.0", "shop", C_2, SHA_2, AT, List.of(), List.of("shop/orders")));
+        assertEquals(List.of("shop/audit"), store.read().await().marked(), "fixture: shop/audit is retired");
+        PgWorkQueue admitting = new PgWorkQueue(pool, "node-1", null, timer(), () -> Set.of("new/flow"));
+
+        admit(admitting, List.of("shop/orders", "shop/audit", "new/flow"));   // run by a record, retired by a mark, named by the node
+
+        NotAdmittedException refused = assertThrows(NotAdmittedException.class, () -> admit(admitting, List.of("other/x", "shop/orders", "gone/flow")));
+        assertEquals(List.of("gone/flow", "other/x"), refused.flows(), "the flows refused, sorted");
+        admit(new PgWorkQueue(pool, "node-1", null, timer()), List.of("gone/flow"));   // built without admission
+    }
+
+    /**
+     * A mark ends only once no work row of its flow is left and no write admitted for it is open: a row keeps it, an open
+     * transaction that admitted a message for the flow keeps it, and once that commits the next {@code endMarks} ends it. A write
+     * for the flow is then refused.
+     */
+    @Test
+    void aMarkEndsOnceItsRowsAreGoneAndNoAdmittedWriteIsOpen() {
+        save(record("shop", "1.0.0", C_1, SHA_1, AT));
+        delete("shop");
+        PgWorkQueue admitting = new PgWorkQueue(pool, "node-1", null, timer(), Set::of);
+        pool.query("insert into work(id, flow, step) values ('m-1', 'shop/audit', 1)").execute().await();
+
+        store.endMarks().await();
+        assertEquals(List.of("shop/audit"), store.read().await().marked(), "shop/orders had no row and ends; the row keeps shop/audit");
+
+        pool.query("delete from work where id = 'm-1'").execute().await();
+        SqlConnection writer = pool.getConnection().await();
+        try {
+            Transaction open = writer.begin().await();
+            admitting.admit(writer, List.of("shop/audit")).await();   // admitted: it holds the flow's admission lock until it ends
+
+            store.endMarks().await();
+            assertEquals(List.of("shop/audit"), store.read().await().marked(), "the open write keeps the mark");
+
+            open.commit().await();
+        } finally {
+            writer.close().await();
+        }
+        store.endMarks().await();
+        assertEquals(List.of(), store.read().await().marked(), "no row and no open write: the mark ends");
+        assertThrows(NotAdmittedException.class, () -> admit(admitting, List.of("shop/audit")), "the flow is no longer admitted");
+    }
+
+    /** {@code queue} admits {@code flows} in a transaction of its own, which then commits. */
+    static void admit(PgWorkQueue queue, Collection<String> flows) {
+        pool.withTransaction(tx -> queue.admit(tx, flows)).await();
+    }
+
+    static FakeTimer timer() {
+        return new FakeTimer(FakeClock.at(Instant.parse("2026-10-27T09:30:00Z")));
+    }
+
     /** An audit row of a deploy: the actor, the action {@code deploy}, the subject {@code repository/<name>} and the detail as given. */
     @Test
     void anAuditRowIsWritten() {
@@ -162,7 +234,7 @@ class PgDeploymentStoreIT extends DeploymentStoreContract {
 
             Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-            assertEquals("27", r.schemaVersion(), "V27 applied over the V26 database");
+            assertEquals("28", r.schemaVersion(), "the migrations after V26 applied over the V26 database");
             PgDeploymentStore store = store(own, options);
             assertEquals(new DeploymentStore.Snapshot(0, List.of()), store.read().await(), "the row is deleted; the generation starts at 0");
             DeploymentRecord shop = record("shop", "1.0.0", C_1, SHA_1, AT);

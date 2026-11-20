@@ -403,7 +403,7 @@ public final class PgWorkQueue implements WorkQueue {
         if (unrecorded == null || flows.isEmpty()) return Future.succeededFuture();
         String[] asked = flows.toArray(String[]::new);
         Future<?> locked = tx.preparedQuery(ADMIT_LOCK).execute(Tuple.of((Object) asked));
-        Future<RowSet<Row>> refused = tx.preparedQuery(REFUSED).execute(Tuple.of(asked, unrecorded.get().toArray(String[]::new)));
+        Future<RowSet<Row>> refused = tx.preparedQuery(REFUSED).execute(Tuple.of(asked, (Object) unrecorded.get().toArray(String[]::new)));
         return locked.compose(held -> refused).compose(rows -> {
             if (rows.rowCount() == 0) return Future.succeededFuture();
             List<String> gone = new ArrayList<>();

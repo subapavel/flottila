@@ -19,7 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * listed ({@link String#compareTo}: {@code shop-eu} before {@code shopa}, whatever the database's collation), {@code deployedAt}
  * kept to the microsecond, the pins and the at-least-once flows of each row as saved, and {@code delete} removing one row; the
  * pool's lock held by one holder at a time, every write through it raising the generation by one, and a lock that was freed
- * writing nothing. Run by {@code InMemoryDeploymentStoreTest} and {@code PgDeploymentStoreIT}.
+ * writing nothing; the marks of the flows a write retires, revived by a save that runs them again and ended by {@code endMarks}
+ * once no work row of them is left. Run by {@code InMemoryDeploymentStoreTest} and {@code PgDeploymentStoreIT}.
  */
 public abstract class DeploymentStoreContract {
 
@@ -225,6 +226,43 @@ public abstract class DeploymentStoreContract {
         assertTrue(failsLater(lock.save(record("billing", "1.0.0", C_2, SHA_2, AT))), "a save through a freed lock fails");
         assertTrue(failsLater(lock.delete("shop")), "a delete through a freed lock fails");
         assertEquals(before, store.read().await(), "nothing written");
+    }
+
+    /**
+     * A save whose record no longer runs a flow at-least-once that the row it replaces ran so marks it; a later save that runs it
+     * again ends the mark; a delete marks every flow the row ran at-least-once. A new package's first save marks nothing.
+     */
+    @Test
+    void aSaveThatDropsAFlowMarksItAndOneThatRunsItAgainRevivesIt() {
+        DeploymentRecord shop = record("shop", "1.0.0", C_1, SHA_1, AT);   // runs shop/audit and shop/orders at-least-once
+        save(shop);
+        assertEquals(List.of(), store.read().await().marked(), "a first save marks nothing");
+
+        DeploymentRecord dropped = new DeploymentRecord("shop", "2.0.0", "shop", C_2, SHA_2, AT, List.of(), List.of("shop/orders"));
+        save(dropped);
+        assertEquals(List.of("shop/audit"), store.read().await().marked(), "the flow the new version no longer runs at-least-once is marked");
+
+        save(shop);
+        assertEquals(List.of(), store.read().await().marked(), "a version that runs it at-least-once again ends its mark");
+
+        save(record("billing", "1.0.0", C_3, SHA_3, AT));
+        delete("shop");
+        DeploymentStore.Snapshot after = store.read().await();
+        assertEquals(List.of("shop/audit", "shop/orders"), after.marked(), "a delete marks every flow the row ran at-least-once");
+        assertEquals(List.of("billing"), after.records().stream().map(DeploymentRecord::name).toList(), "the other package's row stays");
+    }
+
+    /** {@code endMarks} ends a mark whose flow has no work row left, and writes no record and no generation. */
+    @Test
+    void aMarkWithoutWorkRowsEnds() {
+        save(record("shop", "1.0.0", C_1, SHA_1, AT));
+        delete("shop");
+        DeploymentStore.Snapshot marked = store.read().await();
+        assertEquals(List.of("shop/audit", "shop/orders"), marked.marked(), "fixture: the delete marked both flows");
+
+        store.endMarks().await();
+
+        assertEquals(new DeploymentStore.Snapshot(marked.generation(), List.of()), store.read().await(), "the marks end; the generation stays");
     }
 
     /** Whether {@code write} fails, once it completed. */
