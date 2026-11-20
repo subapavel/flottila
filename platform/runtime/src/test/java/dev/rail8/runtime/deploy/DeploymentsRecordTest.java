@@ -196,7 +196,9 @@ class DeploymentsRecordTest {
         assertEquals("ops repository/shop {\"repository\":\"shop\",\"commit\":\"" + broken.commit() + "\",\"outcome\":\"refused\",\"error\":\""
                 + invalid.error() + "\"}", audited().get(1), "a refused deploy is audited with its error");
 
-        OnVirtualThread.call(() -> deployments.check("shop", v1.commit()));
+        String next = repos.commit(shop("3.0.0", "v3"));
+        assertEquals("3.0.0", OnVirtualThread.call(() -> deployments.check("shop", next)).pkg().version(), "fixture: the check passes");
+        assertEquals(List.of("shop 1.0.0"), records.saves().stream().map(r -> r.name() + " " + r.version()).toList(), "a check writes no record");
         assertEquals(2, audited().size(), "a check writes no audit row");
         assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> deployments.deploy("shop", "no-such-branch", "ops")));
         assertEquals("ops repository/shop {\"repository\":\"shop\",\"commit\":\"no-such-branch\",\"outcome\":\"refused\",\"error\":\""
