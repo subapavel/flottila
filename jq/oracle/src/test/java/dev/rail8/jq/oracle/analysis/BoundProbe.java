@@ -26,6 +26,7 @@ import dev.rail8.jq.query.ir.Pipe;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.ir.Reduce;
 import dev.rail8.jq.query.ir.Source;
+import dev.rail8.jq.query.ir.Tracking;
 import dev.rail8.jq.query.ir.Try;
 import dev.rail8.jq.query.ir.Update;
 import dev.rail8.jq.query.ir.Var;
@@ -185,14 +186,43 @@ final class BoundProbe {
 
   /** {@code program} with the node {@code n} of the body {@code function} (-1 for main) watched. */
   Program wrapped(Program program, int function, Node n) {
+    Node watched = watchable(program, n);
     if (function < 0) {
       Node main = program.main();
-      return new Program(replace(main, n, wrap(n, freshSlot(main, 0))), program.functions());
+      return new Program(replace(main, n, wrap(watched, freshSlot(main, 0))), program.functions());
     }
     List<Function> functions = new ArrayList<>(program.functions());
     Function f = functions.get(function);
-    functions.set(function, new Function(f.source(), f.closures(), f.values(), replace(f.body(), n, wrap(n, freshSlot(f.body(), f.values())))));
+    functions.set(function, new Function(f.source(), f.closures(), f.values(), replace(f.body(), n, wrap(watched, freshSlot(f.body(), f.values())))));
     return new Program(program.main(), functions);
+  }
+
+  /**
+   * {@code n} as a probe of {@code program} wraps it. Only a Foreach's source Bind may be ITEM-tracked, and only while it
+   * is the Foreach's each, which a wrapped node no longer is. So in a program that holds no PathOf and no Update, such a
+   * Bind is watched as the same Bind tracked VALUE: a run reads a Bind's tracking only in a path variant, and such a
+   * program runs none. Any other node is wrapped as it is.
+   */
+  static Node watchable(Program program, Node n) {
+    if (n instanceof Bind b && b.tracking() == Tracking.ITEM && !holdsPaths(program)) {
+      return new Bind(b.source(), b.value(), Tracking.VALUE, b.slot(), b.body());
+    }
+    return n;
+  }
+
+  /** Whether a node of {@code program}'s main tree or of one of its functions is a PathOf or an Update. */
+  private static boolean holdsPaths(Program program) {
+    List<Node> roots = new ArrayList<>();
+    roots.add(program.main());
+    program.functions().forEach(f -> roots.add(f.body()));
+    for (Node root : roots) {
+      for (Node n : preOrder(root)) {
+        if (n instanceof PathOf || n instanceof Update) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**

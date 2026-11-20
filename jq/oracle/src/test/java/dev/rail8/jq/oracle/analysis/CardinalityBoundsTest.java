@@ -58,6 +58,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  * refuses, each refusal checked, so a probe it accepts there is a violation; and a bare ParamCall a Call passes on or
  * an Advance when the verifier refuses its probe (the design names both; at 9faa3bf it accepts them, and they are
  * watched and counted as such). Any other refusal is a failure of the probe. Every core-v1 seed must compile.
+ * A Foreach's ITEM-tracked source Bind is watched tracked VALUE, which changes nothing a run without paths does
+ * ({@link BoundProbe#watchable}).
  *
  * <p>Seam (named in the #112 hand-back): {@code Executable.facts()} returning {@code query.analysis.Facts}, {@code
  * Facts.cardinality(int function, int id)} with -1 for main and a function's place otherwise, and {@code
