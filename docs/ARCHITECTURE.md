@@ -966,7 +966,11 @@ apply as soon as they are chosen; a business key (name and value) and the name o
 passed apply with Search, which also reads the list again up to now. Just above the list, a strip counts
 the messages of the time range and flow in each status; choosing a count narrows the list to that status,
 and choosing it again shows every status. A message's tab shows its flow, the state of its latest
-attempt and every attempt step by step: outcome, start, wall and CPU time, payload size and error.
+attempt and every attempt step by step: outcome, start, wall and CPU time, payload size and error;
+`ingress` times nothing and shows no wall or CPU time. Between two steps a row shows the time the message
+waited when it is at least 100 µs and 1% of its duration (saved and waiting for a worker after `ingress`,
+or between steps), and before a later attempt always (waiting to retry). Under the last attempt, the time
+between steps that no row shows and the total, the duration of the list, so the rows add up to it.
 The payload after a step opens in a dialog (its first MiB) when its bytes were kept; when the latest
 attempt failed, its error is shown with Restart (`POST /admin/dlq/{id}/retry`).
 
