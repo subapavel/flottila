@@ -5,10 +5,11 @@ import dev.rail8.api.Expressions;
 import dev.rail8.api.StepFactory;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * A plugin: what adds components, step factories and expression languages to a node, and, when it is a module, services of the
- * node's admin API. The node's own parts are plugins too, and
+ * node's admin API and a command of the command line. The node's own parts are plugins too, and
  * register the same way: each shipped component and step (http, sftp, direct, xslt with xpath, xsd, jq, mapping) is a module of
  * the node's build, found on the node's class path. A plugin from elsewhere is one jar, or one directory of jars, in the node's
  * plugin directory ({@code RAIL8_PLUGINS}). The node finds both with {@link java.util.ServiceLoader}: a jar names its
@@ -22,6 +23,8 @@ import java.util.List;
  * <li>{@link #steps(PluginSettings)} and {@link #languages()} once each, when it loads the plugin, before Vert.x starts;</li>
  * <li>{@link #services(PluginSettings)} once, at the node's start, before Vert.x starts; only the node calls it, never
  *     {@code rail8 validate} or {@code rail8 test};</li>
+ * <li>{@link #command()} and its {@link Command#usage()} once each, when it loads the plugin, after its steps and languages: at
+ *     the node's start and in every command of the command line that loads modules; only the command line runs a command;</li>
  * <li>{@link #components(ComponentContext)} once per node start, inside the start and before Postgres is touched, and once per
  *     {@code rail8 validate} or {@code rail8 test} run; {@code rail8 test} builds the components of the platform's
  *     {@code direct} module again for each case of a package with a {@code direct} endpoint. It builds objects and opens
@@ -109,5 +112,18 @@ public interface Plugin {
      */
     default List<AdminService> services(PluginSettings settings) {
         return List.of();
+    }
+
+    /**
+     * The command of the command line the module brings: {@code rail8 <name> [arguments]} runs it and {@code rail8 help} lists
+     * its usage; none by default. It is built with no settings and opens nothing. Refused, naming it: a plugin of
+     * {@code RAIL8_PLUGINS} that brings one, a module whose name is one of the command line's own commands ({@code validate},
+     * {@code test}, {@code lock}, {@code deploy}, {@code new-adapter}, {@code help}) that brings one, a null, and a usage outside
+     * the rule of {@link Command}.
+     *
+     * @since 0.3
+     */
+    default Optional<Command> command() {
+        return Optional.empty();
     }
 }

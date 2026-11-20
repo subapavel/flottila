@@ -15,6 +15,8 @@ import dev.rail8.api.StepResources;
 import dev.rail8.api.plugin.AdminReply;
 import dev.rail8.api.plugin.AdminRequest;
 import dev.rail8.api.plugin.AdminService;
+import dev.rail8.api.plugin.Command;
+import dev.rail8.api.plugin.CommandContext;
 import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.api.plugin.Plugin;
 import dev.rail8.api.plugin.PluginSettings;
@@ -341,5 +343,65 @@ public final class PluginFixtures {
         @Override public String name() { return "failing-services"; }
         @Override public String api() { return API; }
         @Override public List<AdminService> services(PluginSettings settings) { throw new IllegalStateException("no services today"); }
+    }
+
+    /**
+     * A command whose usage is {@code usage}: it writes its arguments, the clock's instant and whether the thread's context class
+     * loader is the one that defined it, and returns 0.
+     */
+    public record Says(String usage) implements Command {
+        @Override public int run(CommandContext context) {
+            context.out().println(String.join(" ", context.args()) + " at " + context.clock().instant() + ", own loader "
+                    + (Thread.currentThread().getContextClassLoader() == Says.class.getClassLoader()));
+            return 0;
+        }
+    }
+
+    /** A plugin named {@code sample} whose command says its arguments. */
+    public static final class Commands implements Plugin {
+        @Override public String name() { return "sample"; }
+        @Override public String api() { return API; }
+        @Override public Optional<Command> command() { return Optional.of(new Says("<words>\nsay the words")); }
+    }
+
+    /** A plugin named {@code deploy}, as a command of the command line's own is, with a command. */
+    public static final class CommandsAsDeploy implements Plugin {
+        @Override public String name() { return "deploy"; }
+        @Override public String api() { return API; }
+        @Override public Optional<Command> command() { return Optional.of(new Says("")); }
+    }
+
+    /** A plugin named {@code deploy}, as a command of the command line's own is, without a command. */
+    public static final class NamedDeploy implements Plugin {
+        @Override public String name() { return "deploy"; }
+        @Override public String api() { return API; }
+    }
+
+    /** A plugin named {@code null-command} whose {@code command()} is null. */
+    public static final class NullCommand implements Plugin {
+        @Override public String name() { return "null-command"; }
+        @Override public String api() { return API; }
+        @Override public Optional<Command> command() { return null; }
+    }
+
+    /** A plugin named {@code failing-command} whose {@code command()} throws. */
+    public static final class FailingCommand implements Plugin {
+        @Override public String name() { return "failing-command"; }
+        @Override public String api() { return API; }
+        @Override public Optional<Command> command() { throw new IllegalStateException("no command today"); }
+    }
+
+    /** A plugin named {@code null-usage} whose command's usage is null. */
+    public static final class NullUsage implements Plugin {
+        @Override public String name() { return "null-usage"; }
+        @Override public String api() { return API; }
+        @Override public Optional<Command> command() { return Optional.of(new Says(null)); }
+    }
+
+    /** A plugin named {@code tabbed} whose command's usage holds a tab. */
+    public static final class TabbedUsage implements Plugin {
+        @Override public String name() { return "tabbed"; }
+        @Override public String api() { return API; }
+        @Override public Optional<Command> command() { return Optional.of(new Says("<a>\tb")); }
     }
 }

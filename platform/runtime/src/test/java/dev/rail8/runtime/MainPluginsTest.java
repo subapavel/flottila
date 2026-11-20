@@ -116,6 +116,14 @@ class MainPluginsTest {
     }
 
     @Test
+    void aPluginThatBringsACommandRefusesTheConfiguration() throws IOException {
+        Run run = start(plugin("sample.jar", PluginFixtures.Commands.class));
+        assertEquals(2, run.started().code());
+        assertEquals("rail8: configuration refused: plugin sample: command() brings a command; only a module brings one, no plugin of RAIL8_PLUGINS"
+                + System.lineSeparator(), run.err());
+    }
+
+    @Test
     void aPluginsComponentOfAShippedSchemeStopsTheStart() throws IOException {
         Run run = start(plugin("http.jar", PluginFixtures.ShippedScheme.class));
         assertEquals(1, run.started().code());

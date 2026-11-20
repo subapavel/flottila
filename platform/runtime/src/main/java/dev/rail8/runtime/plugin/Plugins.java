@@ -4,6 +4,8 @@ import dev.rail8.api.Component;
 import dev.rail8.api.Expressions;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.plugin.AdminService;
+import dev.rail8.api.plugin.Command;
+import dev.rail8.api.plugin.CommandContext;
 import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.api.plugin.Plugin;
 import dev.rail8.api.plugin.PluginSettings;
@@ -32,9 +34,11 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.SequencedMap;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
@@ -66,7 +70,9 @@ import java.util.stream.Stream;
  * plugin whose jars name no implementation, or more than one, or one that cannot be built; a name that is null, no lower-case
  * label, {@code rail8} or another module's or plugin's; and a module or plugin built against an api this node does not load
  * ({@link #loads}). Loading takes each one's step factories, given its settings ({@link PluginSettings#of}), and its expression
- * languages, so a refusal of those is one too.
+ * languages, so a refusal of those is one too; then its command and that command's usage, once each ({@link #commands}). Refused
+ * of those: a call that throws or a null, a plugin of the plugin directory that brings one, a module named as one of
+ * {@link #CLI_COMMANDS} that brings one, and a usage outside the rule of {@link Command}.
  *
  * <p>A module or plugin adds and never replaces: a scheme, step type or expression language that is already another's is
  * refused, naming both owners, and so are a built-in step type ({@link FlowBuilder#BUILT_INS}) and the scheme {@code mock}. So
@@ -92,6 +98,8 @@ public final class Plugins implements AutoCloseable {
     public static final int MAX_PLUGINS = 64;
     /** The most jars one plugin's directory may hold. */
     public static final int MAX_JARS = 512;
+    /** The command line's own commands: a module of one of these names brings no command. */
+    public static final List<String> CLI_COMMANDS = List.of("validate", "test", "lock", "deploy", "new-adapter", "help");
     /** The packages a plugin shares with the node, by name prefix: their classes and resources are the node's. */
     static final List<String> SHARED = List.of("dev.rail8.api.", "io.vertx.core.", "io.netty.", "org.slf4j.");
 
@@ -115,10 +123,11 @@ public final class Plugins implements AutoCloseable {
      * @param api     what {@link Plugin#api()} answered
      * @param version the {@code Implementation-Version} of the jar its implementation comes from; empty when none
      * @param sha256  the SHA-256, in hex, over the bytes of its jars in name order; empty for a module of a directory
-     * @param from    where it came from, in its log line: a module's jar or directory, a plugin's entry
+     * @param from    where it came from: a module's jar or directory, a plugin's entry; empty for a module whose class has no
+     *                location, {@code the class path} in its log line
      */
     private record Loaded(String kind, String where, Plugin plugin, ClassLoader loader, Optional<URLClassLoader> own, String name, String api,
-                          Optional<String> version, Optional<String> sha256, String from) {
+                          Optional<String> version, Optional<String> sha256, Optional<String> from) {
         /** Whose a contribution of it is, in a refusal: {@code module <name>} or {@code plugin <name>}. */
         String who() {
             return kind + " " + name;
@@ -128,6 +137,9 @@ public final class Plugins implements AutoCloseable {
     /** A name and an api that passed their checks. */
     private record Checked(String name, String api) {}
 
+    /** A module's command, its usage as it answered at load, and the module's class loader it runs with. */
+    private record Commanded(Command command, String usage, ClassLoader loader) {}
+
     /**
      * One module or plugin as the node lists it: who it is and what it brings.
      *
@@ -136,14 +148,16 @@ public final class Plugins implements AutoCloseable {
      * @param version   the {@code Implementation-Version} of the jar its implementation comes from; empty when none
      * @param api       the api version it was built against
      * @param sha256    the SHA-256, in hex, over the bytes of its jars in name order; empty for a module of a directory
-     * @param from      where it came from: a module's jar or directory, a plugin's entry of the plugin directory
+     * @param from      where it came from: a module's jar or directory, a plugin's entry of the plugin directory; empty for a
+     *                  module whose class has no location
      * @param schemes   the schemes of its components, sorted; none until the node has built every component
      *                  ({@link #components(ComponentContext)})
      * @param steps     the types of its step factories, sorted
      * @param languages the names of its expression languages, sorted
+     * @param command   whether it brings a command of the command line
      */
-    public record Listed(String kind, String name, Optional<String> version, String api, Optional<String> sha256, String from, List<String> schemes,
-                         List<String> steps, List<String> languages) {
+    public record Listed(String kind, String name, Optional<String> version, String api, Optional<String> sha256, Optional<String> from,
+                         List<String> schemes, List<String> steps, List<String> languages, boolean command) {
         public Listed {
             Objects.requireNonNull(kind, "kind");
             Objects.requireNonNull(name, "name");
@@ -163,16 +177,19 @@ public final class Plugins implements AutoCloseable {
     /** The step types and the languages each one brings, by its name, sorted. */
     private final Map<String, List<String>> stepTypes;
     private final Map<String, List<String>> languageNames;
+    /** Each module's command, by its name, in name order. */
+    private final SequencedMap<String, Commanded> commands;
     /** The schemes each one's components have, by its name, sorted: recorded when every component was built. */
     private volatile Map<String, List<String>> schemes = Map.of();
 
     private Plugins(List<Loaded> loaded, List<StepFactory> steps, Map<String, List<String>> stepTypes, List<Expressions> languages,
-                    Map<String, List<String>> languageNames) {
+                    Map<String, List<String>> languageNames, SequencedMap<String, Commanded> commands) {
         this.loaded = List.copyOf(loaded);
         this.steps = List.copyOf(steps);
         this.stepTypes = Map.copyOf(stepTypes);
         this.languages = List.copyOf(languages);
         this.languageNames = Map.copyOf(languageNames);
+        this.commands = Collections.unmodifiableSequencedMap(new LinkedHashMap<>(commands));
     }
 
     /**
@@ -217,7 +234,7 @@ public final class Plugins implements AutoCloseable {
             Map<String, List<String>> languageNames = new HashMap<>();
             List<Expressions> languages = merge(loaded, "languages()", l -> l.plugin().languages(), Expressions::language, "expression language",
                     Map.of(), null, null, IllegalArgumentException::new, languageNames);
-            return new Plugins(loaded, steps, stepTypes, languages, languageNames);
+            return new Plugins(loaded, steps, stepTypes, languages, languageNames, commands(loaded));
         } catch (RuntimeException refused) {
             close(loaded);
             throw refused;
@@ -252,7 +269,7 @@ public final class Plugins implements AutoCloseable {
         }
         Checked checked = checked(where, plugin, loader);
         Optional<Path> location = location(type);
-        String from = location.map(l -> Files.isRegularFile(l) ? l.getFileName().toString() : l.toString()).orElse("the class path");
+        Optional<String> from = location.map(l -> Files.isRegularFile(l) ? l.getFileName().toString() : l.toString());
         Optional<String> sha256 = location.filter(Files::isRegularFile).map(jar -> sha256(List.of(jar), where));
         return new Loaded("module", where, plugin, loader, Optional.empty(), checked.name(), checked.api(), version(type), sha256, from);
     }
@@ -301,7 +318,7 @@ public final class Plugins implements AutoCloseable {
             }
             Checked checked = checked(where, plugin, loader);
             return new Loaded("plugin", where, plugin, loader, Optional.of(loader), checked.name(), checked.api(), version(own.getFirst().type()),
-                    Optional.of(sha256(jars, where)), at);
+                    Optional.of(sha256(jars, where)), Optional.of(at));
         } catch (RuntimeException refused) {
             close(at, loader);
             throw refused;
@@ -414,6 +431,84 @@ public final class Plugins implements AutoCloseable {
         return Collections.unmodifiableMap(all);
     }
 
+    /**
+     * Each module's command, by its name, in load order, each usage taken once; refused as the class comment says.
+     */
+    private static SequencedMap<String, Commanded> commands(List<Loaded> loaded) {
+        SequencedMap<String, Commanded> commands = new LinkedHashMap<>();
+        for (Loaded l : loaded) {
+            String who = l.who();
+            Optional<Command> brought = call(who, l.loader(), "command()", () -> l.plugin().command(), IllegalArgumentException::new);
+            if (brought == null) throw new IllegalArgumentException(who + ": command() is null");
+            if (brought.isEmpty()) continue;
+            if (l.own().isPresent()) throw new IllegalArgumentException(who + ": command() brings a command; only a module brings one, no plugin of " + ENV);
+            if (CLI_COMMANDS.contains(l.name())) throw new IllegalArgumentException(who + ": its command is the CLI's own " + l.name());
+            Command command = brought.get();
+            String type = command.getClass().getName();
+            String usage = call(who, l.loader(), "usage() of " + type, command::usage, IllegalArgumentException::new);
+            if (usage == null) throw new IllegalArgumentException(who + ": the usage of " + type + " is null");
+            Optional<String> refused = usageRefusal(usage);
+            if (refused.isPresent()) throw new IllegalArgumentException(who + ": the usage of " + type + " " + refused.get());
+            commands.put(l.name(), new Commanded(command, usage, l.loader()));
+        }
+        return commands;
+    }
+
+    /**
+     * Why {@code usage} breaks the rule of {@link Command}, as the end of a refusal: more than {@value Command#MAX_USAGE_LINES}
+     * lines split at {@code \n}, a line over {@value Command#MAX_USAGE_LINE} {@code char}s, a control character other than
+     * {@code \n} or a format character; empty when it keeps it.
+     */
+    static Optional<String> usageRefusal(String usage) {
+        String[] lines = usage.split("\n", -1);
+        if (lines.length > Command.MAX_USAGE_LINES) return Optional.of("has " + lines.length + " lines; at most " + Command.MAX_USAGE_LINES);
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            if (line.length() > Command.MAX_USAGE_LINE) {
+                return Optional.of("has " + line.length() + " chars on line " + (i + 1) + "; at most " + Command.MAX_USAGE_LINE);
+            }
+            int at = 0;
+            while (at < line.length()) {
+                int c = line.codePointAt(at);
+                int type = Character.getType(c);
+                if (type == Character.CONTROL || type == Character.FORMAT) {
+                    return Optional.of(String.format(Locale.ROOT, "holds U+%04X on line %d; no control or format character", c, i + 1));
+                }
+                at += Character.charCount(c);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** The usage of each module's command, by the module's name, in name order. */
+    public SequencedMap<String, String> commands() {
+        SequencedMap<String, String> usages = new LinkedHashMap<>();
+        commands.forEach((name, c) -> usages.put(name, c.usage()));
+        return Collections.unmodifiableSequencedMap(usages);
+    }
+
+    /**
+     * Runs the command of the module {@code name} once over {@code context}, on the calling thread, with the thread's context
+     * class loader set to the module's for the run, and returns what it returned.
+     *
+     * @throws IllegalArgumentException when the module brings no command, or there is none of that name
+     * @throws IOException              what the command throws
+     * @throws InterruptedException     what the command throws
+     */
+    public int run(String name, CommandContext context) throws IOException, InterruptedException {
+        Objects.requireNonNull(context, "context");
+        Commanded commanded = commands.get(name);
+        if (commanded == null) throw new IllegalArgumentException("module " + name + " brings no command");
+        Thread thread = Thread.currentThread();
+        ClassLoader before = thread.getContextClassLoader();
+        thread.setContextClassLoader(commanded.loader());
+        try {
+            return commanded.command().run(context);
+        } finally {
+            thread.setContextClassLoader(before);
+        }
+    }
+
     /** Whether {@code path} is the path of an admin service: 1 to 4 segments of {@code [a-z0-9-]{1,32}}, joined by single slashes. */
     static boolean servicePath(String path) {
         return path != null && SERVICE_PATH.matcher(path).matches();
@@ -435,14 +530,14 @@ public final class Plugins implements AutoCloseable {
      */
     public List<String> describe() {
         return loaded.stream().map(l -> l.who() + " " + l.version().orElse("-") + " (api " + l.api() + ", sha256 " + l.sha256().orElse("-")
-                + ") from " + l.from()).toList();
+                + ") from " + l.from().orElse("the class path")).toList();
     }
 
     /** Each module, then each plugin, with what it brings, in the order of {@link #describe()}. */
     public List<Listed> list() {
         Map<String, List<String>> built = schemes;
         return loaded.stream().map(l -> new Listed(l.kind(), l.name(), l.version(), l.api(), l.sha256(), l.from(), built.getOrDefault(l.name(), List.of()),
-                stepTypes.getOrDefault(l.name(), List.of()), languageNames.getOrDefault(l.name(), List.of()))).toList();
+                stepTypes.getOrDefault(l.name(), List.of()), languageNames.getOrDefault(l.name(), List.of()), commands.containsKey(l.name()))).toList();
     }
 
     /** Closes every plugin's class loader; one that fails to close is logged and the others are still closed. */
@@ -452,7 +547,7 @@ public final class Plugins implements AutoCloseable {
     }
 
     private static void close(List<Loaded> loaded) {
-        loaded.forEach(l -> l.own().ifPresent(own -> close(l.from(), own)));
+        loaded.forEach(l -> l.own().ifPresent(own -> close(l.from().orElse(l.where()), own)));
     }
 
     private static void close(String entry, URLClassLoader loader) {

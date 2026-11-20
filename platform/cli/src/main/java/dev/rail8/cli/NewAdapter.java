@@ -64,10 +64,11 @@ final class NewAdapter {
 
     private NewAdapter() {}
 
-    static int run(Cli.Options options, PrintStream out) throws IOException {
+    /** Writes the adapter; {@code modules} is the class loader whose service files name the node's modules, the CLI's own. */
+    static int run(Cli.Options options, ClassLoader modules, PrintStream out) throws IOException {
         Path dir = options.dir();
         String scheme = options.value("--scheme").orElseThrow(() -> new Cli.Usage("new-adapter: --scheme is missing"));
-        checkScheme(scheme);
+        checkScheme(scheme, modules);
         String pkg = options.value("--package").orElse("com.example." + scheme);
         if (pkg.length() > PACKAGE_MAX || !SourceVersion.isName(pkg)) {
             throw new Cli.Usage("new-adapter: --package '" + pkg + "' is not a Java package name of at most " + PACKAGE_MAX + " characters");
@@ -99,7 +100,7 @@ final class NewAdapter {
      * Refuses a scheme that is not a lower-case name, is a Java keyword, would make the skeleton's HTTP prefix ({@code /<scheme>})
      * the one the platform keeps for itself, or is held by a shipped component or the mock.
      */
-    private static void checkScheme(String scheme) {
+    private static void checkScheme(String scheme, ClassLoader modules) {
         if (scheme.length() > SCHEME_MAX || !SCHEME.matcher(scheme).matches() || SourceVersion.isKeyword(scheme)) {
             throw new Cli.Usage("new-adapter: --scheme '" + scheme + "' is not a lower-case letter followed by lower-case letters and digits, "
                     + "at most " + SCHEME_MAX + " characters and no Java keyword");
@@ -108,7 +109,7 @@ final class NewAdapter {
             throw new Cli.Usage("new-adapter: the scheme '" + scheme + "' is taken: its HTTP prefix " + HttpIngress.RESERVED_PREFIX
                     + " is kept for the platform itself");
         }
-        Set<String> taken = shippedSchemes();
+        Set<String> taken = shippedSchemes(modules);
         if (taken.contains(scheme)) throw new Cli.Usage("new-adapter: the scheme '" + scheme + "' is taken: the node has " + taken);
     }
 
@@ -116,11 +117,11 @@ final class NewAdapter {
      * The schemes a node has without a plugin: its modules' components, built over a Vert.x of the run's own and fakes (building
      * opens nothing), and the platform's mock.
      */
-    static Set<String> shippedSchemes() {
+    static Set<String> shippedSchemes(ClassLoader modules) {
         FakeRuntime rt = FakeRuntime.create();
         Vertx vertx = Vertx.vertx();
-        try (Plugins modules = Cli.plugins(Optional.empty())) {
-            List<Component> shipped = modules.components(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock(), HttpIngress.NONE));
+        try (Plugins loaded = Cli.plugins(modules, Optional.empty())) {
+            List<Component> shipped = loaded.components(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock(), HttpIngress.NONE));
             Set<String> schemes = shipped.stream().map(Component::scheme).collect(Collectors.toCollection(TreeSet::new));
             schemes.add("mock");
             return schemes;

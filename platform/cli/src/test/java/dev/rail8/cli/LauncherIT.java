@@ -86,6 +86,15 @@ class LauncherIT {
         assertEquals(TestCommandTest.DEMO_REPORT, e.out().lines().toList(), e.toString());
     }
 
+    /** Help through the launcher loads the packaged modules, which bring no command: the CLI's own usage, exit 0. */
+    @Test
+    void binRail8HelpPrintsTheUsage() throws Exception {
+        Exited e = launch("help");
+
+        assertEquals(0, e.code(), e.toString());
+        assertEquals(Cli.USAGE, e.out(), e.toString());
+    }
+
     /** The process exits with the command's code: 1 for a package with a problem, 2 for an unknown command. */
     @Test
     void theProcessExitsWithTheCommandsCode() throws Exception {

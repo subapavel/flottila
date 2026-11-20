@@ -17,7 +17,7 @@ class CliModulesTest {
 
     @Test
     void theCliFindsTheModulesANodeFinds() {
-        try (Plugins cli = Cli.plugins(Optional.empty()); Plugins node = Plugins.fromEnv(Map.of())) {
+        try (Plugins cli = Cli.plugins(Cli.class.getClassLoader(), Optional.empty()); Plugins node = Plugins.fromEnv(Map.of())) {
             assertEquals(node.describe(), cli.describe());
             assertEquals(List.of("direct", "http", "jq", "mapping", "sftp", "xsd", "xslt"),
                     cli.describe().stream().map(line -> line.split(" ")[1]).toList(), String.join("\n", cli.describe()));
