@@ -3,6 +3,7 @@ package dev.rail8.runtime.admin;
 import dev.rail8.api.BlobKey;
 import dev.rail8.api.BlobNotFoundException;
 import dev.rail8.api.BodyLostException;
+import dev.rail8.runtime.queue.NotAdmittedException;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Headers;
 import dev.rail8.api.Key;
@@ -416,6 +417,14 @@ class AdminDlqRestartTest {
         Parked lost = parked("m-2", "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1));
         retryAnswer = () -> Future.failedFuture(new BodyLostException(BlobKey.body("m-2", 0)));
         refused("m-2", lost, 409, "its ingress body is no longer kept");
+    }
+
+    /** A retry the acts refuse because the pool no longer runs the message's flow at-least-once is 409, naming the flow. */
+    @Test
+    void aRetryOfAFlowThePoolNoLongerRunsIs409() throws Exception {
+        Parked p = parked("m-1", "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1));
+        retryAnswer = () -> Future.failedFuture(new NotAdmittedException(List.of("shop/orders")));
+        refused("m-1", p, 409, "the pool no longer runs flow shop/orders at-least-once");
     }
 
     /**

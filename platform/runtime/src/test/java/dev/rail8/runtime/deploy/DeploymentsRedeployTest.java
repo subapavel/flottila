@@ -936,6 +936,75 @@ class DeploymentsRedeployTest {
         assertFalse(auditPolls(), "once the row is gone a tick ends the drain: " + queue.claims());
     }
 
+    /** shop without {@code audit} and the endpoint only it sends to, in a folder of its own. */
+    Path withoutAudit() {
+        return removed(shop(), "audit").without("endpoints/archive.yaml").folderIn(folders);
+    }
+
+    /**
+     * While a held row keeps audit's drain running, v3 runs audit at-least-once again and v4 removes it once more. Once the row is
+     * gone a tick ends v4's drain and nothing of audit polls: v3 stopped the first drain, which did not run on beside its worker.
+     */
+    @Test
+    void aVersionThatRunsADrainingFlowAgainStopsItsDrain() throws Exception {
+        deploy(shop());
+        long seq = rowOfAudit("held");
+        deploy("shop", withoutAudit());
+        assertTrue(auditPolls(), "fixture: audit drains");
+
+        assertResult(List.of("shop/audit"), List.of(), List.of(), deploy("shop", shop().folderIn(folders)));
+        assertResult(List.of(), List.of(), List.of("shop/audit"), deploy("shop", withoutAudit()));
+        queue.drop(seq);
+        follow();
+
+        assertFalse(auditPolls(), "no drain of audit is left: " + queue.claims());
+    }
+
+    /**
+     * While audit drains, v3 runs it at-least-once again but its consumer does not start. The deploy rolls back, and the drain that
+     * phase A stopped is UNDRAINED. The next tick finds the flow's file gone from the directory the drain runs from, so the drain
+     * does not build and stays UNDRAINED. Once the file is back, the tick after starts the drain and the node is UP.
+     */
+    @Test
+    void aDrainThatAFailedDeployStoppedOrThatDoesNotBuildIsTriedAgainAtEveryTick() throws Exception {
+        DeployedPackage v1 = deploy(shop()).pkg();
+        rowOfAudit("held");
+        deploy("shop", withoutAudit());
+        assertTrue(auditPolls(), "fixture: audit drains");
+        doors.failStartOf("shop/audit", "the port is taken");
+
+        assertEquals(Kind.FAILED, refused("shop", shop().folderIn(folders)).kind(), "v3 did not start: it rolled back");
+
+        assertTrue(deployments.health().detail().contains("UNDRAINED: flow shop/audit"), deployments.health().detail());
+        assertFalse(auditPolls(), "nothing drains audit until a tick: " + queue.claims());
+        Path file = packageDir(hex(v1.content())).resolve("flows/audit.yaml");
+        byte[] yaml = Files.readAllBytes(file);
+        Files.delete(file);
+        follow();
+        assertTrue(deployments.health().detail().contains("UNDRAINED: flow shop/audit"), "the drain does not build: " + deployments.health().detail());
+        assertFalse(auditPolls(), "nothing drains audit: " + queue.claims());
+        Files.write(file, yaml);
+        follow();
+        assertEquals(dev.rail8.api.Health.up(), deployments.health(), "the drain started");
+        assertTrue(auditPolls(), "audit drains: " + queue.claims());
+    }
+
+    /** While audit drains, the node's close stops the drain with the flows: nothing of audit polls after it. */
+    @Test
+    void closeStopsADrain() throws Exception {
+        deploy(shop());
+        rowOfAudit("held");
+        deploy("shop", withoutAudit());
+        assertTrue(auditPolls(), "fixture: audit drains");
+
+        OnVirtualThread.call(() -> {
+            deployments.close();
+            return null;
+        });
+
+        assertFalse(auditPolls(), "the close stopped the drain: " + queue.claims());
+    }
+
     /** A row of {@code audit} is held and v2 makes the flow sync or at-most-once: it swaps, and audit's drain polls for the row. */
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {"sync", "at-most-once"})

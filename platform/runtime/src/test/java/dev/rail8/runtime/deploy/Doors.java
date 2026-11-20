@@ -231,8 +231,8 @@ public final class Doors implements Component {
     /**
      * Where a consumer of {@code cfg} would listen (P1-09g, {@code Component.listensOn}): empty without a {@code port} option, else
      * {@code host} (default {@code 127.0.0.1}) and {@code port}, unresolved, the host as configured. {@code listenRefuse} makes it
-     * throw an {@link IllegalStateException} with that text; a {@code port} that is no number (a config its schema refuses) an
-     * {@link IllegalArgumentException}; so does an endpoint {@link #refuseListen} names. Every call is recorded first
+     * throw an {@link IllegalStateException} with that text, and so does an endpoint {@link #refuseListen} names; a {@code port}
+     * that is no number (a config its schema refuses) an {@link IllegalArgumentException}. Every call is recorded first
      * ({@link #listensOnAsked()}).
      */
     public Optional<InetSocketAddress> listensOn(EndpointConfig cfg) {

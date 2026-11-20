@@ -15,6 +15,7 @@ import dev.rail8.runtime.blob.TieredBlobStore;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.journal.JournalRef;
 import dev.rail8.runtime.journal.TestJournals;
+import dev.rail8.runtime.queue.NotAdmittedException;
 import dev.rail8.runtime.queue.PgWorkQueue;
 import dev.rail8.runtime.time.VertxTimer;
 import dev.rail8.testkit.InMemoryBlobStore;
@@ -50,6 +51,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -300,6 +302,40 @@ class PgIntakeIT {
     }
 
     // --- cases
+
+    /**
+     * An intake over a queue with admission keeps a message only for a flow a record runs at-least-once, a mark retires or the node
+     * names: a save for any other flow fails {@link NotAdmittedException}, nothing of it is committed and its body stays local.
+     */
+    @Test
+    void aSaveIsKeptOnlyForAFlowThePoolRunsRetiresOrTheNodeNames() {
+        PgIntake admitting = new PgIntake(pool, blobs, messages, new PgWorkQueue(pool, "node-1", null, new VertxTimer(vertx), () -> Set.of("shop/named")));
+        sql("insert into deployments (package, version, repository, commit, content, deployed_at, dependencies, at_least_once) values "
+                + "('shop', '1.0.0', 'shop', repeat('1', 40), 'sha256:' || repeat('1', 64), now(), '[]'::jsonb, '{shop/recorded}')");
+        mark(other, "shop/retired");
+        Buffer bytes = bytes(300, 7);
+        Envelope gone = arrive("m-gone", bytes);
+
+        Future<String> refused = settled(admitting.save(gone, ingress(gone), "shop/gone", "K-1", true, Promise.promise().future()));
+
+        assertTrue(refused.failed(), "a flow the pool no longer runs: the save fails");
+        assertTrue(causes(refused.cause()).stream().anyMatch(c -> c.startsWith(NotAdmittedException.class.getName())), "not admitted: " + causes(refused.cause()));
+        nothingCommitted("m-gone");
+        stillLocal(gone, bytes);
+        for (String flow : List.of("shop/recorded", "shop/retired", "shop/named")) {
+            Envelope in = arrive("m-" + flow.substring(5), bytes(300, 8));
+            Future<String> kept = settled(admitting.save(in, ingress(in), flow, "K-" + flow, true, Promise.promise().future()));
+            assertTrue(kept.succeeded(), flow + " is admitted: " + (kept.failed() ? causes(kept.cause()) : ""));
+            assertEquals(1, count("work", in.id()), flow + ": its work row");
+        }
+    }
+
+    /** Marks {@code flow} retired, as the deploy store marks it. */
+    static void mark(Pool on, String flow) {
+        on.preparedQuery("insert into retiring (flow, package, version, repository, commit, content, dependencies, deployed_at, marked_at) "
+                + "values ($1, 'shop', '1.0.0', 'shop', repeat('1', 40), 'sha256:' || repeat('1', 64), '[]'::jsonb, now(), now())")
+                .execute(Tuple.of(flow)).await();
+    }
 
     @Test
     void aSessionKilledBetweenRecordAndEnqueueLeavesNeither() {

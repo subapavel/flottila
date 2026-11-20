@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * A write of messages refused because the pool no longer runs their flow at-least-once: no record runs it so, no mark retires it,
- * and the node runs it without a record of it nowhere. Nothing of the write is kept; a sender may try again, and finds the flow gone.
+ * and this node does not run it ahead of a record. Nothing of the write is kept; a sender may try again, and finds the flow gone.
  *
  * @since 0.1
  */
