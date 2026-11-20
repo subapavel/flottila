@@ -117,11 +117,6 @@
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-mock</artifactId>
     </dependency>
-    <!-- new-adapter: the adapter's git repository and its first commit -->
-    <dependency>
-      <groupId>org.eclipse.jgit</groupId>
-      <artifactId>org.eclipse.jgit</artifactId>
-    </dependency>
     <!-- DeployCommandIT: a node in this JVM on a Testcontainers Postgres (-Pit) -->
     <dependency>
       <groupId>org.testcontainers</groupId>

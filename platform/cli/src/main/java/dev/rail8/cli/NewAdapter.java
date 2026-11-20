@@ -3,11 +3,10 @@ package dev.rail8.cli;
 import dev.rail8.api.Component;
 import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.api.plugin.HttpIngress;
+import dev.rail8.runtime.git.FirstCommit;
 import dev.rail8.runtime.plugin.Plugins;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Vertx;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.errors.GitAPIException;
 
 import java.io.IOException;
 import java.io.PrintStream;
@@ -88,7 +87,7 @@ final class NewAdapter {
             written.add(file.getKey());
         }
         written.sort(null);
-        String commit = commit(dir);
+        String commit = FirstCommit.write(dir, "The adapter as rail8 new-adapter wrote it\n");
         out.println("wrote the adapter '" + scheme + "' (package " + pkg + ") into " + dir + ", a git repository with the first commit " + commit + ":");
         written.forEach(file -> out.println("  " + file));
         out.println("next: mvn -f " + dir.resolve("pom.xml") + " verify   # its build and contract tests");
@@ -127,16 +126,6 @@ final class NewAdapter {
             return schemes;
         } finally {
             vertx.close().await();
-        }
-    }
-
-    /** Makes {@code dir} a git repository on {@code main} whose one commit holds every file in it; the commit's id. */
-    private static String commit(Path dir) throws IOException {
-        try (Git git = Git.init().setDirectory(dir.toFile()).setInitialBranch("main").call()) {
-            git.add().addFilepattern(".").call();
-            return git.commit().setMessage("The adapter as rail8 new-adapter wrote it\n").setSign(false).call().name();
-        } catch (GitAPIException failed) {
-            throw new IOException("the adapter's first commit failed: " + failed.getMessage(), failed);
         }
     }
 

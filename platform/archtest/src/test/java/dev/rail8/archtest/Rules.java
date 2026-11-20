@@ -167,7 +167,8 @@ final class Rules {
     static final ArchRule ONLY_RUNTIME_TOUCHES_JGIT = noClasses().that().resideInAPackage("dev.rail8..")
             .and().resideOutsideOfPackage(RUNTIME)
             .should().dependOnClassesThat().resideInAPackage(JGIT)
-            .because("only runtime reads the package repositories; the CLI reads them through runtime's PackageRepositories");
+            .because("only runtime reads and writes git repositories; the CLI reads them through runtime's PackageRepositories and "
+                    + "writes an adapter's first commit through runtime's FirstCommit");
 
     static final ArchRule NO_CYCLES = slices().matching("dev.rail8.(*)..").should().beFreeOfCycles()
             .because("a cycle between modules would break the dependency direction");
