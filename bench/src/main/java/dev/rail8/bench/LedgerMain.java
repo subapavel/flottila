@@ -35,7 +35,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
@@ -78,21 +77,16 @@ import java.util.function.BooleanSupplier;
  *
  * <p>Arguments: {@code --messages} (2000), {@code --kill-after} ({@code messages / 2}; at least 1 and below {@code --messages}),
  * {@code --host --port --db --user --password} as the node bench ({@code --db} must name a bench database: the run truncates
- * every table in it), {@code --out} (bench/out/ledger.json), {@code --commit}, and {@code --s3-endpoint --s3-region
- * --s3-bucket --s3-prefix --s3-access-key --s3-secret-key} for an S3 archive store (path-style addressing). The options are
+ * every table in it), {@code --out} (bench/out/ledger.json) and {@code --commit}. The options are
  * refused before anything connects; so is a node configuration {@link NodeConfig#from} refuses.
  *
  * @since 0.1
  */
 public final class LedgerMain {
 
-    /**
-     * One run's command line.
-     *
-     * @param s3 the {@code RAIL8_S3_*} keys the {@code --s3-*} options give; empty: the dir archive store
-     */
+    /** One run's command line. */
     public record Options(int messages, int killAfter, String host, int port, String db, String user, String password, Path out,
-                          String commit, Map<String, String> s3) {}
+                          String commit) {}
 
     /** The senders, the flow's in-flight limit and the partner's pool. */
     static final int CONCURRENCY = 8;
@@ -113,10 +107,6 @@ public final class LedgerMain {
     static final String NODE_1 = "ledger-node-1";
     /** Node 2's data directory: node 1 restarted, its journal node 1's (RAIL8_JOURNAL_DIR). */
     static final String NODE_2 = "ledger-node-2";
-    /** The {@code --s3-*} options and the node keys they set. */
-    static final Map<String, String> S3_OPTIONS = Map.of("s3-endpoint", "RAIL8_S3_ENDPOINT", "s3-region", "RAIL8_S3_REGION",
-            "s3-bucket", "RAIL8_S3_BUCKET", "s3-prefix", "RAIL8_S3_PREFIX", "s3-access-key", "RAIL8_S3_ACCESS_KEY",
-            "s3-secret-key", "RAIL8_S3_SECRET_KEY");
     /** The ACKed ids ($1) with a final-step row, the final-step ids that are none of them, the DLQ and the work queue. */
     static final String LEDGER = "select (select count(distinct id) from messages where " + FINAL + " and id = any($1::text[])),"
             + " (select count(distinct id) from messages where " + FINAL + " and not (id = any($1::text[]))),"
@@ -159,14 +149,9 @@ public final class LedgerMain {
         if (!db.contains("bench")) {
             throw new IllegalArgumentException("--db '" + db + "' does not name a bench database (its name contains 'bench'): the run truncates every table in it");
         }
-        Map<String, String> s3 = new TreeMap<>();
-        for (Map.Entry<String, String> option : S3_OPTIONS.entrySet()) {
-            String value = a.get(option.getKey());
-            if (value != null) s3.put(option.getValue(), value);
-        }
         return new Options(messages, killAfter, a.getOrDefault("host", "localhost"), Integer.parseInt(a.getOrDefault("port", "5432")), db,
                 a.getOrDefault("user", "rail8"), a.getOrDefault("password", "rail8"), Path.of(a.getOrDefault("out", "bench/out/ledger.json")),
-                a.getOrDefault("commit", System.getenv().getOrDefault("GIT_COMMIT", "unknown")), s3);
+                a.getOrDefault("commit", System.getenv().getOrDefault("GIT_COMMIT", "unknown")));
     }
 
     /**
@@ -192,11 +177,9 @@ public final class LedgerMain {
 
     /**
      * A node's environment: env dev, the run's database, admin on 127.0.0.1:{@code adminPort} (0: any free port) and its data
-     * directory, the run's journal master key, the package repositories under {@code repos}, which both nodes are given; the
-     * archive store is S3 (path-style) when the run has S3 options, else the directory {@code archives}, which both nodes are
-     * given too.
+     * directory, the run's journal master key, the package repositories under {@code repos}, which both nodes are given.
      */
-    static Map<String, String> nodeEnv(Options o, String nodeId, Path data, Path repos, Path archives, int adminPort) {
+    static Map<String, String> nodeEnv(Options o, String nodeId, Path data, Path repos, int adminPort) {
         Map<String, String> env = new HashMap<>(Map.of("RAIL8_ENV", "dev", "RAIL8_NODE_ID", nodeId, "RAIL8_ADMIN_PORT", String.valueOf(adminPort),
                 "RAIL8_DATA_DIR", data.toString(), "RAIL8_PG_HOST", o.host(), "RAIL8_PG_PORT", String.valueOf(o.port()),
                 "RAIL8_PG_DATABASE", o.db(), "RAIL8_PG_USER", o.user(), "RAIL8_PG_PASSWORD", o.password()));
@@ -204,13 +187,6 @@ public final class LedgerMain {
         env.put("RAIL8_PEER_PORT", "0");   // the peer link on any free port: two nodes, or two runs, on one host
         env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too, until the run picks the one both nodes take
         env.put("RAIL8_GIT_BASE", NodeBenchMain.gitBase(repos));
-        if (o.s3().isEmpty()) {
-            env.put("RAIL8_ARCHIVE_DIR", archives.toString());
-        } else {
-            env.put("RAIL8_ARCHIVE_STORE", "s3");
-            env.put("RAIL8_S3_PATH_STYLE", "true");
-            env.putAll(o.s3());
-        }
         return env;
     }
 
@@ -226,7 +202,7 @@ public final class LedgerMain {
         try {
             int admin1 = NodeBenchMain.freePort();
             Map<String, String> env1 = nodeEnv(o, NODE_1, Files.createDirectories(run.resolve(NODE_1)), Files.createDirectories(run.resolve("repos")),
-                    run.resolve("archives"), admin1);
+                    admin1);
             NodeConfig.from(env1);   // a configuration the node refuses fails the run here, before anything connects
             Migrations.migrate("jdbc:postgresql://" + o.host() + ":" + o.port() + "/" + o.db(), o.user(), o.password());
             Vertx vertx = Vertx.vertx();
@@ -287,7 +263,7 @@ public final class LedgerMain {
         partner.release();
 
         SaxonXml xml = new SaxonXml();
-        Map<String, String> env2 = nodeEnv(o, NODE_1, Files.createDirectories(run.resolve(NODE_2)), run.resolve("repos"), run.resolve("archives"), 0);
+        Map<String, String> env2 = nodeEnv(o, NODE_1, Files.createDirectories(run.resolve(NODE_2)), run.resolve("repos"), 0);
         env2.put("RAIL8_JOURNAL_DIR", NodeConfig.from(env1).journal().dir().toString());   // node 1's journal: its LOCK died with it
         env2.put("RAIL8_HTTP_PORT", String.valueOf(in));   // node 1's HTTP port: its senders send on to node 2
         Node node2 = Node.start(NodeConfig.from(env2), vertx,
@@ -300,11 +276,11 @@ public final class LedgerMain {
         } finally {
             node2.close();   // the drain already implies the final-step rows: an item is completed only after its trail closed
         }
-        return record(o, pool, json, sending, partner, env1);
+        return record(o, pool, json, sending, partner);
     }
 
     /** The ledger read from the database once node 2 closed, the record written to {@code --out}; {@link #exitCode} of it. */
-    private static int record(Options o, Pool pool, JsonObject json, Sending sending, Partner partner, Map<String, String> env1) throws IOException {
+    private static int record(Options o, Pool pool, JsonObject json, Sending sending, Partner partner) throws IOException {
         List<String> acked = List.copyOf(sending.acked);
         Row r = pool.preparedQuery(LEDGER).execute(Tuple.tuple().addArrayOfString(acked.toArray(String[]::new))).await().iterator().next();
         long finalRows = r.getLong(0);
@@ -313,7 +289,7 @@ public final class LedgerMain {
                 .put("missing", new JsonArray(new ArrayList<Object>(missing(pool, acked)))).put("dlq", r.getLong(2))
                 .put("work", r.getLong(3)).put("partnerCalls", partner.calls()).put("duplicates", partner.calls() - finalRows)
                 .put("messages", o.messages()).put("killAfter", o.killAfter()).put("concurrency", CONCURRENCY)
-                .put("archiveStore", env1.getOrDefault("RAIL8_ARCHIVE_STORE", "dir")).put("machine", BenchMain.machine()).put("date", Instant.now().toString())
+                .put("machine", BenchMain.machine()).put("date", Instant.now().toString())
                 .put("commit", o.commit());
         Files.writeString(o.out(), json.encodePrettily() + "\n");
         System.out.println(json.encodePrettily());

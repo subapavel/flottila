@@ -1,6 +1,6 @@
-# The gate stack (GATE checks 1-2, D-085): Postgres, Valkey, SeaweedFS (S3) and an SFTP server beside one Rail8 node,
+# The gate stack (GATE checks 1-2, D-085): Postgres, Valkey and an SFTP server beside one Rail8 node,
 # the demo's partner echo and a one-shot that deploys examples/demo as committed at the checkout's HEAD; a one-shot (sftp-keys) makes the SFTP host key first. A demo stack,
-# not production: the node runs RAIL8_ENV=dev so the manual deploy, the file:// package repository and the http S3 endpoint are allowed. Kafka is the optional event-broker add-on, off by default: start it with --profile kafka; ClickHouse (--profile history) is present, not wired.
+# not production: the node runs RAIL8_ENV=dev so the manual deploy and the file:// package repository are allowed. Kafka is the optional event-broker add-on, off by default: start it with --profile kafka; ClickHouse (--profile history) is present, not wired.
 # Build the host jars first, from the repository's root: ./mvnw -B -ntp -q package -DskipTests -pl :rail8-node,:rail8-cli -am
 # Then:  RAIL8_ADMIN_TOKEN=<token> docker compose up -d --build        (see README.md)
 services:
@@ -28,28 +28,6 @@ services:
       interval: 2s
       timeout: 2s
       retries: 30
-
-  s3:
-    image: chrislusf/seaweedfs:4.50
-    # one process (master, volume, filer, S3 gateway on 8333). The demo identity is written to /tmp/s3.json at start from the
-    # S3 keys of the environment (Admin, so that the first upload creates the bucket: autoCreateBucket needs an admin identity)
-    environment:
-      RAIL8_S3_ACCESS_KEY: "${RAIL8_S3_ACCESS_KEY:-rail8}"
-      RAIL8_S3_SECRET_KEY: "${RAIL8_S3_SECRET_KEY:?set RAIL8_S3_SECRET_KEY: the S3 secret key of the stack}"
-    entrypoint:
-      - sh
-      - -c
-      - |
-        printf '{"identities":[{"name":"rail8","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$$RAIL8_S3_ACCESS_KEY" "$$RAIL8_S3_SECRET_KEY" > /tmp/s3.json
-        chmod 644 /tmp/s3.json
-        exec /entrypoint.sh server -s3 -s3.config=/tmp/s3.json -s3.autoCreateBucket=true -s3.port=8333
-    volumes:
-      - s3-data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8333/status || curl -s -o /dev/null http://127.0.0.1:8333/"]
-      interval: 2s
-      timeout: 3s
-      retries: 40
 
   kafka:
     # the optional event-broker add-on (O-1): KRaft, one node, not wired to the node; started only with --profile kafka
@@ -146,13 +124,6 @@ services:
       # the stack's own network reaches Postgres as 'postgres', which defaults to verify-full: this dev stack's Postgres serves no
       # TLS, so its plaintext link is written down here (D-124); a deployed node sets verify-full and RAIL8_PG_SSL_ROOT_CERT
       RAIL8_PG_SSL_MODE: disable
-      RAIL8_ARCHIVE_STORE: s3
-      RAIL8_S3_ENDPOINT: http://s3:8333
-      RAIL8_S3_PATH_STYLE: "true"
-      RAIL8_S3_BUCKET: rail8
-      RAIL8_S3_REGION: us-east-1
-      RAIL8_S3_ACCESS_KEY: "${RAIL8_S3_ACCESS_KEY:-rail8}"
-      RAIL8_S3_SECRET_KEY: "${RAIL8_S3_SECRET_KEY:?set RAIL8_S3_SECRET_KEY: the S3 secret key of the stack}"
       RAIL8_VALKEY_URI: redis://valkey:6379
       # the node's HTTP port, shared by every inbound HTTP endpoint, listens on the container's network as the admin API does
       RAIL8_HTTP_HOST: 0.0.0.0
@@ -186,8 +157,6 @@ services:
       postgres:
         condition: service_healthy
       valkey:
-        condition: service_healthy
-      s3:
         condition: service_healthy
     healthcheck:
       # the image has no curl: one HTTP/1.0 request over bash's /dev/tcp, healthy on a 200
@@ -244,7 +213,6 @@ services:
 volumes:
   pg-data:
   rail8-data:
-  s3-data:
   sftp-hostkeys:
   sftp-fingerprint:
   sftp-data:

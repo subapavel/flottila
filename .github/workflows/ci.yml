@@ -167,7 +167,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RAIL8_ADMIN_TOKEN: ci-stack-token
-      RAIL8_S3_SECRET_KEY: ci-stack-s3-secret
     steps:
       # the node reads this checkout as its package repository rail8, and refuses a shallow one
       - uses: actions/checkout@v4

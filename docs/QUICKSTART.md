@@ -216,5 +216,5 @@ keeps git from changing line endings, so the node deploys the bytes you saved.
 
 The `echo` service is the demo's partner: `deploy/quickstart/PartnerEcho.java` on `localhost:8090`, answering every path
 with the body it was sent. The `sftp` service is the SFTP server of `demo/sftp-invoice`; its `sftp-keys` one-shot makes the
-host key at the first start. The fuller stack, [`deploy/compose/`](../deploy/compose/README.md), also has Valkey,
-SeaweedFS S3 and, with `--profile kafka`, Kafka.
+host key at the first start. The fuller stack, [`deploy/compose/`](../deploy/compose/README.md), also has Valkey
+and, with `--profile kafka`, Kafka.

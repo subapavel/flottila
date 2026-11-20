@@ -15,7 +15,6 @@ measure a virtual thread" since the owner answered ISSUE-3 with option 2 (2026-1
 ```sh
 cd deploy/compose
 export RAIL8_ADMIN_TOKEN=$(openssl rand -hex 16)    # required
-export RAIL8_S3_SECRET_KEY=$(openssl rand -hex 16)  # required
 docker compose up -d --build                           # returns once the node is healthy
 docker compose ps -a                                    # every service healthy, deploy and sftp-keys exited (0)
 curl localhost:8081/health
@@ -24,7 +23,7 @@ docker compose --profile history up -d clickhouse      # optional, nothing feeds
 docker compose --profile history --profile kafka down -v   # stop, remove every volume
 ```
 
-Services: `rail8` (the node), `postgres`, `valkey`, `s3` (SeaweedFS), `sftp` + `sftp-keys`,
+Services: `rail8` (the node), `postgres`, `valkey`, `sftp` + `sftp-keys`,
 `echo` (the partner), `netns` (holds the published ports and the network namespace that the node and the echo share; FIX-105),
 `deploy` (one-shot `rail8 deploy` of `examples/demo`); `kafka` is the optional add-on under `--profile kafka` (CORE-9). Ports: 8080 the node's HTTP port (every inbound HTTP endpoint, under `/http/`), 8081 admin, both bound to
 127.0.0.1. The repo-root `docker-compose.yml` is the quickstart variant (`docs/QUICKSTART.md`). More detail:

@@ -17,7 +17,6 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -30,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The kill -9 ledger's parts that need no database and no node (P1-10b): the nodes' environment for each archive store, the
+ * The kill -9 ledger's parts that need no database and no node (P1-10b): the nodes' environment, the
  * partner that holds calls until node 1 is dead, what a send counts as an ACK, the bounded wait, the refusal of a node 1 that
  * exited or did not serve, and a run that fails before it connects.
  */
@@ -50,14 +49,11 @@ class LedgerMainPartsTest {
     }
 
     @Test
-    void bothNodesShareTheArchiveDirectoryWithoutS3OptionsAndUseThePathStyleS3StoreWithThem() {
-        LedgerMain.Options dir = LedgerMain.options(new String[] {"--db", "x_bench", "--host", "db.local", "--port", "6543", "--user", "u", "--password", "p"});
-        assertEquals(Map.of(), dir.s3(), "no --s3-* option: the dir store");
-        Map<String, String> env = new java.util.HashMap<>(LedgerMain.nodeEnv(dir, "ledger-node-2", Path.of("/data/n2"), Path.of("/data/repos"), Path.of("/data/archives"), 0));
-        env.put("RAIL8_PG_SSL_MODE", "disable");   // FIX-146: a remote host (db.local) defaults to verify-full, refused without a CA
+    void bothNodesShareThePackageRepositories() {
+        LedgerMain.Options o = LedgerMain.options(new String[] {"--db", "x_bench", "--host", "db.local", "--port", "6543", "--user", "u", "--password", "p"});
+        Map<String, String> env = new java.util.HashMap<>(LedgerMain.nodeEnv(o, "ledger-node-2", Path.of("/data/n2"), Path.of("/data/repos"), 0));
+        env.put("RAIL8_PG_SSL_MODE", "disable");   // a remote host (db.local) defaults to verify-full, refused without a CA
         NodeConfig node = NodeConfig.from(env);
-        assertEquals(NodeConfig.Archives.Store.DIR, node.archives().store());
-        assertEquals(Path.of("/data/archives"), node.archives().dir(), "the archive directory both nodes are given, not one under a data directory");
         assertEquals(Path.of("/data/n2"), node.dataDir());
         assertEquals(URI.create("file:///data/repos/"), node.git().orElseThrow().base(), "the package repositories both nodes are given");
         assertEquals("ledger-node-2", node.nodeId());
@@ -65,20 +61,14 @@ class LedgerMainPartsTest {
         assertEquals(0, node.peer().port(), "the peer link on any free port: two nodes on one host");
         assertFalse(node.deployed(), "env dev: the run's nodes are not deployed ones");
         assertEquals(new NodeConfig.Pg("db.local", 6543, "x_bench", "u", "p", 21), node.pg(), "the RAIL8_PG_POOL_SIZE default, 5 intake + 16 work (F-33)");
-
-        LedgerMain.Options s3 = LedgerMain.options(new String[] {"--db", "x_bench", "--s3-endpoint", "http://127.0.0.1:4566", "--s3-region", "eu-west-1",
-                "--s3-bucket", "b", "--s3-prefix", "pre", "--s3-access-key", "ak", "--s3-secret-key", "sk"});
-        NodeConfig.S3 store = NodeConfig.from(LedgerMain.nodeEnv(s3, "ledger-node-1", Path.of("/data/n1"), Path.of("/data/repos"), Path.of("/data/archives"), 7001)).s3().orElseThrow();
-        assertEquals(new NodeConfig.S3("b", "eu-west-1", Optional.of(URI.create("http://127.0.0.1:4566")), true, "pre",
-                Optional.of("ak"), Optional.of("sk")), store, "every --s3-* option reaches the node, path-style");
-        assertEquals("s3", LedgerMain.nodeEnv(s3, "n", Path.of("/d"), Path.of("/r"), Path.of("/a"), 0).get("RAIL8_ARCHIVE_STORE"));
     }
 
     @Test
     void aNodeConfigurationTheNodeRefusesFailsTheRunBeforeItConnects() {
-        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> LedgerMain.run(new String[] {"--host", "127.0.0.1",
-                "--port", "1", "--db", "x_bench", "--messages", "4", "--s3-region", "eu-west-1"}));
-        assertTrue(refused.getMessage().contains("RAIL8_S3_BUCKET"), "the node's own refusal, unwrapped: " + refused.getMessage());
+        // a remote host defaults to verify-full, which the node refuses without a CA
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> LedgerMain.run(new String[] {"--host", "db.local",
+                "--port", "1", "--db", "x_bench", "--messages", "4"}));
+        assertTrue(refused.getMessage().contains("RAIL8_PG_SSL_MODE"), "the node's own refusal, unwrapped: " + refused.getMessage());
     }
 
     @Test

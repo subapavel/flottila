@@ -72,18 +72,14 @@ class SecretsEqualityTest {
         assertThrows(NullPointerException.class, () -> read.withSecrets(null), "a config always has secrets");
     }
 
-    /** A config built by its constructors without secrets has none: every reference is not set. */
+    /** A config built by its constructor without secrets has none: every reference is not set. */
     @Test
-    void theOtherConstructorsHaveNoSecrets() {
+    void theConstructorWithoutSecretsHasNone() {
         NodeConfig read = NodeConfig.from(node());
         NodeConfig eight = new NodeConfig(read.nodeId(), read.env(), read.admin(), read.dataDir(), read.stopDeadline(), read.maxPackageBytes(),
                 read.pg(), read.blobs());
-        NodeConfig ten = new NodeConfig(read.nodeId(), read.env(), read.admin(), read.dataDir(), read.stopDeadline(), read.maxPackageBytes(),
-                read.pg(), read.blobs(), read.archives(), read.s3());
-        for (NodeConfig c : new NodeConfig[] {eight, ten}) {
-            assertEquals(Secrets.fromEnv(Map.of()), c.secrets());
-            assertEquals(Optional.empty(), c.secrets().resolve("secret://a"));
-        }
-        assertEquals(read, ten, "an env without RAIL8_SECRET_* reads as no secrets");
+        assertEquals(Secrets.fromEnv(Map.of()), eight.secrets());
+        assertEquals(Optional.empty(), eight.secrets().resolve("secret://a"));
+        assertEquals(read, eight, "an env without RAIL8_SECRET_* reads as no secrets");
     }
 }

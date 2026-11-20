@@ -176,16 +176,10 @@ class NodeJournalIT {
         return env;
     }
 
-    /** A deployed node (NodeIT's pattern: an s3 archive store over https, which nothing contacts, so nothing need listen). */
+    /** A deployed node. */
     Map<String, String> deployed() {
         Map<String, String> env = env("prod");
         env.put("RAIL8_PG_DURABILITY", "local");   // FIX-136: a deployed node defaults to ha; the case's one Postgres has no standby
-        env.put("RAIL8_ARCHIVE_STORE", "s3");
-        env.put("RAIL8_S3_BUCKET", "rail8-archives");
-        env.put("RAIL8_S3_REGION", "eu-central-1");
-        env.put("RAIL8_S3_ENDPOINT", "https://127.0.0.1:9");
-        env.put("RAIL8_S3_ACCESS_KEY", "AKIAEXAMPLE");
-        env.put("RAIL8_S3_SECRET_KEY", "secret-example");
         return env;
     }
 

@@ -51,7 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
  *
  * <p>The shape assumed (P2-09b test-author): the longest constructor of {@link Deployments} takes the node's {@link Targets} as
  * its last parameter — {@code Deployments(NodeConfig, Runtime, Map<String, Component>, Clock, Timer, List<StepFactory>,
- * List<Expressions>, MessageStore, Dlq, WorkQueue, Meter, DeploymentStore, ArchiveStore, Intake, PollerLeases, Targets)}.
+ * List<Expressions>, MessageStore, Dlq, WorkQueue, Meter, DeploymentStore, Intake, PollerLeases, Targets)}.
  */
 class DeploymentsTargetsTest {
 

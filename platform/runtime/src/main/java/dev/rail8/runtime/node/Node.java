@@ -52,17 +52,10 @@ import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.redis.client.Redis;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.S3ClientBuilder;
 
 import javax.crypto.SecretKey;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -86,8 +79,7 @@ import java.util.function.Function;
  * node's blob store (bound once the journal is open, see below) and its HTTP port ({@code RAIL8_HTTP_HOST}:{@code RAIL8_HTTP_PORT},
  * not listening yet), refuses two components for one scheme and a component whose HTTP prefix is refused
  * ({@link SharedHttpPort#prefixes}) (in every environment) and, in a deployed environment, a mock binding — the scheme {@code mock}, or a component
- * class in {@code dev.rail8.components.mock..} or {@code dev.rail8.testkit..} — and, in a deployed environment, the dir archive
- * store and an S3 endpoint over plain http before it touches Postgres, and loads the body journal's master key
+ * class in {@code dev.rail8.components.mock..} or {@code dev.rail8.testkit..} — before it touches Postgres, and loads the body journal's master key
  * (from {@code RAIL8_JOURNAL_KEY_FILE}, {@code RAIL8_JOURNAL_KEY} or the opted-in generated one; none refuses the start, so a
  * keyless node migrates nothing). It then checks its durability profile ({@code RAIL8_PG_DURABILITY},
  * {@link PgDurability}) in one read on the intake pool before it migrates, so a refused node leaves its database untouched, migrates the
@@ -219,7 +211,7 @@ public final class Node implements AutoCloseable {
      * @param services   the admin services of the node's modules, by module name, served under {@code /admin/modules/<name>/}
      * @throws IllegalStateException two components for one scheme, a component whose HTTP prefix is refused
      *                               ({@link SharedHttpPort#prefixes}), a deployed environment and a mock binding among the components,
-     *                               the dir archive store or an S3 endpoint over plain http, or a Postgres the durability profile
+     *                               or a Postgres the durability profile
      *                               refuses ({@link PgDurability}): under both profiles a session that does not commit with
      *                               {@code synchronous_commit=on} and a server in recovery; under {@code ha} also an empty
      *                               {@code synchronous_standby_names}, a role without the privileges of {@code pg_read_all_stats},
@@ -270,7 +262,6 @@ public final class Node implements AutoCloseable {
             Map<String, String> prefixes = SharedHttpPort.prefixes(built);
             if (config.deployed()) {
                 refuseMocks(config.env(), built);
-                refuseArchiveStore(config);
             }
 
             // the master key before any Postgres statement: a node without one migrates nothing
@@ -452,36 +443,6 @@ public final class Node implements AutoCloseable {
     static String jdbcUrl(NodeConfig.Pg pg) {
         String url = "jdbc:postgresql://" + pg.host() + ":" + pg.port() + "/" + pg.database() + "?sslmode=" + pg.sslMode();
         return pg.sslRootCert().map(ca -> url + "&sslrootcert=" + URLEncoder.encode(ca.toString(), StandardCharsets.UTF_8)).orElse(url);
-    }
-
-    /**
-     * An S3 client over the node's S3 settings, as the S3 tier's tests build theirs: the JDK's HttpURLConnection, the
-     * region, path-style when asked, the endpoint when one is given (else the SDK's for the region) and static keys when both are
-     * given (else the SDK's default credentials chain). Building it contacts nothing.
-     */
-    static S3Client s3Client(NodeConfig.S3 s3) {
-        S3ClientBuilder builder = S3Client.builder().region(Region.of(s3.region())).forcePathStyle(s3.pathStyle())
-                .httpClientBuilder(UrlConnectionHttpClient.builder());
-        s3.endpoint().ifPresent(builder::endpointOverride);
-        s3.accessKey().map(key -> StaticCredentialsProvider.create(AwsBasicCredentials.create(key, s3.secretKey().orElseThrow())))
-                .ifPresent(keys -> builder.credentialsProvider(keys));
-        return builder.build();
-    }
-
-    /**
-     * A deployed node's archive settings name S3, never its own disk, reached over https only. No deploy stores an archive any
-     * more: packages come from git; the settings are read until they are removed.
-     */
-    private static void refuseArchiveStore(NodeConfig config) {
-        if (config.archives().store() == NodeConfig.Archives.Store.DIR) {
-            throw new IllegalStateException("the deployed environment " + config.env() + " refuses RAIL8_ARCHIVE_STORE dir: a deployed node stores "
-                    + "package archives in S3, where every node of the pool restores them from (D-070)");
-        }
-        Optional<URI> plain = config.s3().flatMap(NodeConfig.S3::endpoint).filter(endpoint -> "http".equals(endpoint.getScheme()));
-        if (plain.isPresent()) {
-            throw new IllegalStateException("the deployed environment " + config.env() + " refuses the RAIL8_S3_ENDPOINT " + plain.get()
-                    + ": a deployed node reaches S3 over https only (D-070)");
-        }
     }
 
     /** The port the admin server bound: the actual one when {@code RAIL8_ADMIN_PORT} is 0. */
