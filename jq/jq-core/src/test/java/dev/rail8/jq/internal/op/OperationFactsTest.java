@@ -93,6 +93,12 @@ class OperationFactsTest {
           "_strindices(.)", "contains(.)", "bsearch(.)", "builtins", "fromjson", "toboolean", "format(.)",
           "_match_impl(.;.;.)", "strptime(.)", "strftime(.)", "strflocaltime(.)", "mktime", "gmtime", "localtime",
           "now", "getpath(.)", "setpath(.;.)", "delpaths(.)",
+          "acos", "acosh", "asin", "asinh", "atan", "atanh", "cbrt", "ceil", "cos", "cosh", "erf", "erfc", "exp",
+          "exp10", "exp2", "expm1", "fabs", "floor", "frexp", "log", "log10", "log1p", "log2", "logb", "modf",
+          "nearbyint", "rint", "round", "significand", "sin", "sinh", "sqrt", "tan", "tanh", "trunc", "atan2(.;.)",
+          "copysign(.;.)", "drem(.;.)", "fdim(.;.)", "fmax(.;.)", "fmin(.;.)", "fmod(.;.)", "hypot(.;.)",
+          "ldexp(.;.)", "nextafter(.;.)", "nexttoward(.;.)", "pow(.;.)", "remainder(.;.)", "scalb(.;.)",
+          "scalbln(.;.)", "fma(.;.;.)",
           ".a", ".a?", ".\"a\"", ".[.]", ".[.]?", ".[0]", ".[\"a\"]", ".[null]", ".[0]?", ".[\"a\"]?", ".[1:2]",
           ".[.:.]", ".[1:2]?", ".[.:.]?", ".[]", ".[]?", STEP_RUN, INDEX_RUN, SLICE_RUN,
           ". + .", ". - .", ". * .", ". / .", ". % .", "-.", ". == .", ". != .", ". < .", ". > .", ". <= .",
@@ -175,7 +181,12 @@ class OperationFactsTest {
           "explode", "implode", "split", "_strindices", "contains", "bsearch", "builtins", "fromjson", "toboolean",
           "_match_impl", "strptime", "strftime", "strflocaltime", "mktime", "gmtime", "localtime", "now", "_divide",
           "_mod", "_negate", "_equal", "_notequal", "_less", "_greater", "_lesseq", "_greatereq", "interpolation",
-          "@json", "@csv", "@tsv", "@html", "@uri", "@urid", "@sh", "@base64", "@base64d", "@foo"
+          "@json", "@csv", "@tsv", "@html", "@uri", "@urid", "@sh", "@base64", "@base64d", "@foo",
+          "acos", "acosh", "asin", "asinh", "atan", "atan2", "atanh", "cbrt", "ceil", "copysign", "cos", "cosh",
+          "drem", "erf", "erfc", "exp", "exp10", "exp2", "expm1", "fabs", "fdim", "floor", "fma", "fmax", "fmin",
+          "fmod", "frexp", "hypot", "ldexp", "log", "log10", "log1p", "log2", "logb", "modf", "nearbyint",
+          "nextafter", "nexttoward", "pow", "remainder", "rint", "round", "scalb", "scalbln", "significand", "sin",
+          "sinh", "sqrt", "tan", "tanh", "trunc"
         }) {
       expected.put(fresh, false);
     }

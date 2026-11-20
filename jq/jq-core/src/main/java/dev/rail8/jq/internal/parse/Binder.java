@@ -178,12 +178,69 @@ final class Binder {
     PATH("path", 1),
     MODIFY("_modify", 2),
     ASSIGN("_assign", 2),
+    // libm.h's functions but the Bessel and gamma families: MathNatives builds them.
+    ACOS("acos", 0),
+    ACOSH("acosh", 0),
+    ASIN("asin", 0),
+    ASINH("asinh", 0),
+    ATAN("atan", 0),
+    ATAN2("atan2", 2),
+    ATANH("atanh", 0),
+    CBRT("cbrt", 0),
+    CEIL("ceil", 0),
+    COPYSIGN("copysign", 2),
+    COS("cos", 0),
+    COSH("cosh", 0),
+    DREM("drem", 2),
+    ERF("erf", 0),
+    ERFC("erfc", 0),
+    EXP("exp", 0),
+    EXP10("exp10", 0),
+    EXP2("exp2", 0),
+    EXPM1("expm1", 0),
+    FABS("fabs", 0),
+    FDIM("fdim", 2),
+    FLOOR("floor", 0),
+    FMA("fma", 3),
+    FMAX("fmax", 2),
+    FMIN("fmin", 2),
+    FMOD("fmod", 2),
+    FREXP("frexp", 0),
+    HYPOT("hypot", 2),
+    LDEXP("ldexp", 2),
+    LOG("log", 0),
+    LOG10("log10", 0),
+    LOG1P("log1p", 0),
+    LOG2("log2", 0),
+    LOGB("logb", 0),
+    MODF("modf", 0),
+    NEARBYINT("nearbyint", 0),
+    NEXTAFTER("nextafter", 2),
+    NEXTTOWARD("nexttoward", 2),
+    POW("pow", 2),
+    REMAINDER("remainder", 2),
+    RINT("rint", 0),
+    ROUND("round", 0),
+    SCALB("scalb", 2),
+    SCALBLN("scalbln", 2),
+    SIGNIFICAND("significand", 0),
+    SIN("sin", 0),
+    SINH("sinh", 0),
+    SQRT("sqrt", 0),
+    TAN("tan", 0),
+    TANH("tanh", 0),
+    TRUNC("trunc", 0),
     ;
 
     private final String signature;
 
     Native(String name, int arity) {
       this.signature = name + "/" + arity;
+    }
+
+    /** {@code name/arity}, the input not counted. */
+    String signature() {
+      return signature;
     }
   }
 

@@ -1,0 +1,331 @@
+# Differential cases of jq's math builtins: a C library function on the doubles of numbers. Format:
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in the .rec of the same name,
+# written by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c and stdin null; -0 is written
+# 0*-1, since the literal -0 is +0, and a NaN prints as null, so a case that shows signs maps each result r to
+# copysign(1; r): the sign of a zero, an infinity and a NaN.
+
+# The exact functions: the same bits as jq's on every input, edges and conversions of an exponent argument.
+
+case math-exact/ceil
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(ceil)
+stdin null\n
+end
+
+case math-exact/ceil-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; ceil))
+stdin null\n
+end
+
+case math-exact/fabs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(fabs)
+stdin null\n
+end
+
+case math-exact/fabs-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; fabs))
+stdin null\n
+end
+
+case math-exact/floor
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(floor)
+stdin null\n
+end
+
+case math-exact/floor-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; floor))
+stdin null\n
+end
+
+case math-exact/logb
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(logb)
+stdin null\n
+end
+
+case math-exact/logb-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; logb))
+stdin null\n
+end
+
+case math-exact/nearbyint
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(nearbyint)
+stdin null\n
+end
+
+case math-exact/nearbyint-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; nearbyint))
+stdin null\n
+end
+
+case math-exact/rint
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(rint)
+stdin null\n
+end
+
+case math-exact/rint-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; rint))
+stdin null\n
+end
+
+case math-exact/round
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(round)
+stdin null\n
+end
+
+case math-exact/round-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; round))
+stdin null\n
+end
+
+case math-exact/significand
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(significand)
+stdin null\n
+end
+
+case math-exact/significand-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; significand))
+stdin null\n
+end
+
+case math-exact/sqrt
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(sqrt)
+stdin null\n
+end
+
+case math-exact/sqrt-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; sqrt))
+stdin null\n
+end
+
+case math-exact/trunc
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(trunc)
+stdin null\n
+end
+
+case math-exact/trunc-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; trunc))
+stdin null\n
+end
+
+case math-exact/frexp
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(frexp)
+stdin null\n
+end
+
+case math-exact/frexp-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(frexp | map(copysign(1; .)))
+stdin null\n
+end
+
+case math-exact/modf
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(modf)
+stdin null\n
+end
+
+case math-exact/modf-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.7, -3.7, 4503599627370497, -4503599627370497, 1e300, -1e300, 5e-324, -5e-324, 2.225073858507201e-308, -2.225073858507201e-308, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(modf | map(copysign(1; .)))
+stdin null\n
+end
+
+case math-exact/copysign
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | copysign($x; $y)]
+stdin null\n
+end
+
+case math-exact/copysign-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | copysign(1; copysign($x; $y))]
+stdin null\n
+end
+
+case math-exact/drem
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | drem($x; $y)]
+stdin null\n
+end
+
+case math-exact/drem-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | copysign(1; drem($x; $y))]
+stdin null\n
+end
+
+case math-exact/fdim
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | fdim($x; $y)]
+stdin null\n
+end
+
+case math-exact/fdim-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | copysign(1; fdim($x; $y))]
+stdin null\n
+end
+
+case math-exact/fmax
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | fmax($x; $y)]
+stdin null\n
+end
+
+case math-exact/fmax-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | copysign(1; fmax($x; $y))]
+stdin null\n
+end
+
+case math-exact/fmin
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | fmin($x; $y)]
+stdin null\n
+end
+
+case math-exact/fmin-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | copysign(1; fmin($x; $y))]
+stdin null\n
+end
+
+case math-exact/fmod
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | fmod($x; $y)]
+stdin null\n
+end
+
+case math-exact/fmod-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | copysign(1; fmod($x; $y))]
+stdin null\n
+end
+
+case math-exact/nextafter
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | nextafter($x; $y)]
+stdin null\n
+end
+
+case math-exact/nextafter-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | copysign(1; nextafter($x; $y))]
+stdin null\n
+end
+
+case math-exact/nexttoward
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | nexttoward($x; $y)]
+stdin null\n
+end
+
+case math-exact/nexttoward-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | copysign(1; nexttoward($x; $y))]
+stdin null\n
+end
+
+case math-exact/remainder
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | remainder($x; $y)]
+stdin null\n
+end
+
+case math-exact/remainder-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 1.5, -2.5, 3, 5e-324, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $y | copysign(1; remainder($x; $y))]
+stdin null\n
+end
+
+case math-exact/ldexp
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 1, -1, 2.5, -2.5, 1023, 1024, -1074, -1075, 2147483647, 2147483648, -2147483648, -2147483649, 9223372036854775807, -9223372036854775808, 1e300, -1e300, infinite, -infinite, nan][] as $n | ldexp($x; $n)]
+stdin null\n
+end
+
+case math-exact/ldexp-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 1, -1, 2.5, -2.5, 1023, 1024, -1074, -1075, 2147483647, 2147483648, -2147483648, -2147483649, 9223372036854775807, -9223372036854775808, 1e300, -1e300, infinite, -infinite, nan][] as $n | copysign(1; ldexp($x; $n))]
+stdin null\n
+end
+
+case math-exact/scalb
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 1, -1, 2.5, -2.5, 1023, 1024, -1074, -1075, 2147483647, 2147483648, -2147483648, -2147483649, 9223372036854775807, -9223372036854775808, 1e300, -1e300, infinite, -infinite, nan][] as $n | scalb($x; $n)]
+stdin null\n
+end
+
+case math-exact/scalb-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 1, -1, 2.5, -2.5, 1023, 1024, -1074, -1075, 2147483647, 2147483648, -2147483648, -2147483649, 9223372036854775807, -9223372036854775808, 1e300, -1e300, infinite, -infinite, nan][] as $n | copysign(1; scalb($x; $n))]
+stdin null\n
+end
+
+case math-exact/scalbln
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 1, -1, 2.5, -2.5, 1023, 1024, -1074, -1075, 2147483647, 2147483648, -2147483648, -2147483649, 9223372036854775807, -9223372036854775808, 1e300, -1e300, infinite, -infinite, nan][] as $n | scalbln($x; $n)]
+stdin null\n
+end
+
+case math-exact/scalbln-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 1.5, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, infinite, -infinite, nan, -nan][] as $x | [0, 1, -1, 2.5, -2.5, 1023, 1024, -1074, -1075, 2147483647, 2147483648, -2147483648, -2147483649, 9223372036854775807, -9223372036854775808, 1e300, -1e300, infinite, -infinite, nan][] as $n | copysign(1; scalbln($x; $n))]
+stdin null\n
+end
+
+case math-exact/fma
+arg -c
+filter [[0, 0*-1, 1, -1, 2, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 2, infinite, -infinite, nan, -nan][] as $y | [0, 0*-1, 1, -1, 2, infinite, -infinite, nan, -nan][] as $z | fma($x; $y; $z)]
+stdin null\n
+end
+
+case math-exact/fma-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 2, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 2, infinite, -infinite, nan, -nan][] as $y | [0, 0*-1, 1, -1, 2, infinite, -infinite, nan, -nan][] as $z | copysign(1; fma($x; $y; $z))]
+stdin null\n
+end
+
+case math-exact/fma-rounds-once
+arg -c
+filter [fma(0.1; 10; -1), fma(1 + 1/4503599627370496; 1 - 1/4503599627370496; -1), fma(1e308; 10; -1e309)]
+stdin null\n
+end
+
+case math-exact/round-half-cases
+arg -c
+filter [0.49999999999999994, -0.49999999999999994, 4503599627370495.5, -4503599627370495.5, 4503599627370496.5, 0.5, 1.5, 2.5, -0.5] | map([round, rint, nearbyint, trunc, floor, ceil])
+stdin null\n
+end
+
+case math-exact/fmod-remainder-signs
+arg -c
+filter [[5, 3], [-5, 3], [5, -3], [-5, -3], [5.5, 2], [6, 4], [-6, 4], [1e300, 3], [3, 1e300], [5e-324, 3]] | map([fmod(.[0]; .[1]), remainder(.[0]; .[1]), drem(.[0]; .[1])])
+stdin null\n
+end
+
+case math-exact/nextafter-steps
+arg -c
+filter [nextafter(1; 2), nextafter(1; 0), nextafter(0; 1), nextafter(0; -1), nextafter(5e-324; 0), nextafter(1.7976931348623157e308; infinite), nexttoward(1; 2), nexttoward(0; -1), nexttoward(-1.7976931348623157e308; -infinite)]
+stdin null\n
+end

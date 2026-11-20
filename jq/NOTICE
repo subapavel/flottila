@@ -111,6 +111,23 @@ licence text ships in the jq-core jar under META-INF/.
 - jq-core/src/main/java/dev/rail8/jq/internal/op/Dates.java, translated from jq 1.8.2's
   tm2jv, jv2tm, set_tm_wday, set_tm_yday, f_strptime, f_mktime, f_gmtime, f_localtime,
   f_strftime, f_strflocaltime and f_now (src/builtin.c) (#151)
+- jq-core/src/main/java/dev/rail8/jq/internal/op/MathNatives.java, translated from jq 1.8.2's
+  LIBM_DD, LIBM_DDD, LIBM_DDDD and LIBM_DA functions (src/builtin.c) over the list of src/libm.h
+  (#154)
+
+Files translated from other projects:
+
+- jq-core/src/main/java/dev/rail8/jq/internal/op/Erf.java, translated from Arm's
+  optimized-routines (https://github.com/ARM-software/optimized-routines), math/erf.c and
+  math/erf_data.c at revision 20859d3fd9e797dde592c489c8ef7d383f778620, MIT License (dual MIT OR
+  Apache-2.0 WITH LLVM-exception, used under MIT), Copyright (c) 2019-2026 Arm Limited; the
+  licence text ships in the jq-core jar as META-INF/LICENSE-arm-optimized-routines
+- jq-core/src/main/java/dev/rail8/jq/internal/op/Erfc.java, translated from FreeBSD's msun
+  (https://github.com/freebsd/freebsd-src), lib/msun/src/s_erf.c at revision
+  9a6e1be71bf3a628b1cec4afbf7cd1b66b4c86c8, under the SunPro notice: Copyright (C) 1993 by Sun
+  Microsystems, Inc. All rights reserved. Developed at SunPro, a Sun Microsystems, Inc. business.
+  Permission to use, copy, modify, and distribute this software is freely granted, provided that
+  this notice is preserved. The notice ships in the jq-core jar as META-INF/NOTICE-sunpro
 
 jq's man.test and manonig.test are generated from the examples of the jq manual
 (https://jqlang.org), Creative Commons Attribution 3.0 Unported

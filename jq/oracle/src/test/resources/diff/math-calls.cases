@@ -1,0 +1,91 @@
+# Differential cases of jq's math builtins: a C library function on the doubles of numbers. Format:
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in the .rec of the same name,
+# written by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c and stdin null; -0 is written
+# 0*-1, since the literal -0 is +0, and a NaN prints as null, so a case that shows signs maps each result r to
+# copysign(1; r): the sign of a zero, an infinity and a NaN.
+
+# How the math builtins are called: kinds that are not numbers, the order of arguments, the input.
+
+case math-calls/floor-kinds
+arg -c
+filter [null, true, "1", [1], {"a":1}][] | try floor catch .
+stdin null\n
+end
+
+case math-calls/sqrt-kinds
+arg -c
+filter [null, true, "1", [1], {"a":1}][] | try sqrt catch .
+stdin null\n
+end
+
+case math-calls/sin-kinds
+arg -c
+filter [null, true, "1", [1], {"a":1}][] | try sin catch .
+stdin null\n
+end
+
+case math-calls/frexp-kinds
+arg -c
+filter [null, true, "1", [1], {"a":1}][] | try frexp catch .
+stdin null\n
+end
+
+case math-calls/modf-kinds
+arg -c
+filter [null, true, "1", [1], {"a":1}][] | try modf catch .
+stdin null\n
+end
+
+case math-calls/pow-kinds
+arg -c
+filter [try pow("a"; 1) catch ., try pow(1; "a") catch ., try pow("a"; null) catch ., try pow(null; [1]) catch .]
+stdin null\n
+end
+
+case math-calls/ldexp-kinds
+arg -c
+filter [try ldexp("a"; 1) catch ., try ldexp(1; "a") catch ., try ldexp({}; true) catch .]
+stdin null\n
+end
+
+case math-calls/fma-kinds
+arg -c
+filter [try fma("a"; 1; 1) catch ., try fma(1; "a"; 1) catch ., try fma(1; 1; "a") catch ., try fma(null; false; "a") catch .]
+stdin null\n
+end
+
+case math-calls/arguments-order
+arg -c
+filter [pow(2, 3; 1, 2)], [fma(1, 2; 10, 20; 0, 100)], [atan2(1, 0; 1)]
+stdin null\n
+end
+
+case math-calls/input-ignored
+arg -c
+filter "x" | pow(2; 10), fma(2; 3; 4), ldexp(1; 10)
+stdin null\n
+end
+
+case math-calls/arguments-from-input
+arg -c
+filter [3, 4] | hypot(.[0]; .[1]), copysign(.[0]; -1)
+stdin null\n
+end
+
+case math-calls/document-numbers
+arg -c
+filter [2, 1.5, -0, 100000000000000000001, 1e1000] | map([floor, sqrt, fabs, round, frexp])
+stdin null\n
+end
+
+case math-calls/uncaught-error
+arg -c
+filter "a" | floor
+stdin null\n
+end
+
+case math-calls/uncaught-binary-error
+arg -c
+filter pow(1; "a")
+stdin null\n
+end

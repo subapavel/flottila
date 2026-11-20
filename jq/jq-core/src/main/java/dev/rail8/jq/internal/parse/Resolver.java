@@ -20,6 +20,7 @@ import dev.rail8.jq.internal.op.JqTruth;
 import dev.rail8.jq.internal.op.Keys;
 import dev.rail8.jq.internal.op.Last;
 import dev.rail8.jq.internal.op.LoopState;
+import dev.rail8.jq.internal.op.MathNatives;
 import dev.rail8.jq.internal.op.NumberTests;
 import dev.rail8.jq.internal.op.ObjectKey;
 import dev.rail8.jq.internal.op.PathEdits;
@@ -647,7 +648,7 @@ public final class Resolver {
 
   /**
    * A call of the native {@code n}, one arm a line: an operation on the input, or on one argument
-   * ({@link #withArgument}), or {@link #last}.
+   * ({@link #withArgument}), or {@link #last}; the math natives share one arm ({@link #libm}).
    */
   private Node natively(Binder.Native n, Ast.Call c) {
     Source at = here(c.source());
@@ -714,7 +715,20 @@ public final class Resolver {
       case PATH -> new PathOf(at, lower(c.args().getFirst()), PathEdits.FORMAT);
       case MODIFY -> new Update(at, Update.Kind.MODIFY, lower(c.args().getFirst()), lower(c.args().get(1)), PathEdits.FORMAT);
       case ASSIGN -> assign(c);
+      case ACOS, ACOSH, ASIN, ASINH, ATAN, ATAN2, ATANH, CBRT, CEIL, COPYSIGN, COS, COSH, DREM, ERF, ERFC, EXP, EXP10,
+          EXP2, EXPM1, FABS, FDIM, FLOOR, FMA, FMAX, FMIN, FMOD, FREXP, HYPOT, LDEXP, LOG, LOG10, LOG1P, LOG2, LOGB,
+          MODF, NEARBYINT, NEXTAFTER, NEXTTOWARD, POW, REMAINDER, RINT, ROUND, SCALB, SCALBLN, SIGNIFICAND, SIN, SINH,
+          SQRT, TAN, TANH, TRUNC -> libm(n, c);
     };
+  }
+
+  /**
+   * A call of the math native {@code n}: its operation from {@link MathNatives}, on the input for {@code name/0}, on
+   * each combination of its arguments' results otherwise ({@link #withArguments}).
+   */
+  private Node libm(Binder.Native n, Ast.Call c) {
+    Operation op = MathNatives.operation(n.signature());
+    return c.args().isEmpty() ? new Intrinsic(here(c.source()), op, List.of()) : withArguments(c, op);
   }
 
   /**
