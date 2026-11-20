@@ -51,7 +51,7 @@ class NodeModulesTest {
                             List.of("xslt", List.of(), List.of("xslt"), List.of("xpath"))),
                     plugins.list().stream().map(m -> List.of(m.name(), m.schemes(), m.steps(), m.languages())).toList(),
                     "what each module brings, as GET /admin/modules lists it");
-            assertEquals(Map.of(), plugins.commands(), "no shipped module brings a command");
+            assertEquals(Map.of(), plugins.commands(), "no shipped module brings a command; the first that brings one adds its run to LauncherIT");
         } finally {
             vertx.close().await();
         }

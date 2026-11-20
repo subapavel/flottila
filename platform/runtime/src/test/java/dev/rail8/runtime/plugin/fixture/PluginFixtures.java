@@ -398,6 +398,19 @@ public final class PluginFixtures {
         @Override public Optional<Command> command() { return Optional.of(new Says(null)); }
     }
 
+    /** A plugin named {@code lookup-usage} whose command's usage fails a {@link java.util.ServiceLoader} lookup. */
+    public static final class LookupUsage implements Plugin {
+        @Override public String name() { return "lookup-usage"; }
+        @Override public String api() { return API; }
+        @Override public Optional<Command> command() { return Optional.of(new LookupUsageCommand()); }
+    }
+
+    /** {@link LookupUsage}'s command: its usage throws a {@link java.util.ServiceConfigurationError}. */
+    public static final class LookupUsageCommand implements Command {
+        @Override public String usage() { throw new java.util.ServiceConfigurationError("no provider of the usage"); }
+        @Override public int run(CommandContext context) { return 0; }
+    }
+
     /** A plugin named {@code tabbed} whose command's usage holds a tab. */
     public static final class TabbedUsage implements Plugin {
         @Override public String name() { return "tabbed"; }

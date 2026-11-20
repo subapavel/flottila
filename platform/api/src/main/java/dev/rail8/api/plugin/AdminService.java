@@ -30,12 +30,13 @@ public interface AdminService {
     /** The largest reply, in bytes of its JSON in UTF-8. */
     long MAX_REPLY_BYTES = 16L << 20;
 
-    /** The route's method: {@code GET} or {@code POST}. */
+    /** The route's method: {@code GET} or {@code POST}; the same on every call, as {@link #path()} is. */
     String method();
 
     /**
      * The route's path under the module: 1 to 4 segments of {@code [a-z0-9-]{1,32}}, joined by single slashes, with no slash at
-     * the start or the end, such as {@code catalogue} or {@code mappings/compile}.
+     * the start or the end, such as {@code catalogue} or {@code mappings/compile}. The same on every call: the node reads it to
+     * check it, to mount the route and to list it ({@code GET /admin/modules}).
      */
     String path();
 

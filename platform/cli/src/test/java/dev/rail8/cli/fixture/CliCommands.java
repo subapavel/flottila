@@ -7,28 +7,30 @@ import dev.rail8.api.plugin.Plugin;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.ServiceConfigurationError;
 import java.util.stream.Stream;
 
 /**
- * Modules that bring a command, for the CLI's tests. A test writes one into a jar with every class of this file
- * ({@link #classes()}), whose service file names it, and gives the CLI a class path of that jar over its own.
+ * Modules that bring a command, for the CLI's tests. A test names one in the service file of a jar and gives the CLI a class
+ * path of that jar over its own. A plugin of {@code --plugins} sees none of the test's classes, so its jar holds every class of
+ * this file as well ({@link #classes()}).
  */
 public final class CliCommands {
 
     private CliCommands() {}
 
-    /** This class and every class nested in it: what each fixture jar holds. */
+    /** This class and every class nested in it: what a plugin's jar holds. */
     public static Class<?>[] classes() {
         return Stream.concat(Stream.of(CliCommands.class), Stream.of(CliCommands.class.getDeclaredClasses())).toArray(Class<?>[]::new);
     }
 
     /** The usage of {@link Sample}'s command. */
-    public static final String SAMPLE_USAGE = "<word>... | --fail | --throw | --io | --interrupt | --seven\nprint the words, the time and the greeting";
+    public static final String SAMPLE_USAGE = "<word>... | --fail | --throw | --io | --interrupt | --link | --lookup | --seven\nprint the words, the time and the greeting";
 
     /**
      * The module {@code sample}. Its command prints its words, the clock's instant and {@code RAIL8_SAMPLE_GREETING} (else
      * {@code none}), and returns 0. Without a word it is a usage error, 2. {@code --fail} writes a line and returns 1,
-     * {@code --throw}, {@code --io} and {@code --interrupt} throw, and {@code --seven} returns 7.
+     * {@code --throw}, {@code --io}, {@code --interrupt}, {@code --link} and {@code --lookup} throw, and {@code --seven} returns 7.
      */
     public static final class Sample implements Plugin {
         @Override public String name() { return "sample"; }
@@ -54,6 +56,8 @@ public final class CliCommands {
                 case "--throw" -> throw new IllegalStateException("thrown on purpose");
                 case "--io" -> throw new IOException("no disk");
                 case "--interrupt" -> throw new InterruptedException("interrupted on purpose");
+                case "--link" -> throw new NoClassDefFoundError("dev/rail8/Missing");
+                case "--lookup" -> throw new ServiceConfigurationError("no provider of the lookup");
                 case "--seven" -> {
                     return 7;
                 }

@@ -24,7 +24,8 @@ public interface Command {
 
     /**
      * How the command is called. Line 1 is what follows the module's name, such as {@code <file> [--twice]}, and may be empty;
-     * the other lines say what it does. {@code rail8 help} lists it, and the command line prints it after a usage error.
+     * the other lines say what it does. {@code rail8 help} lists it, and the command line prints it after a usage error. It
+     * opens nothing: no socket, no file, no thread; the command does its work in {@link #run}.
      */
     String usage();
 

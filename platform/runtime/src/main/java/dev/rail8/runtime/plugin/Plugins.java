@@ -602,7 +602,7 @@ public final class Plugins implements AutoCloseable {
     private static <T> T call(String who, ClassLoader loader, String method, Supplier<T> body, BiFunction<String, Throwable, RuntimeException> refusal) {
         try {
             return withContext(loader, body);
-        } catch (RuntimeException | LinkageError failed) {
+        } catch (RuntimeException | ServiceConfigurationError | LinkageError failed) {
             throw refusal.apply(who + ": " + method + " failed: " + failed + (failed instanceof LinkageError ? SEES : ""), failed);
         }
     }

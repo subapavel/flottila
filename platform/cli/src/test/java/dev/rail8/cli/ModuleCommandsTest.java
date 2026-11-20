@@ -27,14 +27,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 /**
  * {@code rail8 <name> [arguments]} runs the command that a module of the CLI's class path brings, and {@code rail8 help} lists
  * each one after the CLI's own commands. The modules here are the node's seven, which bring none, and the fixtures of
- * {@link CliCommands}, named in a jar on a class path over the CLI's own. A plugin of {@code --plugins} or
+ * {@link CliCommands}, named in the service file of a jar on a class path over the CLI's own. That jar holds no class: the
+ * fixtures' classes come from the test's class path, so one class loader holds them and the CLI, as it holds the packaged
+ * CLI's modules. A plugin of {@code --plugins} or
  * {@code RAIL8_PLUGINS} brings no command, and a module named as one of the CLI's own commands that brings one is refused
  * wherever the CLI loads its modules.
  */
 class ModuleCommandsTest {
 
     static final Clock CLOCK = Clock.fixed(Instant.parse("2026-11-20T07:00:00Z"), ZoneOffset.UTC);
-    static final String SAMPLE_LINE_1 = "<word>... | --fail | --throw | --io | --interrupt | --seven";
+    static final String SAMPLE_LINE_1 = "<word>... | --fail | --throw | --io | --interrupt | --link | --lookup | --seven";
     static final String SAMPLE_LINE_2 = "print the words, the time and the greeting";
 
     @TempDir Path jars;
@@ -45,10 +47,9 @@ class ModuleCommandsTest {
         for (URLClassLoader loader : opened) loader.close();
     }
 
-    /** A class path over the CLI's own, with a jar whose service file names the modules {@code providers}. */
+    /** A class path over the CLI's own, with a jar that holds only a service file naming the modules {@code providers}. */
     ClassLoader modules(Class<?>... providers) throws IOException {
-        Path jar = PluginJars.write(jars.resolve("modules-" + opened.size() + ".jar"), "3.0", Arrays.stream(providers).map(Class::getName).toList(),
-                CliCommands.classes());
+        Path jar = PluginJars.write(jars.resolve("modules-" + opened.size() + ".jar"), "3.0", Arrays.stream(providers).map(Class::getName).toList());
         URLClassLoader loader = new URLClassLoader(new URL[] {jar.toUri().toURL()}, Cli.class.getClassLoader());
         opened.add(loader);
         return loader;
@@ -100,6 +101,8 @@ class ModuleCommandsTest {
                 "--throw", "rail8: sample: java.lang.IllegalStateException: thrown on purpose",
                 "--io", "rail8: sample: java.io.IOException: no disk",
                 "--interrupt", "rail8: sample: java.lang.InterruptedException: interrupted on purpose",
+                "--link", "rail8: sample: java.lang.NoClassDefFoundError: dev/rail8/Missing",
+                "--lookup", "rail8: sample: java.util.ServiceConfigurationError: no provider of the lookup",
                 "--seven", "rail8: sample: returned 7");
         lines.forEach((arg, line) -> {
             Ran ran = run(modules, "sample", arg);
