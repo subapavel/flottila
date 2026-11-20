@@ -34,6 +34,17 @@ const failedTwice: Timeline = {
 
 const delivered: Timeline = { id: 'm-2', flow: 'demo/orders', steps: [step(1, 0, 'arrival'), step(1, 1, 'send')] };
 
+/** Saved at its arrival, then 19.6 ms waiting for a worker; 100 µs between its two steps is too short for a row of its own. */
+const waited: Timeline = {
+  id: 'm-3',
+  flow: 'demo/invoice-async',
+  steps: [
+    step(1, 0, 'ingress', { startedAt: '2026-11-20T09:50:08.535Z', wallNanos: 0 }),
+    step(1, 1, 'validate', { startedAt: '2026-11-20T09:50:08.554600Z', wallNanos: 2_200_000, cpuNanos: 1_000_000 }),
+    step(1, 2, 'send', { startedAt: '2026-11-20T09:50:08.556900Z', wallNanos: 4_300_000, cpuNanos: 3_000_000 }),
+  ],
+};
+
 function row(id: string, extra: Partial<Listed> = {}): Listed {
   return { id, flow: 'demo/orders', status: 'completed', startedAt: '2026-11-19T07:30:00Z', durationNanos: 2_500_000, keys: {}, ...extra };
 }
@@ -43,7 +54,7 @@ const NOW = new Date('2026-11-19T08:00:00Z');
 
 /** An admin API over the two messages above, listed newest first a page at a time; every call can be replaced in a test. */
 function fakeApi(overrides: Partial<AdminApi> = {}): AdminApi {
-  const byId = new Map([failedTwice, delivered].map((t) => [t.id, t]));
+  const byId = new Map([failedTwice, delivered, waited].map((t) => [t.id, t]));
   return {
     list: vi.fn(async (_query: ListQuery, after?: string) =>
       after === undefined
@@ -218,6 +229,24 @@ describe('Messages', () => {
 
     await expect.element(page.getByRole('tabpanel', { name: 'm-1' }).getByText('demo/orders')).toBeVisible();
     await expect.element(page.getByText('Step 1 (send) of attempt 2 failed', { exact: false })).toBeVisible();
+  });
+
+  test('shows the wait for a worker between two steps, so the rows add up to the duration in the list', async () => {
+    render(fakeApi({ list: async () => ({ items: [row('m-3', { flow: 'demo/invoice-async', durationNanos: 26_200_000 })], next: null }) }));
+    await expect.element(page.getByRole('grid', { name: 'Messages' }).getByText('26.2 ms')).toBeVisible();
+    await page.getByRole('button', { name: 'm-3' }).click();
+
+    const steps = page.getByRole('grid', { name: 'Steps of attempt 1' });
+    const rows = steps.getByRole('row');
+    await expect.element(rows.nth(2)).toHaveTextContent('Saved, waiting for a worker19.6 ms');
+    expect(rows.elements().map((r) => r.querySelector('[data-label="Wall time"]')?.textContent)).toEqual([undefined, '', '19.6 ms', '2.2 ms', '4.3 ms']);
+    expect(rows.nth(1).element().querySelector('[data-label="CPU time"]')?.textContent).toBe('');
+    expect(steps.getByText('Between steps').elements()).toHaveLength(0);
+
+    const total = page.getByRole('tabpanel', { name: 'm-3' }).getByLabelText('Duration');
+    await expect.element(total.getByText('Other time between steps')).toBeVisible();
+    await expect.element(total.getByText('100.0 µs')).toBeVisible();
+    await expect.element(total.getByText('26.2 ms')).toBeVisible();
   });
 
   test('restarts a message whose latest attempt failed, and shows a refusal with its reason', async () => {

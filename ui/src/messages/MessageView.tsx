@@ -26,7 +26,7 @@ import {
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useEffect, useId, useState } from 'react';
 import { PAYLOAD_SHOWN, type AdminApi, type Outcome, type Payload, type StepRecord, type Timeline } from './admin';
-import { byAttempt, duration, latestState } from './progress';
+import { account, duration, INGRESS, latestState, type WaitReason } from './progress';
 
 export interface MessageViewProps {
   api: AdminApi;
@@ -37,6 +37,12 @@ export interface MessageViewProps {
 type Load = { kind: 'loading' } | { kind: 'missing' } | { kind: 'failed'; message: string } | { kind: 'loaded'; timeline: Timeline };
 
 type Restart = { kind: 'idle' } | { kind: 'running' } | { kind: 'done'; attempt: number } | { kind: 'failed'; message: string };
+
+const waitLabels: Record<WaitReason, string> = {
+  worker: 'Saved, waiting for a worker',
+  retry: 'Waiting to retry',
+  between: 'Between steps',
+};
 
 const reason = (failed: unknown) => (failed instanceof Error ? failed.message : String(failed));
 
@@ -53,8 +59,9 @@ function OutcomeLabel({ outcome }: { outcome: Outcome }) {
 
 /**
  * What happened to one message: its flow, the state of its latest attempt and, for every attempt, each recorded step
- * with its outcome, start, wall and CPU time, payload size and error. The payload after a step opens in a dialog when
- * its bytes were kept. When the latest attempt failed, its error is shown with a Restart action, which runs the message
+ * with its outcome, start, wall and CPU time, payload size and error, and the waits between steps that are not
+ * negligible. Under the last attempt, the time between steps that no wait row shows and the total, which is the
+ * message's duration in the list. The payload after a step opens in a dialog when its bytes were kept. When the latest attempt failed, its error is shown with a Restart action, which runs the message
  * again from its arrival; Refresh reads the steps again.
  */
 export function MessageView({ api, id }: MessageViewProps) {
@@ -142,7 +149,7 @@ interface ProgressProps {
 
 function Progress({ timeline, restart, onRestart, onShow }: ProgressProps) {
   const state = latestState(timeline.steps);
-  const attempts = byAttempt(timeline.steps);
+  const { attempts, otherNanos, totalNanos } = account(timeline.steps);
   return (
     <>
       <StackItem>
@@ -193,7 +200,7 @@ function Progress({ timeline, restart, onRestart, onShow }: ProgressProps) {
           </Alert>
         </StackItem>
       )}
-      {attempts.map(({ attempt, steps }) => (
+      {attempts.map(({ attempt, rows }) => (
         <StackItem key={attempt}>
           <Title headingLevel="h2">Attempt {attempt}</Title>
           <Table aria-label={`Steps of attempt ${attempt}`} variant="compact">
@@ -210,35 +217,76 @@ function Progress({ timeline, restart, onRestart, onShow }: ProgressProps) {
               </Tr>
             </Thead>
             <Tbody>
-              {steps.map((step) => (
-                <Tr key={step.step}>
-                  <Td dataLabel="Step">{step.step}</Td>
-                  <Td dataLabel="Name">{step.name}</Td>
-                  <Td dataLabel="Outcome">
-                    <OutcomeLabel outcome={step.outcome} />
-                  </Td>
-                  <Td dataLabel="Started at">{step.startedAt}</Td>
-                  <Td dataLabel="Wall time">{duration(step.wallNanos)}</Td>
-                  <Td dataLabel="CPU time">{step.cpuNanos === null ? 'unknown' : duration(step.cpuNanos)}</Td>
-                  <Td dataLabel="Payload">
-                    {step.body.kept ? (
-                      <Button variant="link" isInline onClick={() => onShow(step)} aria-label={`Show the payload after step ${step.step} of attempt ${attempt}`}>
-                        {step.body.size} B
-                      </Button>
-                    ) : (
-                      `${step.body.size} B, not kept`
-                    )}
-                  </Td>
-                  <Td dataLabel="Error" modifier="breakWord">
-                    {step.error ?? ''}
-                  </Td>
-                </Tr>
-              ))}
+              {rows.map((row, i) =>
+                row.kind === 'wait' ? (
+                  <Tr key={`wait-${i}`}>
+                    <Td dataLabel="Step" />
+                    <Td dataLabel="Name" colSpan={3}>
+                      {waitLabels[row.reason]}
+                    </Td>
+                    <Td dataLabel="Wall time">{duration(row.nanos)}</Td>
+                    <Td colSpan={3} />
+                  </Tr>
+                ) : (
+                  <StepRow key={row.step.step} step={row.step} attempt={attempt} onShow={onShow} />
+                ),
+              )}
             </Tbody>
           </Table>
         </StackItem>
       ))}
+      {attempts.length > 0 && (
+        <StackItem>
+          <DescriptionList isHorizontal isCompact aria-label="Duration">
+            {otherNanos > 0 && (
+              <DescriptionListGroup>
+                <DescriptionListTerm>Other time between steps</DescriptionListTerm>
+                <DescriptionListDescription>{duration(otherNanos)}</DescriptionListDescription>
+              </DescriptionListGroup>
+            )}
+            <DescriptionListGroup>
+              <DescriptionListTerm>Total</DescriptionListTerm>
+              <DescriptionListDescription>{duration(totalNanos)}</DescriptionListDescription>
+            </DescriptionListGroup>
+          </DescriptionList>
+        </StackItem>
+      )}
     </>
+  );
+}
+
+interface StepRowProps {
+  step: StepRecord;
+  attempt: number;
+  onShow: (step: StepRecord) => void;
+}
+
+/** One recorded step; `ingress` times nothing, so its wall and CPU time are left empty. */
+function StepRow({ step, attempt, onShow }: StepRowProps) {
+  const timed = step.name !== INGRESS;
+  return (
+    <Tr>
+      <Td dataLabel="Step">{step.step}</Td>
+      <Td dataLabel="Name">{step.name}</Td>
+      <Td dataLabel="Outcome">
+        <OutcomeLabel outcome={step.outcome} />
+      </Td>
+      <Td dataLabel="Started at">{step.startedAt}</Td>
+      <Td dataLabel="Wall time">{timed ? duration(step.wallNanos) : ''}</Td>
+      <Td dataLabel="CPU time">{!timed ? '' : step.cpuNanos === null ? 'unknown' : duration(step.cpuNanos)}</Td>
+      <Td dataLabel="Payload">
+        {step.body.kept ? (
+          <Button variant="link" isInline onClick={() => onShow(step)} aria-label={`Show the payload after step ${step.step} of attempt ${attempt}`}>
+            {step.body.size} B
+          </Button>
+        ) : (
+          `${step.body.size} B, not kept`
+        )}
+      </Td>
+      <Td dataLabel="Error" modifier="breakWord">
+        {step.error ?? ''}
+      </Td>
+    </Tr>
   );
 }
 
