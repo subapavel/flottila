@@ -114,10 +114,11 @@ class StreamHeapMainPartsTest {
     @Test
     void theNodeEnvironmentIsADevNodeOnTheRunsDatabase() {
         StreamHeapMain.Options o = StreamHeapMain.options(new String[] {"--db", "x_bench", "--host", "db.local", "--port", "6543", "--user", "u", "--password", "p"});
-        Map<String, String> env = new java.util.HashMap<>(StreamHeapMain.nodeEnv(o, Path.of("/data/node"), 4321, 4322));
+        Map<String, String> env = new java.util.HashMap<>(StreamHeapMain.nodeEnv(o, Path.of("/data/node"), Path.of("/data/repos"), 4321, 4322));
         env.put("RAIL8_PG_SSL_MODE", "disable");   // FIX-146: a remote host (db.local) defaults to verify-full, refused without a CA
         NodeConfig node = NodeConfig.from(env);
         assertEquals(Path.of("/data/node"), node.dataDir());
+        assertEquals(java.net.URI.create("file:///data/repos/"), node.git().orElseThrow().base(), "the run's package repositories");
         assertEquals(4321, node.admin().port());
         assertEquals(0, node.peer().port(), "the peer link on any free port");
         assertEquals(4322, node.http().port(), "the HTTP port the run sends to");

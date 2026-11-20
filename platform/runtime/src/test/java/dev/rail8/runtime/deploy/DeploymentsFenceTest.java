@@ -67,7 +67,7 @@ class DeploymentsFenceTest {
         NodeConfig config = NodeConfig.from(env);
         Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
         deployments = new Deployments(config, runtime, Map.of(Doors.SCHEME, doors), rt.clock(), timer, DeploymentsTest.STEPS, List.of(), messages, dlq,
-                queue, () -> 0L, new InMemoryDeploymentStore(), new DirArchiveStore(config.archives().dir()), new SequentialIntake(messages, queue),
+                queue, () -> 0L, new InMemoryDeploymentStore(), new SequentialIntake(messages, queue),
                 new InMemoryPollerLeases(rt.clock()), new Targets(config.targets().defaults(), config.targets().overrides(), timer), () -> {
                     asked.incrementAndGet();
                     return open.get();

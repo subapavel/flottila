@@ -6,6 +6,8 @@ import dev.rail8.api.plugin.HttpIngress;
 import dev.rail8.runtime.plugin.Plugins;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Vertx;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
 
 import java.io.IOException;
 import java.io.PrintStream;
@@ -34,7 +36,10 @@ import javax.lang.model.SourceVersion;
  * {@code <dir>}, which must not exist or be empty. The skeleton is the sample adapter, the webhook plugin, under the new names:
  * its Maven build, the component with its settings description, the plugin and its service file, the contract tests of the
  * component and of its mock, the component's own tests, and a package that uses it ({@code package/}). It builds and passes
- * the contract suite as written; its HTTP code is what the developer replaces with their protocol.
+ * the contract suite as written; its HTTP code is what the developer replaces with their protocol. {@code <dir>} is made a git
+ * repository on {@code main} whose first commit holds every file written, with a {@code .gitattributes} of {@code * -text}, so git
+ * keeps every file's bytes as written, and a {@code .gitignore} of the build's {@code target/}: a node deploys its package from
+ * a commit ({@code RAIL8_GIT_PATH=package}). The commit's author is the user's git identity, as git reads it.
  *
  * <p>The scheme is a lower-case letter, then lower-case letters and digits, at most {@value #SCHEME_MAX} characters, not a Java
  * keyword, not {@code rail8} (the skeleton's HTTP prefix is {@code /<scheme>}, and {@code /rail8} is the platform's), and not the
@@ -55,6 +60,8 @@ final class NewAdapter {
     private static final Pattern SCHEME = Pattern.compile("[a-z][a-z0-9]*");
     /** The sample's names, longest first: each is replaced in one pass, so a new name that contains an old one stays as given. */
     private static final Pattern NAMES = Pattern.compile("dev\\.rail8\\.examples\\.webhook|dev/rail8/examples/webhook|dev\\.rail8\\.examples|Webhook|webhook");
+    /** The files of the adapter's repository beside the template's, by path: git keeps the bytes as written, and leaves the build's output out. */
+    private static final Map<String, String> REPOSITORY_FILES = Map.of(".gitattributes", "* -text\n", ".gitignore", "target/\n");
 
     private NewAdapter() {}
 
@@ -75,8 +82,14 @@ final class NewAdapter {
                 "dev.rail8.examples", pkg,
                 "Webhook", name,
                 "webhook", scheme);
-        List<String> written = copy(names, dir);
-        out.println("wrote the adapter '" + scheme + "' (package " + pkg + ") into " + dir + ":");
+        List<String> written = new ArrayList<>(copy(names, dir));
+        for (Map.Entry<String, String> file : REPOSITORY_FILES.entrySet()) {
+            Files.writeString(dir.resolve(file.getKey()), file.getValue(), StandardCharsets.UTF_8);
+            written.add(file.getKey());
+        }
+        written.sort(null);
+        String commit = commit(dir);
+        out.println("wrote the adapter '" + scheme + "' (package " + pkg + ") into " + dir + ", a git repository with the first commit " + commit + ":");
         written.forEach(file -> out.println("  " + file));
         out.println("next: mvn -f " + dir.resolve("pom.xml") + " verify   # its build and contract tests");
         out.println("      bin/run-adapter " + dir + "   # a node with the adapter, and the UI");
@@ -114,6 +127,16 @@ final class NewAdapter {
             return schemes;
         } finally {
             vertx.close().await();
+        }
+    }
+
+    /** Makes {@code dir} a git repository on {@code main} whose one commit holds every file in it; the commit's id. */
+    private static String commit(Path dir) throws IOException {
+        try (Git git = Git.init().setDirectory(dir.toFile()).setInitialBranch("main").call()) {
+            git.add().addFilepattern(".").call();
+            return git.commit().setMessage("The adapter as rail8 new-adapter wrote it\n").setSign(false).call().name();
+        } catch (GitAPIException failed) {
+            throw new IOException("the adapter's first commit failed: " + failed.getMessage(), failed);
         }
     }
 

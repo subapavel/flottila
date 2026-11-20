@@ -73,9 +73,11 @@ class DeploymentsListenerTest {
     final List<Deployments> nodes = new CopyOnWriteArrayList<>();
     final List<Doors> components = new CopyOnWriteArrayList<>();
     Deployments deployments;
+    GitRepos repos;
 
     @BeforeEach
     void wire() {
+        repos = new GitRepos(tmp.resolve("repos"));
         deployments = node(env("node-1"));
     }
 
@@ -87,7 +89,10 @@ class DeploymentsListenerTest {
 
     // --- fixture
 
-    /** A dev node {@code nodeId}: data under {@code <tmp>/<nodeId>}, its admin API on 127.0.0.1:{@value #ADMIN_PORT}, its HTTP port on 127.0.0.1:{@value #HTTP_PORT}. */
+    /**
+     * A dev node {@code nodeId}: data under {@code <tmp>/<nodeId>}, its admin API on 127.0.0.1:{@value #ADMIN_PORT}, its HTTP port on
+     * 127.0.0.1:{@value #HTTP_PORT}, the case's repositories.
+     */
     Map<String, String> env(String nodeId) {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "dev");
@@ -97,11 +102,11 @@ class DeploymentsListenerTest {
         env.put("RAIL8_BLOB_DURABLE_MAX", "4096");
         env.put("RAIL8_ADMIN_PORT", Integer.toString(ADMIN_PORT));
         env.put("RAIL8_HTTP_PORT", Integer.toString(HTTP_PORT));
-        return env;
+        return repos.env(env);
     }
 
-    /** A node of {@code env} over the pool's {@code rows} and {@code archives}, {@code serving} as its components (by scheme). */
-    Deployments node(Map<String, String> env, DeploymentStore rows, ArchiveStore archives, Doors... serving) {
+    /** A node of {@code env} over the pool's {@code rows}, {@code serving} as its components (by scheme). */
+    Deployments node(Map<String, String> env, DeploymentStore rows, Doors... serving) {
         Map<String, Component> byScheme = new HashMap<>();
         for (Doors d : serving) {
             byScheme.put(d.scheme(), d);
@@ -109,14 +114,14 @@ class DeploymentsListenerTest {
         }
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), byScheme);
         Deployments d = new Deployments(NodeConfig.from(env), runtime, byScheme, rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
-                new InMemoryWorkQueue(rt.clock()), () -> 0L, rows, archives);
+                new InMemoryWorkQueue(rt.clock()), () -> 0L, rows);
         nodes.add(d);
         return d;
     }
 
-    /** A node of its own records and archive directory, serving {@link #doors} ({@value Doors#SCHEME}) and {@link #gates} ({@value #GATE}). */
+    /** A node of its own records, serving {@link #doors} ({@value Doors#SCHEME}) and {@link #gates} ({@value #GATE}). */
     Deployments node(Map<String, String> env) {
-        return node(env, new InMemoryDeploymentStore(), new DirArchiveStore(Path.of(env.get("RAIL8_DATA_DIR")).resolve("archives")), doors, gates);
+        return node(env, new InMemoryDeploymentStore(), doors, gates);
     }
 
     /** {@code name} 1.0.0 with only its out endpoint {@code partner}. */
@@ -154,17 +159,15 @@ class DeploymentsListenerTest {
     }
 
     DeployResult deploy(Deployments d, PackageDraft p) throws Exception {
-        Path archive = p.zipTo(tmp.resolve("uploads"));
-        String name = p.manifest().getString("name");
-        return OnVirtualThread.call(() -> d.deploy(name, Optional.empty(), archive));
+        String commit = repos.commit(p);
+        return OnVirtualThread.call(() -> d.deploy(p.name(), commit, "test"));
     }
 
     /** The deploy of {@code p} on {@code d}, refused as a 422. */
     DeployRefusedException refused(Deployments d, PackageDraft p) {
-        Path archive = p.zipTo(tmp.resolve("uploads"));
-        String name = p.manifest().getString("name");
-        DeployRefusedException r = assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> d.deploy(name, Optional.empty(), archive)),
-                "the deploy of " + name + " is refused");
+        String commit = repos.commit(p);
+        DeployRefusedException r = assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> d.deploy(p.name(), commit, "test")),
+                "the deploy of " + p.name() + " is refused");
         assertEquals(Kind.INVALID, r.kind(), "a 422: " + r.error() + " " + r.problems());
         return r;
     }
@@ -230,7 +233,7 @@ class DeploymentsListenerTest {
     void aClashingRedeployIsRefusedBeforeTheRunningVersionIsStopped() throws Exception {
         deploy(deployments, listening(pkg("billing"), "invoices", port(8080)));
         PackageDraft shop = listening(pkg("shop"), "orders", port(7070));
-        String v1 = deploy(deployments, shop).pkg().archiveSha256();
+        String v1 = deploy(deployments, shop).pkg().content();
         Doors.Door orders = doors.door("shop/orders");
         List<String> events = doors.events();
         int producers = doors.producers().size();
@@ -243,7 +246,7 @@ class DeploymentsListenerTest {
         assertFalse(orders.stopped(), "the running version's changed flow was never stopped: " + orders.history());
         assertEquals(events, doors.events(), "no consumer was built, started or stopped");
         assertEquals(producers, doors.producers().size(), "nothing of the new version was built");
-        assertEquals(v1, deployments.packages().stream().filter(p -> p.name().equals("shop")).findFirst().orElseThrow().archiveSha256(),
+        assertEquals(v1, deployments.packages().stream().filter(p -> p.name().equals("shop")).findFirst().orElseThrow().content(),
                 "shop runs its first version");
     }
 
@@ -454,15 +457,13 @@ class DeploymentsListenerTest {
     @Test
     void aRestartingFlowHoldsItsPortAFailedPackageNone() throws Exception {
         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
-        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"));
-        Deployments first = node(env("node-a"), rows, bucket, new Doors());
+        Deployments first = node(env("node-a"), rows, new Doors());
         deploy(first, listening(listening(pkg("alpha"), "a1", port(8080)), "a2", port(8082)));
-        String omega = deploy(first, listening(pkg("omega"), "w", port(8084))).pkg().archiveSha256();
+        deploy(first, listening(pkg("omega"), "w", port(8084)));
         Doors restoring = new Doors();
         restoring.failStartOf("alpha/a1", "the door is stuck");
-        DeploymentsRestoreTest.Fetches fetches = new DeploymentsRestoreTest.Fetches(bucket);
-        fetches.failAfterWriting(omega, "connection reset");
-        Deployments restored = node(env("node-b"), rows, fetches, restoring);
+        repos.delete("omega");   // node b's cache is its own: omega's commit cannot be read
+        Deployments restored = node(env("node-b"), rows, restoring);
         OnVirtualThread.call(() -> { restored.restore(); return null; });
         assertEquals(Map.of("alpha", RUNNING, "omega", DeployedPackage.State.FAILED), packages(restored), "fixture: omega could not be fetched");
         assertEquals(Map.of("alpha/a1", DeployedFlow.State.RESTARTING, "alpha/a2", FLOW_RUNNING), flows(restored), "fixture: a1's consumer did not start");
@@ -486,9 +487,9 @@ class DeploymentsListenerTest {
         doors.onConsumer(cfg -> {   // the second: v2 builds the first
             if ("alpha/a1".equals(cfg.options().get("flow")) && builds.incrementAndGet() == 2) throw new IllegalArgumentException("a1 cannot be built again");
         });
-        Path v2 = listening(listening(pkg("alpha"), "a1", port(8081)), "a2", port(8082)).zipTo(tmp.resolve("uploads"));
+        String v2 = repos.commit(listening(listening(pkg("alpha"), "a1", port(8081)), "a2", port(8082)));
         DeployRefusedException rolledBack = assertThrows(DeployRefusedException.class,
-                () -> OnVirtualThread.call(() -> deployments.deploy("alpha", Optional.empty(), v2)), "v2, whose a1 does not start");
+                () -> OnVirtualThread.call(() -> deployments.deploy("alpha", v2, "test")), "v2, whose a1 does not start");
         assertEquals(Kind.FAILED, rolledBack.kind(), rolledBack.error() + " " + rolledBack.problems());
         assertEquals(Map.of("alpha/a1", DeployedFlow.State.FAILED, "alpha/a2", FLOW_RUNNING), flows(deployments), "fixture: a1 is FAILED: " + rolledBack.error());
 
@@ -501,11 +502,10 @@ class DeploymentsListenerTest {
     @Test
     void aRestoredPackageClashingWithOneRestoredBeforeIsFailed() throws Exception {
         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
-        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"));
-        deploy(node(env("node-a"), rows, bucket, new Doors()), listening(pkg("alpha"), "invoices", port(8080)));
-        deploy(node(env("node-b"), rows, bucket, new Doors()), listening(pkg("beta"), "orders", on("0.0.0.0", 8080)));   // node b runs nothing else
+        deploy(node(env("node-a"), rows, new Doors()), listening(pkg("alpha"), "invoices", port(8080)));
+        deploy(node(env("node-b"), rows, new Doors()), listening(pkg("beta"), "orders", on("0.0.0.0", 8080)));   // node b runs nothing else
         Doors third = new Doors();
-        Deployments restored = node(env("node-c"), rows, bucket, third);
+        Deployments restored = node(env("node-c"), rows, third);
 
         OnVirtualThread.call(() -> { restored.restore(); return null; });
 

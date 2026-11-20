@@ -51,9 +51,10 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * {@code rail8 deploy} against a real node — started in this JVM over the modules on its class path ({@link Plugins}), on a
  * Postgres of its own (Testcontainers, a database per case, as runtime's QuickstartIT), its admin API on port 0 behind a bearer
- * token, its HTTP port on port 0 too. The demo deploys (200, exit 0) and the node holds exactly its files at their
- * package-relative paths; a package whose stylesheet does not compile is refused (422, exit 1) and nothing is deployed; without
- * the token the node refuses (401, exit 1).
+ * token, its HTTP port on port 0 too, its {@code RAIL8_GIT_BASE} a folder of git repositories this test commits to. The demo's
+ * commit deploys (200, exit 0) and the node lists its repository, commit and exactly its files at their package-relative paths;
+ * {@code --check} of {@code HEAD} answers what the deploy would do and deploys nothing (exit 0); a package whose stylesheet does
+ * not compile is refused (422, exit 1) and nothing is deployed; without the token the node refuses (401, exit 1).
  */
 class DeployCommandIT {
 
@@ -65,6 +66,7 @@ class DeployCommandIT {
     static Vertx vertx;
 
     @TempDir Path work;
+    Path repos;
     Node node;
 
     @BeforeAll
@@ -93,6 +95,8 @@ class DeployCommandIT {
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
         env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", Files.createDirectories(work.resolve("data")).toString());
+        repos = Files.createDirectories(work.resolve("repos"));
+        env.put("RAIL8_GIT_BASE", repos.toUri().toString());   // file://: a dev node reads its repositories from this folder
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
         env.put("RAIL8_PG_DATABASE", database);
@@ -152,6 +156,11 @@ class DeployCommandIT {
         }
     }
 
+    /** {@code dir} copied into the repository {@code name} under {@link #repos} and committed; answers the commit's id. */
+    String committed(Path dir, String name) throws Exception {
+        return DepsFixture.commit(CliRuns.copy(dir, repos.resolve(name)));
+    }
+
     /** Every regular file under {@code dir} as the admin API lists it: package-relative path and SHA-256. */
     static Set<Object> filesOf(Path dir) throws Exception {
         Set<Object> files = new HashSet<>();
@@ -167,10 +176,10 @@ class DeployCommandIT {
     // --- cases
 
     @Test
-    void theDemoDeploysWith200AndExits0() throws Exception {
-        Path demo = DEMO;
+    void theDemosCommitDeploysWith200AndExits0() throws Exception {
+        String commit = committed(DEMO, "demo");
 
-        Ran ran = run(Map.of("RAIL8_ADMIN_TOKEN", TOKEN), "deploy", demo.toString(), "--admin", adminUrl());
+        Ran ran = run(Map.of("RAIL8_ADMIN_TOKEN", TOKEN), "deploy", "demo", commit, "--admin", adminUrl());
 
         assertEquals(0, ran.exit(), ran.toString());
         assertTrue(ran.out().contains("\"package\":\"demo\"") && ran.out().contains("\"demo/invoice-sync\"")
@@ -179,15 +188,28 @@ class DeployCommandIT {
         assertEquals(1, items.size(), "one package deployed: " + items.encode());
         JsonObject item = items.getJsonObject(0);
         assertEquals("demo", item.getString("name"), item.encode());
-        assertEquals(filesOf(demo), item.getJsonArray("files").stream().collect(Collectors.toSet()),
-                "the archive held every file at its package-relative path, package.yaml at the root, nothing else");
+        assertEquals("demo", item.getString("repository"), item.encode());
+        assertEquals(commit, item.getString("commit"), item.encode());
+        assertEquals(filesOf(DEMO), item.getJsonArray("files").stream().collect(Collectors.toSet()),
+                "the commit held every file at its package-relative path, package.yaml at the root, nothing else");
+    }
+
+    @Test
+    void aCheckOfHeadDeploysNothingAndExits0() throws Exception {
+        committed(DEMO, "demo");
+
+        Ran ran = run(Map.of("RAIL8_ADMIN_TOKEN", TOKEN), "deploy", "demo", "HEAD", "--check", "--admin", adminUrl());
+
+        assertEquals(0, ran.exit(), ran.toString());
+        assertTrue(ran.out().contains("\"package\":\"demo\"") && ran.out().contains("\"demo/invoice-sync\""), "the check's answer names the flows: " + ran);
+        assertEquals(0, packages().size(), "nothing deployed");
     }
 
     @Test
     void aBrokenPackageIs422AndExits1() throws Exception {
-        Path broken = FIXTURES.resolve("broken-xslt");
+        String commit = committed(FIXTURES.resolve("broken-xslt"), "broken");
 
-        Ran ran = run(Map.of("RAIL8_ADMIN_TOKEN", TOKEN), "deploy", broken.toString(), "--admin", adminUrl());
+        Ran ran = run(Map.of("RAIL8_ADMIN_TOKEN", TOKEN), "deploy", "broken", commit, "--admin", adminUrl());
 
         assertEquals(1, ran.exit(), ran.toString());
         assertTrue(ran.out().contains("\"problems\"") && ran.out().contains("flows/invoice-to-partner.xsl"),
@@ -197,9 +219,9 @@ class DeployCommandIT {
 
     @Test
     void withoutTheTokenTheNodeRefusesAndTheDeployExits1() throws Exception {
-        Path demo = DEMO;
+        String commit = committed(DEMO, "demo");
 
-        Ran ran = run(Map.of(), "deploy", demo.toString(), "--admin", adminUrl());
+        Ran ran = run(Map.of(), "deploy", "demo", commit, "--admin", adminUrl());
 
         assertEquals(1, ran.exit(), ran.toString());
         assertEquals(0, packages().size(), "nothing deployed");

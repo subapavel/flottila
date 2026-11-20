@@ -50,7 +50,7 @@ import java.util.function.BooleanSupplier;
  * The kill -9 ledger (P1-10b, GATE 9, ARCHITECTURE §11: sent = final-step rows, DLQ 0, work 0). Node 1 runs as a child JVM
  * ({@link Main} on this JVM's classpath, its configuration in a cleared environment, its output in {@code <out>.node-1.log})
  * with the node bench's at-least-once package ({@link NodeBenchMain#benchPackage}: {@code to partner}, every step recorded,
- * PUT through its admin API); the partner is a Vert.x echo in this JVM. The driver sends {@code --messages} one-line invoices
+ * committed to the run's git repository and deployed through its admin API); the partner is a Vert.x echo in this JVM. The driver sends {@code --messages} one-line invoices
  * from {@value #CONCURRENCY} virtual threads and, once node 1 ACKed {@code --kill-after} of them (202, {@code x-message-id}),
  * kills it with {@link Process#destroyForcibly()} (SIGKILL). A message whose 202 did not arrive — another status, a cut or refused
  * connection, no answer within {@value #ACK_TIMEOUT_MS} ms — is re-sent until it is ACKed: to node 1 until the kill, then to
@@ -59,8 +59,8 @@ import java.util.function.BooleanSupplier;
  * {@code --kill-after − --kill-after / 2} ACKed messages are queued or leased, unfinished. Node 2 then starts in this JVM: node 1
  * restarted under its id and on its journal (CORE-4c2, D-105: the unfinished items' bodies are records in that journal, and a
  * node claims only the items whose body it holds), on an empty data directory otherwise, and restores the package from the
- * deployment record and the archive store (P1-09c3b, no PUT): S3 when the {@code --s3-*} options are given, else a directory
- * both nodes share. The rest is sent to node 2, which also re-runs what
+ * deployment record, no deploy: the record's commit, read from the run's package repository, which both nodes read. The rest
+ * is sent to node 2, which also re-runs what
  * node 1 left leased once the lease ({@link WorkerPolicy#DEFAULT}) ran out; each load gives up after {@link #SEND}, the run
  * waits for the work queue to be empty, at most {@link #DRAIN}, closes node 2 and writes the record to {@code --out}.
  *
@@ -192,16 +192,18 @@ public final class LedgerMain {
 
     /**
      * A node's environment: env dev, the run's database, admin on 127.0.0.1:{@code adminPort} (0: any free port) and its data
-     * directory, the run's journal master key; the archive store is S3 (path-style) when the run has S3 options, else the
-     * directory {@code archives}, which both nodes are given.
+     * directory, the run's journal master key, the package repositories under {@code repos}, which both nodes are given; the
+     * archive store is S3 (path-style) when the run has S3 options, else the directory {@code archives}, which both nodes are
+     * given too.
      */
-    static Map<String, String> nodeEnv(Options o, String nodeId, Path data, Path archives, int adminPort) {
+    static Map<String, String> nodeEnv(Options o, String nodeId, Path data, Path repos, Path archives, int adminPort) {
         Map<String, String> env = new HashMap<>(Map.of("RAIL8_ENV", "dev", "RAIL8_NODE_ID", nodeId, "RAIL8_ADMIN_PORT", String.valueOf(adminPort),
                 "RAIL8_DATA_DIR", data.toString(), "RAIL8_PG_HOST", o.host(), "RAIL8_PG_PORT", String.valueOf(o.port()),
                 "RAIL8_PG_DATABASE", o.db(), "RAIL8_PG_USER", o.user(), "RAIL8_PG_PASSWORD", o.password()));
         env.put("RAIL8_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY);   // one key for both nodes: they share journal_keys (D-106)
         env.put("RAIL8_PEER_PORT", "0");   // the peer link on any free port: two nodes, or two runs, on one host
         env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too, until the run picks the one both nodes take
+        env.put("RAIL8_GIT_BASE", NodeBenchMain.gitBase(repos));
         if (o.s3().isEmpty()) {
             env.put("RAIL8_ARCHIVE_DIR", archives.toString());
         } else {
@@ -223,7 +225,8 @@ public final class LedgerMain {
         Path run = Files.createTempDirectory("rail8-ledger-");
         try {
             int admin1 = NodeBenchMain.freePort();
-            Map<String, String> env1 = nodeEnv(o, NODE_1, Files.createDirectories(run.resolve(NODE_1)), run.resolve("archives"), admin1);
+            Map<String, String> env1 = nodeEnv(o, NODE_1, Files.createDirectories(run.resolve(NODE_1)), Files.createDirectories(run.resolve("repos")),
+                    run.resolve("archives"), admin1);
             NodeConfig.from(env1);   // a configuration the node refuses fails the run here, before anything connects
             Migrations.migrate("jdbc:postgresql://" + o.host() + ":" + o.port() + "/" + o.db(), o.user(), o.password());
             Vertx vertx = Vertx.vertx();
@@ -264,7 +267,7 @@ public final class LedgerMain {
             HttpClientAgent client = client(vertx);
             NodeBenchMain.Harness h = new NodeBenchMain.Harness(bench(o), vertx, pool, client, body, in, echo.actualPort());
             awaitServing(vertx, h, node1, admin1, START, log);
-            h.deploy(admin1, NodeBenchMain.benchPackage(bench(o), echo.actualPort()));
+            h.deploy(admin1, NodeBenchMain.commit(run.resolve("repos"), NodeBenchMain.benchPackage(bench(o), echo.actualPort())));
             CompletableFuture<Void> reached = new CompletableFuture<>();
             CompletableFuture<Void> load = CompletableFuture.runAsync(() -> sending.load(client, o.killAfter(), reached, SEND),
                     task -> Thread.ofVirtual().name("ledger-load-1").start(task));
@@ -284,7 +287,7 @@ public final class LedgerMain {
         partner.release();
 
         SaxonXml xml = new SaxonXml();
-        Map<String, String> env2 = nodeEnv(o, NODE_1, Files.createDirectories(run.resolve(NODE_2)), run.resolve("archives"), 0);
+        Map<String, String> env2 = nodeEnv(o, NODE_1, Files.createDirectories(run.resolve(NODE_2)), run.resolve("repos"), run.resolve("archives"), 0);
         env2.put("RAIL8_JOURNAL_DIR", NodeConfig.from(env1).journal().dir().toString());   // node 1's journal: its LOCK died with it
         env2.put("RAIL8_HTTP_PORT", String.valueOf(in));   // node 1's HTTP port: its senders send on to node 2
         Node node2 = Node.start(NodeConfig.from(env2), vertx,

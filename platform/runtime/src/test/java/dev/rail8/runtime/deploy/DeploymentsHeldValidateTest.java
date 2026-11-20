@@ -48,7 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * on a virtual thread, problems as {@code validate(name, dir)} returns them. Fixtures: the packages of
  * {@link DeploymentsDependenciesTest} written to folders; a held folder's directory name is never the package's name, so the name
  * can only come from its package.yaml. Each node has its own data directory, {@link Doors} (every consumer built is an event),
- * {@link Ledger} (every record save) and {@link Shelf} read through {@link DeploymentsRestoreTest.Fetches} (every put and fetch).
+ * and {@link Ledger} (every record save); no node has a git base, so none can fetch.
  */
 class DeploymentsHeldValidateTest {
 
@@ -65,14 +65,10 @@ class DeploymentsHeldValidateTest {
         final Path data;
         final Doors doors = new Doors();
         final Ledger records = new Ledger(trace -> {});
-        final Shelf shelf;
-        final DeploymentsRestoreTest.Fetches fetches;
         final Deployments deployments;
 
         Node(String id, String env) {
             this.data = tmp.resolve(id);
-            this.shelf = new Shelf(tmp.resolve(id + "-bucket"), tmp.resolve(id + "-shelf-reads"), trace -> {});
-            this.fetches = new DeploymentsRestoreTest.Fetches(shelf);
             Map<String, String> e = new HashMap<>();
             e.put("RAIL8_ENV", env);
             e.put("RAIL8_NODE_ID", id);
@@ -84,7 +80,7 @@ class DeploymentsHeldValidateTest {
             List<StepFactory> steps = Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList();
             Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
             deployments = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), steps, xml.languages(),
-                    new InMemoryMessageStore(), new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, records, fetches);
+                    new InMemoryMessageStore(), new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, records);
             nodes.add(this);
         }
 
@@ -99,8 +95,8 @@ class DeploymentsHeldValidateTest {
         }
 
         DeployResult deploy(PackageDraft p) throws Exception {
-            Path archive = PackageDraft.write(tmp.resolve("uploads"), p.zip());
-            return OnVirtualThread.call(() -> deployments.deploy(p.name(), Optional.empty(), archive));
+            Path folder = p.folderIn(tmp.resolve("folders"));
+            return OnVirtualThread.call(() -> deployments.deploy(p.name(), folder));
         }
 
         void close() throws Exception {
@@ -189,8 +185,6 @@ class DeploymentsHeldValidateTest {
         assertEquals(List.of(), node.doors.events(), "no consumer built, started or stopped");
         assertEquals(List.of(), node.doors.doors(), "no consumer built");
         assertEquals(List.of(), node.records.saves(), "no record written");
-        assertEquals(List.of(), node.shelf.puts(), "no archive stored");
-        assertEquals(List.of(), node.fetches.keys(), "no archive fetched");
         assertEquals(List.of(), node.deployments.packages(), "nothing listed");
         assertEquals(List.of(), node.deployments.flows(), "no flow listed");
         assertFalse(Files.exists(node.data.resolve("packages").resolve("common")), "nothing unpacked under the data directory");

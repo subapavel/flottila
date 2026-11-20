@@ -81,6 +81,8 @@ class DeploymentsSecretsTest {
     static final String HOST_KEY = "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
     @TempDir Path tmp;
+    /** The package repositories every node deploys from. */
+    GitRepos repos;
 
     final FakeRuntime rt = FakeRuntime.create();
     final InMemoryMessageStore messages = new InMemoryMessageStore();
@@ -147,7 +149,10 @@ class DeploymentsSecretsTest {
         @Override public Future<Health> health() { return Future.succeededFuture(Health.up()); }
     }
 
-    /** One node: its data directory {@code <tmp>/<id>}, its env (with {@code secrets} added), its Doors and sftp stand-in. */
+    /**
+     * One node: its data directory {@code <tmp>/<id>}, its env (with {@code secrets} added, its git base the shared repositories),
+     * its Doors and sftp stand-in.
+     */
     final class Node {
         final Path data;
         final Map<String, String> env = new HashMap<>();
@@ -155,7 +160,8 @@ class DeploymentsSecretsTest {
         final SftpShaped sftp = new SftpShaped(rt);
         final Deployments deployments;
 
-        Node(String id, String rail8Env, Map<String, String> secrets, DeploymentStore records, ArchiveStore archives) {
+        Node(String id, String rail8Env, Map<String, String> secrets, DeploymentStore records) {
+            if (repos == null) repos = new GitRepos(tmp.resolve("repos"));
             data = tmp.resolve(id);
             env.put("RAIL8_ENV", rail8Env);
             env.put("RAIL8_NODE_ID", id);
@@ -164,6 +170,7 @@ class DeploymentsSecretsTest {
             env.put("RAIL8_BLOB_DURABLE_MAX", "4096");
             env.put("RAIL8_MAX_PACKAGE_BYTES", Long.toString(2L * 1024 * 1024));
             env.putAll(secrets);
+            env.put("RAIL8_GIT_BASE", repos.base().toString());
             Map<String, Component> components = Map.of(Doors.SCHEME, doors, "sftp", sftp);
             Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), components);
             NodeConfig config = NodeConfig.from(env);
@@ -171,17 +178,19 @@ class DeploymentsSecretsTest {
                     ? new Deployments(config, runtime, components, rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
                             new CountingQueue(rt.clock()), () -> 0L)
                     : new Deployments(config, runtime, components, rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
-                            new CountingQueue(rt.clock()), () -> 0L, records, archives);
+                            new CountingQueue(rt.clock()), () -> 0L, records);
             nodes.add(this);
         }
 
+        /** Commits {@code p} to the repository of its name and deploys that commit. */
         DeployedPackage deploy(PackageDraft p) throws Exception {
-            return OnVirtualThread.call(() -> deployments.deploy(name(p), Optional.empty(), p.zipTo(tmp.resolve("uploads")))).pkg();
+            String commit = repos.commit(p);
+            return OnVirtualThread.call(() -> deployments.deploy(name(p), commit, "test")).pkg();
         }
 
         DeployRefusedException refused(PackageDraft p) {
-            return assertThrows(DeployRefusedException.class,
-                    () -> OnVirtualThread.call(() -> deployments.deploy(name(p), Optional.empty(), p.zipTo(tmp.resolve("uploads")))),
+            String commit = repos.commit(p);
+            return assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> deployments.deploy(name(p), commit, "test")),
                     "the deploy is refused");
         }
 
@@ -206,7 +215,7 @@ class DeploymentsSecretsTest {
     }
 
     Node node(Map<String, String> secrets) {
-        return new Node("node-" + (nodes.size() + 1), "dev", secrets, null, null);
+        return new Node("node-" + (nodes.size() + 1), "dev", secrets, null);
     }
 
     static String name(PackageDraft p) {
@@ -518,14 +527,13 @@ class DeploymentsSecretsTest {
     @Test
     void aRestoreWithoutTheVariableListsThePackageFailedNamingIt() throws Exception {
         InMemoryDeploymentStore records = new InMemoryDeploymentStore();
-        DirArchiveStore archives = new DirArchiveStore(tmp.resolve("pool-archives"));
-        Node first = new Node("node-1", "dev", Map.of("RAIL8_SECRET_PARTNER_URL", "rec://first-value"), records, archives);
+        Node first = new Node("node-1", "dev", Map.of("RAIL8_SECRET_PARTNER_URL", "rec://first-value"), records);
         first.deploy(one("restored", url("rec://inbound"), url("secret://partner-url")));
         for (Map<String, Object> options : first.produced("partner")) assertEquals("rec://first-value", options.get("url"));
 
-        Node without = new Node("node-2", "dev", Map.of(), records, archives);
+        Node without = new Node("node-2", "dev", Map.of(), records);
         without.restore();
-        Node other = new Node("node-3", "dev", Map.of("RAIL8_SECRET_PARTNER_URL", "rec://third-value"), records, archives);
+        Node other = new Node("node-3", "dev", Map.of("RAIL8_SECRET_PARTNER_URL", "rec://third-value"), records);
         other.restore();
 
         DeployedPackage failed = without.deployments.packages().stream().filter(p -> p.name().equals("restored")).findFirst()
@@ -552,9 +560,8 @@ class DeploymentsSecretsTest {
         String partnerValue = "rec://partner-V4LUE-7f3a";
         String inboundValue = "inbound-V4LUE-9c1d";
         InMemoryDeploymentStore records = new InMemoryDeploymentStore();
-        DirArchiveStore archives = new DirArchiveStore(tmp.resolve("pool-archives"));
         Node n = new Node("node-1", "dev", Map.of("RAIL8_SECRET_PARTNER_URL", partnerValue, "RAIL8_SECRET_INBOUND", inboundValue),
-                records, archives);
+                records);
 
         n.deploy(one("listed", new JsonObject().put("tags", new JsonObject().put("key", "secret://inbound")), url("secret://partner-url")));
         Envelope e = rt.ingress("listed/orders", Headers.empty(), Buffer.buffer("<order/>"));

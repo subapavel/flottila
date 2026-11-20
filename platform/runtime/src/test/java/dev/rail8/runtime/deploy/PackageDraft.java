@@ -37,6 +37,8 @@ public final class PackageDraft {
 
     private final Map<String, JsonObject> docs = new TreeMap<>();
     private final Map<String, byte[]> raw = new TreeMap<>();
+    private String repository;   // where it was last committed, and at which commit: null until then
+    private String commit;
 
     private PackageDraft() {}
 
@@ -195,11 +197,29 @@ public final class PackageDraft {
 
     public String version() { return manifest().getString("version"); }
 
-    /** One entry of a {@code package.lock}: a dependency's name, its exact version and its content digest. */
-    public record LockEntry(String name, String version, String content) {}
+    /** One entry of a {@code package.lock}: a dependency's name, its exact version, its content digest, its repository and commit. */
+    public record LockEntry(String name, String version, String content, String repository, String commit) {
 
-    /** The commit every lock entry {@link #locking} writes pins, at the repository of the entry's name: the node resolves by content. */
+        /** An entry at the repository of its name and {@link #COMMIT}: a commit no repository holds. */
+        public LockEntry(String name, String version, String content) {
+            this(name, version, content, name, COMMIT);
+        }
+    }
+
+    /** The commit a lock entry pins when its package was never committed: no repository holds it. */
     public static final String COMMIT = "0123456789abcdef0123456789abcdef01234567";
+
+    /** Notes that {@code id} of {@code repository} holds this package: what {@link #locked()} pins from now on. */
+    void committed(String repository, String id) {
+        this.repository = repository;
+        this.commit = id;
+    }
+
+    /** The commit this package was last committed at ({@link GitRepos}); fails the case when it never was. */
+    public String commit() {
+        if (commit == null) throw new AssertionError("fixture: " + name() + " was never committed");
+        return commit;
+    }
 
     /**
      * The content digest of this package as unpacked (D-087): {@code sha256:} and the SHA-256 over the UTF-8 lines
@@ -212,9 +232,12 @@ public final class PackageDraft {
         return "sha256:" + sha256(text.toString().getBytes(StandardCharsets.UTF_8));
     }
 
-    /** This package as a lock entry pins it: its name, version and {@link #content()} as they are now. */
+    /**
+     * This package as a lock entry pins it: its name, version and {@link #content()} as they are now, and the repository and commit
+     * it was last committed at ({@link #COMMIT} at the repository of its name when it never was).
+     */
     public LockEntry locked() {
-        return new LockEntry(name(), version(), content());
+        return commit == null ? new LockEntry(name(), version(), content()) : new LockEntry(name(), version(), content(), repository, commit);
     }
 
     /** Declares each of {@code deps} at its version and pins it in {@code package.lock} with its content as it is now. */
@@ -224,15 +247,15 @@ public final class PackageDraft {
 
     /**
      * {@code package.yaml} declares each entry's name and version, {@code package.lock} (JSON, which YAML reads) pins each with its
-     * content, the repository of its name and {@link #COMMIT}: both sorted by name, replacing what they held.
+     * content, repository and commit: both sorted by name, replacing what they held.
      */
     public PackageDraft locking(List<LockEntry> entries) {
         JsonArray declared = new JsonArray();
         JsonArray pinned = new JsonArray();
         for (LockEntry e : entries.stream().sorted(Comparator.comparing(LockEntry::name)).toList()) {
             declared.add(new JsonObject().put("name", e.name()).put("version", e.version()));
-            pinned.add(new JsonObject().put("name", e.name()).put("version", e.version()).put("content", e.content()).put("repository", e.name())
-                    .put("commit", COMMIT));
+            pinned.add(new JsonObject().put("name", e.name()).put("version", e.version()).put("content", e.content()).put("repository", e.repository())
+                    .put("commit", e.commit()));
         }
         manifest().put("dependencies", declared);
         return file("package.lock", new JsonObject().put("schemaVersion", 1).put("kind", "lock").put("dependencies", pinned).encodePrettily());

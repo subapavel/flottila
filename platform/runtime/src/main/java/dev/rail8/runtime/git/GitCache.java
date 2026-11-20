@@ -117,7 +117,15 @@ public final class GitCache {
 
     /** The repositories for one deploy or one package's restore: its fetches take at most {@code RAIL8_GIT_TIMEOUT} together. */
     public PackageRepositories open() {
-        return new Session();
+        return new Session(null);
+    }
+
+    /**
+     * The repositories as the cache holds them now, for a restore that tries no further fetch: a commit the cache holds is
+     * answered as {@link #open()} answers it, and one it lacks fails at once as {@code reason}, with nothing fetched.
+     */
+    public PackageRepositories cached(Reason reason) {
+        return new Session(Objects.requireNonNull(reason, "reason"));
     }
 
     private Path repositoryDir(String name) {
@@ -190,9 +198,16 @@ public final class GitCache {
         /** The refs each fetched repository advertised at its fetch. */
         private final Map<String, Map<String, Ref>> fetched = new HashMap<>();
         private final Set<String> reading = new HashSet<>();
+        /** Why this session fetches nothing; null when it fetches. */
+        private final Reason unfetched;
         private volatile boolean expired;
         private volatile Fetch current;
         private boolean started;
+        private Timer.Cancellable deadline;   // once the first fetch started it
+
+        Session(Reason unfetched) {
+            this.unfetched = unfetched;
+        }
 
         @Override
         public URI base() {
@@ -309,9 +324,10 @@ public final class GitCache {
         private Map<String, Ref> fetch(String repository, String target) throws GitFailure {
             Map<String, Ref> done = fetched.get(repository);
             if (done != null) return done;
+            if (unfetched != null) throw new GitFailure(unfetched, repository, target);
             if (!started) {
                 started = true;
-                timer.schedule(settings.timeout(), this::expire);
+                deadline = timer.schedule(settings.timeout(), this::expire);
             }
             if (expired) throw new GitFailure(Reason.TIMED_OUT, repository, target);
             Repository cached;
@@ -365,6 +381,11 @@ public final class GitCache {
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
+        }
+
+        @Override
+        public void close() {
+            if (deadline != null) deadline.cancel();
         }
 
         /** The deadline passed: no further fetch starts, and the one running stops. */

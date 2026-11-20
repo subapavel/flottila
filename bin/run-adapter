@@ -3,23 +3,26 @@
 #
 #   bin/run-adapter <adapter-dir>
 #
-# <adapter-dir> is an adapter's Maven project, as `bin/rail8 new-adapter` writes one: its pom.xml builds the plugin jar into
-# target/plugin, and package/ holds a package that uses the adapter. In order, the script:
+# <adapter-dir> is an adapter's Maven project and a git repository, as `bin/rail8 new-adapter` writes one: its pom.xml builds
+# the plugin jar into target/plugin, and package/ holds a package that uses the adapter. In order, the script:
 #   1. builds the adapter's jar (mvn package, tests skipped: `mvn verify` runs them);
 #   2. starts a Postgres of its own in Docker, empty, on a free loopback port;
 #   3. starts a node of environment dev from the platform's node jar, with the adapter's target/plugin as its plugins and
 #      its admin API on 127.0.0.1:18081 without a token and its HTTP port on 127.0.0.1:18090, where the adapter's in endpoints
-#      are served under its prefix; its log and data are in <adapter-dir>/target/run-adapter;
-#   4. deploys <adapter-dir>/package to it;
+#      are served under its prefix; its package repositories are the folder that holds <adapter-dir>, the package's folder in
+#      each is package/; its log and data are in <adapter-dir>/target/run-adapter;
+#   4. deploys the adapter's repository at HEAD to it, saying so in one line when package/ has changes not committed: those
+#      are not deployed;
 #   5. starts a partner that answers every request with the body it was sent on 127.0.0.1:18091, the port the template's out
 #      endpoint calls;
 #   6. runs the UI on http://localhost:5173 with <adapter-dir> as its working folder: the Endpoints screen shows the
 #      adapter's settings forms, and Save writes the endpoint files there; the Messages screen finds what the node stored.
 # Ctrl+C stops the UI, the partner and the node, and removes the Postgres container. Each run starts empty and deploys the
-# package as it is on disk: after a change to the adapter or its package, run the script again.
+# package as committed: after a change to the package, commit it and run the script again; a change to the adapter's code
+# is built as it is on disk.
 #
-# Needs a checkout of Rail8 with the platform built and the UI installed (docs/ADAPTERS.md), Docker, a JDK 25, Maven, Node.js
-# and curl. Exits 2 on a usage error, 1 when a step fails, each with one line naming what failed.
+# Needs a checkout of Rail8 with the platform built and the UI installed (docs/ADAPTERS.md), Docker, a JDK 25, Maven, Node.js,
+# git and curl. Exits 2 on a usage error, 1 when a step fails, each with one line naming what failed.
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -37,9 +40,14 @@ dir=$(cd "$1" && pwd)
 [ -f "$dir/pom.xml" ] || fail "$dir has no pom.xml: not an adapter's project" 2
 [ -f "$dir/package/package.yaml" ] || fail "$dir/package/package.yaml not found: the package to deploy" 2
 
-for tool in docker java mvn node curl; do
+for tool in docker java mvn node git curl; do
   command -v "$tool" > /dev/null 2>&1 || fail "$tool is not installed"
 done
+[ -d "$dir/.git" ] || fail "$dir is not a git repository: the node deploys its commits (git init, then commit the adapter)" 2
+git -C "$dir" rev-parse -q --verify 'HEAD^{commit}' > /dev/null || fail "$dir has no commit yet: commit the adapter first" 2
+# the node reads the repository <name> under the folder that holds the adapter, as a file:// URI
+repository=$(basename "$dir")
+base="file://$(dirname "$dir" | sed -e 's/%/%25/g' -e 's/ /%20/g')/"
 docker info > /dev/null 2>&1 || fail "Docker is not running"
 if [ -n "${JAVA_HOME:-}" ]; then java="$JAVA_HOME/bin/java"; else java=java; fi
 
@@ -102,7 +110,7 @@ echo "run-adapter: starting the node with the plugins in $dir/target/plugin (log
   unset RAIL8_ADMIN_TOKEN
   RAIL8_ENV=dev RAIL8_NODE_ID=run-adapter RAIL8_PG_HOST=127.0.0.1 RAIL8_PG_PORT="$pg_port" RAIL8_PG_PASSWORD=rail8 \
     RAIL8_ADMIN_PORT=$admin_port RAIL8_HTTP_PORT=$http_port RAIL8_DATA_DIR="$run/node" RAIL8_JOURNAL_KEY_GENERATE=true RAIL8_PLUGINS="$dir/target/plugin" \
-    exec "$java" -jar "$node"
+    RAIL8_GIT_BASE="$base" RAIL8_GIT_PATH=package exec "$java" -jar "$node"
 ) > "$run/node.log" 2>&1 &
 node_pid=$!
 waited=0
@@ -116,8 +124,11 @@ until curl -sf "http://127.0.0.1:$admin_port/health" > /dev/null 2>&1; do
   waited=$((waited + 1))
 done
 
-echo "run-adapter: deploying $dir/package"
-(unset RAIL8_ADMIN_TOKEN; "$root/bin/rail8" deploy "$dir/package" --admin "http://127.0.0.1:$admin_port") \
+echo "run-adapter: deploying $dir/package as committed at HEAD ($(git -C "$dir" rev-parse --short HEAD))"
+if [ -n "$(git -C "$dir" status --porcelain -- package)" ]; then
+  echo "run-adapter: $dir/package has changes not committed: they are not deployed; commit them and run again to deploy them"
+fi
+(unset RAIL8_ADMIN_TOKEN; "$root/bin/rail8" deploy "$repository" HEAD --admin "http://127.0.0.1:$admin_port") \
   || fail "the node refused the package; its log: $run/node.log"
 
 "$java" "$root/deploy/quickstart/PartnerEcho.java" $partner_port > "$run/partner.log" 2>&1 &

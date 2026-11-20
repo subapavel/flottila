@@ -10,7 +10,8 @@ import java.util.Optional;
  * @param id the qualified id, {@code <package>/<flow>}
  * @param pkg the package's name
  * @param packageVersion the package's version
- * @param revision the deploy's revision, empty without one
+ * @param commit the commit its package was deployed from when the flow was built: a flow a redeploy kept, its files unchanged,
+ *               keeps the commit it was built from; empty for a deploy with no origin
  * @param flowVersion the flow's own version
  * @param delivery the delivery mode: {@code sync}, {@code at-least-once} or {@code at-most-once}
  * @param hash the flow's effective hash, {@code sha256:} and 64 lower-case hex digits: its yaml, the package files its
@@ -18,7 +19,7 @@ import java.util.Optional;
  * @param state whether the flow runs
  * @since 0.1
  */
-public record DeployedFlow(String id, String pkg, String packageVersion, Optional<String> revision, String flowVersion, String delivery,
+public record DeployedFlow(String id, String pkg, String packageVersion, Optional<String> commit, String flowVersion, String delivery,
                            String hash, State state) {
 
     /**
@@ -31,7 +32,7 @@ public record DeployedFlow(String id, String pkg, String packageVersion, Optiona
 
     public DeployedFlow {
         Objects.requireNonNull(id, "id");
-        Objects.requireNonNull(revision, "revision");
+        Objects.requireNonNull(commit, "commit");
         Objects.requireNonNull(hash, "hash");
         Objects.requireNonNull(state, "state");
     }

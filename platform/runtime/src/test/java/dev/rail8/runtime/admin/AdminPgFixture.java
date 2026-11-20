@@ -126,7 +126,7 @@ final class AdminPgFixture implements AutoCloseable {
         PackageDraft shop = PackageDraft.of("shop", "1.0.0");
         shop.endpoint("orders-in", "in", new JsonObject().put("path", "/orders"))
                 .flow("orders", "1.0.0", "at-least-once", "orders-in", 65_536, new JsonArray().add(new JsonObject().put("type", "probe").put("name", "probe")));
-        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), shop.zipTo(tmp.resolve("archives"))));
+        OnVirtualThread.call(() -> deployments.deploy("shop", shop.folderIn(tmp.resolve("folders"))));
         server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), messages, dlq, blobs,
                 new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue, new PgFailedMessages(pool, queue), Optional.empty(),
                 new PgMessageList(pool), new Workers(), WorkSignals.NONE);

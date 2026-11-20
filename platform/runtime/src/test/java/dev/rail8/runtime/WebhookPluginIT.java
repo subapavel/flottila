@@ -1,5 +1,6 @@
 package dev.rail8.runtime;
 
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.node.TestJournalKey;
 import dev.rail8.testkit.Ports;
@@ -75,6 +76,7 @@ class WebhookPluginIT {
     Map<String, String> env(int adminPort, int httpPort, Path plugins) {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "ci");
+        GitRepos.with(env);   // the test JVM's package repositories, which its deploys commit to
         env.put("RAIL8_NODE_ID", "webhook-plugin-it");
         env.put("RAIL8_ADMIN_PORT", String.valueOf(adminPort));
         env.put("RAIL8_PEER_PORT", "0");
@@ -133,8 +135,7 @@ class WebhookPluginIT {
         assertEquals(0, started.code(), "the node starts with the plugin: " + err.toString(StandardCharsets.UTF_8));
 
         try (HttpClient client = NodeIT.http()) {
-            HttpResponse<String> deployed = NodeIT.send(client, "PUT", admin, "/admin/packages/webhook-relay",
-                    NodeIT.zip(packageFiles(partner.actualPort())), "application/zip");
+            HttpResponse<String> deployed = NodeIT.deploy(client, admin, "webhook-relay", packageFiles(partner.actualPort()));
             assertEquals(200, deployed.statusCode(), "the package over the plugin's scheme deploys: " + deployed.body());
             assertEquals(new JsonArray().add("webhook-relay/relay"), new JsonObject(deployed.body()).getJsonArray("flows"), deployed.body());
 

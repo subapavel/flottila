@@ -66,8 +66,7 @@ class DeploymentsHttpPathTest {
         Map<String, String> env = Map.of("RAIL8_ENV", "dev", "RAIL8_NODE_ID", "node-1", "RAIL8_DATA_DIR", tmp.resolve("node-1").toString(),
                 "RAIL8_BLOB_DURABLE_MAX", "4096", "RAIL8_SECRET_ORDERS_PATH", "/orders");
         deployments = new Deployments(NodeConfig.from(env), runtime, byScheme, rt.clock(), rt.timer(), List.of(), List.of(),
-                new InMemoryMessageStore(), new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, new InMemoryDeploymentStore(),
-                new DirArchiveStore(tmp.resolve("archives")));
+                new InMemoryMessageStore(), new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, new InMemoryDeploymentStore());
     }
 
     @AfterEach

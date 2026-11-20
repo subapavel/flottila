@@ -110,8 +110,8 @@ class AdminServerCpuTest {
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
         deployments = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(new OptionSchemaSteps.Sheet()),
                 List.of(), messages, dlq, new InMemoryWorkQueue(rt.clock()), () -> 0L);
-        Path archive = pkg("shop", "1.0.0", Map.of("orders", "sync", "audit", "sync", "idle", "sync")).zipTo(tmp.resolve("uploads"));
-        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), archive));
+        Path folder = pkg("shop", "1.0.0", Map.of("orders", "sync", "audit", "sync", "idle", "sync")).folderIn(tmp.resolve("folders"));
+        OnVirtualThread.call(() -> deployments.deploy("shop", folder));
         assertEquals(Set.of("shop/orders", "shop/audit", "shop/idle"), Set.copyOf(deployments.flows().stream().map(f -> f.id()).toList()), "fixture: deployed");
     }
 

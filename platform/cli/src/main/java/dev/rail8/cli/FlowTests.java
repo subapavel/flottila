@@ -452,8 +452,8 @@ final class FlowTests {
     }
 
     /**
-     * The directories and regular files of {@code from}, by their paths below it, copied into {@code to}, a directory made here, as
-     * {@code rail8 deploy}'s zip takes them: a link to a file is copied as the file, a linked directory as an empty one, and
+     * The directories and regular files of {@code from}, by their paths below it, copied into {@code to}, a directory made here: a
+     * link to a file is copied as the file, a linked directory as an empty one, and
      * {@code .git} at the root — a clone's repository, or a worktree's pointer to one — not at all. Returns {@code to}.
      */
     static Path copy(Path from, Path to) throws IOException {

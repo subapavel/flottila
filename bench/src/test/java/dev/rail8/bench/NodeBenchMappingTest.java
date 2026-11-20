@@ -13,7 +13,6 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.stream.StreamSource;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -22,9 +21,6 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -40,7 +36,7 @@ class NodeBenchMappingTest {
     void theMappingGivesWhatTheStylesheetGives() throws Exception {
         NodeBenchMain.Options o = NodeBenchMain.options(new String[] {"--scenario", "worker", "--step", "mapping"});
         assertEquals(NodeBenchMain.Step.MAPPING, o.step());
-        Map<String, byte[]> files = unzip(NodeBenchMain.benchPackage(o, 1));
+        Map<String, byte[]> files = NodeBenchMain.benchPackage(o, 1);
         String flow = new String(files.get("flows/bench.yaml"), StandardCharsets.UTF_8);
         assertTrue(flow.contains("flows/transform.mapping.json"), "the flow runs the mapping step: " + flow);
 
@@ -82,13 +78,5 @@ class NodeBenchMappingTest {
         t.setDestination(s);
         t.transform();
         return out.toByteArray();
-    }
-
-    static Map<String, byte[]> unzip(byte[] zip) throws IOException {
-        Map<String, byte[]> files = new TreeMap<>();
-        try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(zip))) {
-            for (ZipEntry e; (e = in.getNextEntry()) != null; ) files.put(e.getName(), in.readAllBytes());
-        }
-        return files;
     }
 }

@@ -169,7 +169,10 @@ jobs:
       RAIL8_ADMIN_TOKEN: ci-stack-token
       RAIL8_S3_SECRET_KEY: ci-stack-s3-secret
     steps:
+      # the node reads this checkout as its package repository rail8, and refuses a shallow one
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -220,6 +223,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RAIL8_ADMIN_TOKEN: rail8-local
+      # the quickstart commits the demo in its working folder: the runner's git has no identity of its own
+      GIT_AUTHOR_NAME: Rail8 CI
+      GIT_AUTHOR_EMAIL: ci@rail8.invalid
+      GIT_COMMITTER_NAME: Rail8 CI
+      GIT_COMMITTER_EMAIL: ci@rail8.invalid
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -233,11 +241,17 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
       # The commands of the quickstart's first run, in its order.
-      - name: Build the node's jar, install the UI
+      - name: Build the node's jar and the command line, install the UI
         run: |
           set -euo pipefail
-          ./mvnw -B -ntp -q package -DskipTests -pl :rail8-node -am
+          ./mvnw -B -ntp -q package -DskipTests -pl :rail8-node,:rail8-cli -am
           (cd ui && npm ci)
+      - name: Make the working folder, the demo in it a git repository with its first commit
+        run: |
+          set -euo pipefail
+          mkdir -p ~/rail8-workspace && cp -r examples/demo ~/rail8-workspace/demo
+          cp -r mapping/corpus ~/rail8-workspace/mapping-corpus
+          (cd ~/rail8-workspace/demo && git init -q -b main && echo '* -text' > .gitattributes && git add -A && git commit -qm 'The demo')
       - name: Start the node, wait for /health and deploy the demo
         run: |
           set -euo pipefail
@@ -247,12 +261,10 @@ jobs:
             if [ $(( $(date +%s) - start )) -ge 120 ]; then echo "::error::/health not green within 120 s of up"; exit 1; fi
             sleep 2
           done
-          deploy/quickstart/deploy.sh examples/demo
+          bin/rail8 deploy demo HEAD
       - name: Start the UI as the quickstart does
         run: |
           set -euo pipefail
-          mkdir -p ~/rail8-workspace && cp -r examples/demo ~/rail8-workspace/demo
-          cp -r mapping/corpus ~/rail8-workspace/mapping-corpus
           (cd ui && RAIL8_WORKSPACE=$HOME/rail8-workspace nohup npm run dev > "$RUNNER_TEMP/ui.log" 2>&1 &)
           start=$(date +%s)
           until curl -sf localhost:5173/ > /dev/null; do

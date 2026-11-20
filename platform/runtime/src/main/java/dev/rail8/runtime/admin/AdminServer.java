@@ -33,12 +33,9 @@ import dev.rail8.runtime.store.StepLogJson;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.MultiMap;
-import io.vertx.core.Promise;
 import io.vertx.core.VerticleBase;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.file.AsyncFile;
-import io.vertx.core.file.OpenOptions;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
@@ -56,8 +53,6 @@ import io.vertx.ext.web.handler.BodyHandler;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Duration;
@@ -111,26 +106,28 @@ import java.util.stream.Collectors;
  * failed, a recorded header no response may carry, a stored body whose stream fails before the head is out (after it, the
  * response is reset).
  *
- * <p>With a {@link Deployments} it also deploys: {@code PUT /admin/packages/{name}?revision=} — a Content-Length
- * above {@code maxPackageBytes} is 413 before a byte of the body is read; otherwise {@code Expect: 100-continue} is answered with
- * {@code 100 Continue} and the body is streamed with back-pressure into a
- * temp file in {@code incomingDir()} and counted, 413 at byte max+1; the deploy runs on the route's virtual thread and the temp
- * file is deleted before the answer goes out, whatever it is: 200 {@code {package, version, revision|null, archive, flows, added,
- * swapped, removed}} (the last three sorted qualified flow ids: a redeploy swaps only the flows that changed), or a refusal
- * by its kind — 400, 403, 409 (another deploy runs on the node), 422 {@code {error, problems}}, 500 ({@code {error}}; a redeploy
- * whose start failed and rolled back: {@code {error, problems}}), 503 (the node stops; or the node's Postgres pool refused
- * the deploy record's write: the same body as the 500 of a record not written, or its work-queue question: {@code {error}}
- * naming the flow and the pool's refusal; only when every failed question was the pool's — a real failure of another
- * flow's question is 500). An answer given before
- * the request's body was read to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and
+ * <p>With a {@link Deployments} it also deploys from git: {@code POST /admin/deploy} with the body
+ * {@code {"repository": "<name>", "commit": "<40 hex, or a ref in dev and ci>"}} and nothing else (else 400; above
+ * {@link #DEPLOY_BODY_MAX} bytes 413), the actor its {@code X-Rail8-Actor} header (400 above {@link #ACTOR_MAX} characters). The
+ * deploy runs on the route's virtual thread: 200 {@code {package, version, repository, commit, flows, added, swapped, removed}}
+ * (the last three sorted qualified flow ids: a redeploy swaps only the flows that changed), or a refusal by its kind — 400, 403,
+ * 409 (another deploy runs on the node, or the package is deployed from another repository), 422 {@code {error, problems}}, 500
+ * ({@code {error}}; a redeploy whose start failed and rolled back: {@code {error, problems}}), 503 (the node stops; or the node's
+ * Postgres pool refused the deploy record's write: the same body as the 500 of a record not written, or its work-queue question:
+ * {@code {error}} naming the flow and the pool's refusal; only when every failed question was the pool's — a real failure of
+ * another flow's question is 500). With {@code ?check=true} (a {@code check} other than {@code true} or {@code false} is 400) it
+ * answers what the deploy would do, the same answer, or its refusal: nothing that runs changes and no record is written.
+ * {@code GET /admin/flows} and
  * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state}
- * ({@code RUNNING}, {@code RESTARTING} or {@code FAILED}; a RESTARTING one also {@code restart: {failures, next, cause}}), a package its {@code state} and its {@code problems} (FAILED when the restore could not install it, with no
+ * ({@code RUNNING}, {@code RESTARTING} or {@code FAILED}; a RESTARTING one also {@code restart: {failures, next, cause}}) and the
+ * {@code commit} its package was deployed from (null for a deploy with no origin), a package its {@code repository} and
+ * {@code commit} (null for a deploy with no origin), its {@code state} and its {@code problems} (FAILED when the restore could not install it, with no
  * flows, no files, no folders and no artifacts) and its tree: {@code folders:[{path, namespace|null, description|null}]}
  * and {@code artifacts:[{path, kind, id|null}]}, each sorted by path, its {@code content} digest (null when FAILED) and its
- * {@code dependencies:[{name, version, content, archive, direct}]}, the closure its deploy resolved.
+ * {@code dependencies:[{name, version, content, repository, commit, direct}]}, the closure its deploy resolved.
  * {@code DELETE /admin/packages/{name}} undeploys on the route's virtual thread: 200 {@code {name, version, flowsRemoved}}
  * (its flows' qualified ids, sorted), or a refusal by the deploy's status map — 400, 403, 409 (another deploy or undeploy runs on
- * the node, or another package's record pins it, or the work queue holds items of a flow of it), 503 (the node stops; or the
+ * the node, or the work queue holds items of a flow of it), 503 (the node stops; or the
  * node's Postgres pool refused the work queue's question or the record delete: nothing changed, retryable; a refused
  * question only when no other question failed otherwise and no flow holds items — those are 500 and 409) — and 404 for a package the node does not list; a record
  * delete or a queue question that fails otherwise is 500. {@code GET /admin/targets} lists the node's limits per target system, sorted by target: 200
@@ -201,12 +198,15 @@ public final class AdminServer {
     static final int ACTOR_MAX = 128;
     /** The largest body {@code POST /admin/dlq/{id}/cancel} reads, in bytes: a larger one is 413. */
     static final int CANCEL_BODY_MAX = 8 * 1024;
+
+    /** The largest body of {@code POST /admin/deploy}, in bytes. */
+    static final int DEPLOY_BODY_MAX = 4 * 1024;
     private static final String JSON = "application/json";
     private static final String OCTETS = "application/octet-stream";
     private static final String BEARER = "Bearer ";
     /** What the router answers itself: no route, a method the route does not take, a request it cannot read, a handler that threw. */
     private static final Map<Integer, String> ROUTER_ERRORS = Map.of(400, "bad request", 404, "no such route", 405, "method not allowed",
-            413, "the request body is above " + CANCEL_BODY_MAX + " bytes", 500, "internal error");
+            500, "internal error");
 
     /**
      * Where the API listens and the token {@code /admin/**} needs. A blank token is no token; a host that is not a loopback
@@ -477,7 +477,7 @@ public final class AdminServer {
             router.get("/admin/messages/:id/steps/:n/body").handler(offload(AdminServer.this::body));
             router.get("/admin/dlq").handler(offload(AdminServer.this::dlq));
             deployments.ifPresent(d -> {
-                router.put("/admin/packages/:name").handler(upload(d));
+                router.post("/admin/deploy").handler(BodyHandler.create(false).setBodyLimit(DEPLOY_BODY_MAX)).handler(offload(c -> AdminServer.deploy(c, d)));
                 router.delete("/admin/packages/:name").handler(offload(c -> undeployed(c, d)));
                 router.get("/admin/flows").handler(offload(c -> flows(d)));
                 router.get("/admin/packages").handler(offload(c -> packages(d)));
@@ -495,11 +495,13 @@ public final class AdminServer {
             });
             failed.ifPresent(f -> {
                 deployments.ifPresent(d -> router.post("/admin/dlq/:id/retry").handler(offload(c -> retry(c, d, f))));
-                // the only route that reads a body into memory: bounded, nothing written to disk
+                // a body read into memory: bounded, nothing written to disk
                 router.post("/admin/dlq/:id/cancel").handler(BodyHandler.create(false).setBodyLimit(CANCEL_BODY_MAX)).handler(offload(c -> cancel(c, f)));
                 router.post("/admin/messages/:id/cancel").handler(BodyHandler.create(false).setBodyLimit(CANCEL_BODY_MAX)).handler(offload(c -> end(c, f)));
             });
             ROUTER_ERRORS.forEach((status, reason) -> router.errorHandler(status, ctx -> answer(ctx.response(), Json.of(status, error(reason)))));
+            router.errorHandler(413, ctx -> answer(ctx.response(), Json.of(413, error("the request body is above "
+                    + (ctx.request().path().equals("/admin/deploy") ? DEPLOY_BODY_MAX : CANCEL_BODY_MAX) + " bytes"))));
             return vertx.createHttpServer(new HttpServerOptions().setHost(config.host()).setPort(config.port())).requestHandler(router).listen()
                     .map(listening -> server = listening);
         }
@@ -518,53 +520,6 @@ public final class AdminServer {
                 Reply reply = run(body, ctx);
                 context.runOnContext(v -> answer(ctx.response(), reply));
             });
-        }
-
-        /**
-         * {@code PUT /admin/packages/{name}} on the event loop: a declared length above the limit is answered at once (Netty refused
-         * a Content-Length that is not a non-negative number before routing; were one to get here, the router answers 500); else
-         * the request is paused before a byte of it is read, {@code Expect: 100-continue} is answered, and the route body runs on a
-         * virtual thread.
-         */
-        private Handler<RoutingContext> upload(Deployments deployments) {
-            return ctx -> {
-                HttpServerRequest req = ctx.request();
-                String declared = req.getHeader(HttpHeaders.CONTENT_LENGTH);
-                if (declared != null && Long.parseLong(declared) > deployments.maxPackageBytes()) {
-                    answerAndClose(ctx, tooLarge(deployments.maxPackageBytes()));
-                    return;
-                }
-                req.pause();
-                Upload upload = new Upload(req, deployments.maxPackageBytes());
-                // a client that waits for 100 Continue before its body gets it now; one above the limit got its 413 instead
-                if (HttpHeaders.CONTINUE.toString().equalsIgnoreCase(req.getHeader(HttpHeaders.EXPECT))) ctx.response().writeContinue();
-                Thread.ofVirtual().name("rail8-admin").start(() -> {
-                    Reply reply = run(c -> deploy(c, deployments, upload), ctx);
-                    context.runOnContext(v -> answerAndClose(ctx, reply));
-                });
-            };
-        }
-
-        /** The body into a temp file in {@code incomingDir()}, then the deploy; the temp file is deleted before the answer, whatever it is. */
-        private Reply deploy(RoutingContext ctx, Deployments deployments, Upload body) throws IOException {
-            long max = deployments.maxPackageBytes();
-            Path incoming = deployments.incomingDir();
-            Files.createDirectories(incoming);
-            Path upload = Files.createTempFile(incoming, "upload-", ".zip");
-            try {
-                long received = Future.<Long>future(done -> context.runOnContext(v -> vertx.fileSystem().open(upload.toString(), new OpenOptions().setRead(false).setCreate(false))
-                        .compose(body::into).onComplete(done))).await();
-                if (received > max) return tooLarge(max);
-                DeployResult r = deployments.deploy(ctx.pathParam("name"), Optional.ofNullable(ctx.request().getParam("revision")), upload);
-                DeployedPackage p = r.pkg();
-                return Json.of(200, new JsonObject().put("package", p.name()).put("version", p.version()).put("revision", p.revision().orElse(null))
-                        .put("archive", "sha256:" + p.archiveSha256()).put("flows", new JsonArray(p.flows()))
-                        .put("added", new JsonArray(r.added())).put("swapped", new JsonArray(r.swapped())).put("removed", new JsonArray(r.removed())));
-            } catch (DeployRefusedException refused) {
-                return refusal(refused);
-            } finally {
-                Files.deleteIfExists(upload);
-            }
         }
     }
 
@@ -597,14 +552,6 @@ public final class AdminServer {
             LOG.log(System.Logger.Level.WARNING, "writing an admin answer failed", refused);
             return fail(res);
         }
-    }
-
-    /** {@link #answer}, then, when the request's body was not read to its end, the connection closes: the rest of it is never read. */
-    private static void answerAndClose(RoutingContext ctx, Reply reply) {
-        HttpServerRequest req = ctx.request();
-        answer(ctx.response(), reply).onComplete(written -> {
-            if (!req.isEnded()) req.connection().close();
-        });
     }
 
     /** Ends a response that cannot be answered as meant: a 500 {@code {error}} while the head is not out, otherwise a reset. */
@@ -1041,7 +988,7 @@ public final class AdminServer {
         JsonArray items = new JsonArray();
         Map<String, Deployments.Restarting> restarting = deployments.restarting();
         for (DeployedFlow f : deployments.flows()) {
-            JsonObject item = new JsonObject().put("id", f.id()).put("package", f.pkg()).put("packageVersion", f.packageVersion()).put("revision", f.revision().orElse(null))
+            JsonObject item = new JsonObject().put("id", f.id()).put("package", f.pkg()).put("packageVersion", f.packageVersion()).put("commit", f.commit().orElse(null))
                     .put("flowVersion", f.flowVersion()).put("delivery", f.delivery()).put("hash", f.hash()).put("state", f.state().name());
             Deployments.Restarting r = restarting.get(f.id());
             if (r != null) item.put("restart", new JsonObject().put("failures", r.failures()).put("next", r.next().toString()).put("cause", r.cause()));
@@ -1113,6 +1060,39 @@ public final class AdminServer {
         return Json.of(200, new JsonObject().put("items", items));
     }
 
+    /**
+     * {@code POST /admin/deploy}: the deploy of the body's commit of the body's repository, or with {@code ?check=true} its check;
+     * the body, the {@code check} parameter and the actor are refused (400) before the deploy is asked.
+     */
+    private static Reply deploy(RoutingContext ctx, Deployments deployments) throws IOException {
+        String actor = actor(ctx.request());
+        String check = Objects.requireNonNullElse(ctx.request().getParam("check"), "false");
+        if (!check.equals("true") && !check.equals("false")) throw new Refused("check is true or false, was '" + check + "'");
+        String shape = "the body is {\"repository\": \"<name>\", \"commit\": \"<commit or ref>\"}";
+        String type = ctx.request().getHeader(HttpHeaders.CONTENT_TYPE);
+        if (type != null && type.toLowerCase(java.util.Locale.ROOT).startsWith("multipart/form-data")) throw new Refused(shape + ": it is a form");
+        if (ctx.body().isEmpty()) throw new Refused(shape + ": there is none");
+        Object json;
+        try {
+            json = io.vertx.core.json.Json.decodeValue(ctx.body().buffer());
+        } catch (DecodeException notJson) {
+            throw new Refused(shape + ": it is not JSON");
+        }
+        if (!(json instanceof JsonObject o) || o.size() != 2 || !(o.getValue("repository") instanceof String repository)
+                || !(o.getValue("commit") instanceof String commit)) {
+            throw new Refused(shape);
+        }
+        try {
+            DeployResult r = check.equals("true") ? deployments.check(repository, commit) : deployments.deploy(repository, commit, actor);
+            DeployedPackage p = r.pkg();
+            return Json.of(200, new JsonObject().put("package", p.name()).put("version", p.version()).put("repository", p.repository().orElse(null))
+                    .put("commit", p.commit().orElse(null)).put("flows", new JsonArray(p.flows()))
+                    .put("added", new JsonArray(r.added())).put("swapped", new JsonArray(r.swapped())).put("removed", new JsonArray(r.removed())));
+        } catch (DeployRefusedException refused) {
+            return refusal(refused);
+        }
+    }
+
     private static Reply packages(Deployments deployments) {
         JsonArray items = new JsonArray();
         for (DeployedPackage p : deployments.packages()) {
@@ -1125,9 +1105,9 @@ public final class AdminServer {
             p.artifacts().forEach(a -> artifacts.add(new JsonObject().put("path", a.path()).put("kind", a.kind()).put("id", a.id().orElse(null))));
             JsonArray dependencies = new JsonArray();   // the closure, each marked direct or not
             p.dependencies().forEach(d -> dependencies.add(new JsonObject().put("name", d.name()).put("version", d.version()).put("content", d.content())
-                    .put("archive", "sha256:" + d.archiveSha256()).put("direct", d.direct())));
-            items.add(new JsonObject().put("name", p.name()).put("version", p.version()).put("revision", p.revision().orElse(null))
-                    .put("archive", "sha256:" + p.archiveSha256()).put("deployedAt", p.deployedAt().toString()).put("flows", new JsonArray(p.flows())).put("files", files)
+                    .put("repository", d.repository()).put("commit", d.commit()).put("direct", d.direct())));
+            items.add(new JsonObject().put("name", p.name()).put("version", p.version()).put("repository", p.repository().orElse(null))
+                    .put("commit", p.commit().orElse(null)).put("deployedAt", p.deployedAt().toString()).put("flows", new JsonArray(p.flows())).put("files", files)
                     .put("folders", folders).put("artifacts", artifacts).put("state", p.state().name()).put("problems", new JsonArray(p.problems()))
                     .put("content", p.content()).put("dependencies", dependencies));
         }
@@ -1170,10 +1150,6 @@ public final class AdminServer {
     /** 503 for a request the node's Postgres pool refused a connection: a fixed text, the client's message not shown. */
     private static Reply busy() {
         return Json.of(503, error("the database pool is busy; retry"));
-    }
-
-    private static Reply tooLarge(long max) {
-        return Json.of(413, error("the package is above RAIL8_MAX_PACKAGE_BYTES " + max + " bytes"));
     }
 
     private static <T> JsonObject page(Page<T> page, Function<T, Object> item) {
@@ -1315,54 +1291,6 @@ public final class AdminServer {
                 LOG.log(System.Logger.Level.WARNING, "streaming a stored body failed", failed);
                 fail(res);
             });
-        }
-    }
-
-    /**
-     * One upload, on the verticle's context: the request's body into a file, counted, one write in flight at a time — the request
-     * is paused from each chunk until its write is done, so what arrives meanwhile waits in the request and then in the socket. It
-     * finishes once: at the request's end, at byte {@code max}+1 (the request stays paused: the rest is never read), or at the
-     * first failure of the request or a write. Finishing closes the file and completes with the bytes counted, or fails with that
-     * first failure. It is made on the route, with the request paused, so a failure of the request (the client hangs up) before
-     * the file is open is the upload's failure all the same; after a failure the rest of the body is dropped unread, so no write
-     * reaches the file once it closes.
-     */
-    private static final class Upload {
-        private final HttpServerRequest req;
-        private final long max;
-        private final Promise<Long> received = Promise.promise();
-        private final Promise<Void> finished = Promise.promise();
-        private AsyncFile file;   // on the verticle's context only, as count is
-        private long count;
-
-        /** On the route, the request paused: no chunk arrives before {@link #into} resumes it. */
-        Upload(HttpServerRequest req, long max) {
-            this.req = req;
-            this.max = max;
-            req.exceptionHandler(this::failed);
-            req.endHandler(end -> finished.tryComplete());
-            req.handler(this::chunk);
-        }
-
-        /** Pipes the body into {@code file}, open for writing; completes as the class comment says. */
-        Future<Long> into(AsyncFile file) {
-            this.file = file;
-            finished.future().compose(v -> file.close()).onSuccess(closed -> received.tryComplete(count)).onFailure(received::tryFail);
-            req.resume();
-            return received.future();
-        }
-
-        private void chunk(Buffer chunk) {
-            count += chunk.length();
-            req.pause();
-            if (count > max) finished.tryComplete();
-            else file.write(chunk).onSuccess(written -> req.resume()).onFailure(this::failed);
-        }
-
-        private void failed(Throwable failure) {
-            req.handler(null);   // a chunk still queued in the request, or released by the write in flight, is dropped
-            received.tryFail(failure);
-            finished.tryComplete();
         }
     }
 }

@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Timeout;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -25,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The node bench's client side against a local Vert.x server (no node, no database): what a load counts as refused (503) and
  * as an error (any other status, a failed request) (FIX-67), a deploy
- * the node refuses, and the exit code a record with failures gives.
+ * the node refuses, the deploy's request, and the exit code a record with failures gives.
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class NodeBenchMainHarnessTest {
@@ -35,13 +36,14 @@ class NodeBenchMainHarnessTest {
     NodeBenchMain.Harness harness;
     final AtomicInteger mixed = new AtomicInteger();
     final AtomicLong writeFailures = new AtomicLong();
+    final AtomicReference<String> deployed = new AtomicReference<>();
     volatile boolean down;
 
     @BeforeEach
     void start() {
         vertx = Vertx.vertx();
         // /ok echoes, /busy is 503 "busy", /mixed answers its n-th request 200, 503, 500 in turn, /fail is 500 "nope", the
-        // admin path refuses the package with 422, /health answers the node's shape with {@code writeFailures} (503 DOWN when {@code down})
+        // deploy refuses the commit with 422 and keeps its method, content type and body, /health answers the node's shape with {@code writeFailures} (503 DOWN when {@code down})
         server = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(bytes -> {
             switch (req.path()) {
                 case "/ok" -> req.response().end(bytes);
@@ -55,7 +57,10 @@ class NodeBenchMainHarnessTest {
                         default -> req.response().setStatusCode(500).end("nope");
                     }
                 }
-                case "/admin/packages/bench" -> req.response().setStatusCode(422).end("{\"error\":\"flow 'bench' is invalid\"}");
+                case "/admin/deploy" -> {
+                    deployed.set(req.method() + " " + req.getHeader("Content-Type") + " " + bytes);
+                    req.response().setStatusCode(422).end("{\"error\":\"flow 'bench' is invalid\"}");
+                }
                 default -> req.response().setStatusCode(500).end("nope");
             }
         })).listen(0, "127.0.0.1").await();
@@ -149,8 +154,11 @@ class NodeBenchMainHarnessTest {
 
     @Test
     void aDeployTheNodeRefusesFailsTheRunWithTheAnswer() {
-        IllegalStateException refused = assertThrows(IllegalStateException.class, () -> harness.deploy(server.actualPort(), new byte[] {1}));
+        String commit = "0123456789abcdef0123456789abcdef01234567";
+        IllegalStateException refused = assertThrows(IllegalStateException.class, () -> harness.deploy(server.actualPort(), commit));
         assertTrue(refused.getMessage().contains("422") && refused.getMessage().contains("flow 'bench' is invalid"), refused.getMessage());
+        assertEquals("POST application/json " + new JsonObject().put("repository", "bench").put("commit", commit).encode(), deployed.get(),
+                "the commit of the bench's repository, as JSON");
     }
 
     @Test

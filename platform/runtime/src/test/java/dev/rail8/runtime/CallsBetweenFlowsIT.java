@@ -1,6 +1,7 @@
 package dev.rail8.runtime;
 
 import dev.rail8.components.http.HttpComponent;
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.runtime.deploy.PackageDraft;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
@@ -99,6 +100,7 @@ class CallsBetweenFlowsIT {
     Node startNode() throws Exception {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "ci");   // ci is no deployed environment: plain-http endpoints and manual deploys are allowed
+        GitRepos.with(env);   // the test JVM's package repositories, which its deploys commit to
         env.put("RAIL8_NODE_ID", "node-calls");
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");
@@ -164,10 +166,9 @@ class CallsBetweenFlowsIT {
         return all;
     }
 
-    /** Deploys {@code p} on the node's admin API: 200. */
+    /** Commits {@code p} to the repository of its name and deploys that commit on the node's admin API: 200. */
     static void deploy(Node node, PackageDraft p) throws Exception {
-        HttpResponse<String> put = NodeIT.send(NodeIT.http(), "PUT", node.adminPort(), "/admin/packages/" + p.name(), p.zip(), "application/zip");
-        assertEquals(200, put.statusCode(), "fixture: the package " + p.name() + " deploys: " + put.body());
+        NodeIT.deployOk(node.adminPort(), p);
     }
 
     /** POSTs {@code body} to the http in endpoint at {@code address} on {@code node}'s HTTP port. */
@@ -404,11 +405,11 @@ class CallsBetweenFlowsIT {
         PackageDraft shop = direct(direct(pkg("shop"), "orders-in", "in", "/orders"), "charge", "out", "/charge")
                 .flow("orders", "1.0.0", "sync", "orders-in", 4096, steps(to("pay", "charge")));
 
-        HttpResponse<String> put = NodeIT.send(NodeIT.http(), "PUT", node.adminPort(), "/admin/packages/shop", shop.zip(), "application/zip");
+        HttpResponse<String> deployed = NodeIT.deploy(NodeIT.http(), node.adminPort(), shop);
 
-        assertEquals(422, put.statusCode(), put.body());
+        assertEquals(422, deployed.statusCode(), deployed.body());
         assertEquals(List.of("calls between flows would form a cycle: flow 'orders' -> direct /charge -> flow 'billing/charge' -> direct /orders -> flow 'orders'"),
-                new JsonObject(put.body()).getJsonArray("problems").getList(), put.body());
+                new JsonObject(deployed.body()).getJsonArray("problems").getList(), deployed.body());
         HttpResponse<String> packages = NodeIT.get(node.adminPort(), "/admin/packages");
         assertEquals(List.of("billing"), new JsonObject(packages.body()).getJsonArray("items").stream().map(i -> ((JsonObject) i).getString("name")).toList());
     }

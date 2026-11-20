@@ -82,7 +82,9 @@ class DeploymentsRollbackEdgeTest {
 
     @TempDir Path tmp;
     Path data;
-    Path archives;
+    GitRepos repos;
+    /** The commit each deploy's label named, by its label. */
+    final Map<String, String> commits = new HashMap<>();
 
     final FakeRuntime rt = FakeRuntime.create();
     final Doors doors = new Doors();
@@ -125,7 +127,7 @@ class DeploymentsRollbackEdgeTest {
     @BeforeEach
     void wire() {
         data = tmp.resolve("data");
-        archives = tmp.resolve("archives");
+        repos = new GitRepos(tmp.resolve("repos"));
         timer = new TracingTimer(rt.timer());
         Timer ticksMayThrow = (delay, task) -> {
             if (FIRST_TICKS.contains(delay) && tickSchedulesThrow.compareAndSet(true, false)) {   // a worker's start (B5)
@@ -153,7 +155,7 @@ class DeploymentsRollbackEdgeTest {
         env.put("RAIL8_BLOB_DURABLE_MAX", "4096");
         env.put("RAIL8_STOP_DEADLINE", STOP_DEADLINE.toString());
         Runtime runtime = new Runtime(rt.clock(), ticksMayThrow, rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
-        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), ticksMayThrow, List.of(new Probe()), List.of(),
+        deployments = new Deployments(NodeConfig.from(repos.env(env)), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), ticksMayThrow, List.of(new Probe()), List.of(),
                 new InMemoryMessageStore(), new InMemoryDlq(), new CountingQueue(rt.clock()), () -> 0L);
         capture.setLevel(Level.ALL);
         rail8.addHandler(capture);
@@ -172,20 +174,34 @@ class DeploymentsRollbackEdgeTest {
         return data.resolve("packages").resolve("shop").resolve(sha256);
     }
 
-    DeployResult deploy(PackageDraft p, String revision) throws Exception {
-        Path archive = p.zipTo(archives);
-        return OnVirtualThread.call(() -> deployments.deploy("shop", Optional.of(revision), archive));
+    /** The commit the deploy labelled {@code label} deployed. */
+    String commit(String label) {
+        String id = commits.get(label);
+        if (id == null) throw new AssertionError("fixture: no deploy labelled " + label);
+        return id;
     }
 
-    OnVirtualThread.Call<DeployResult> deploying(PackageDraft p, String revision) {
-        Path archive = p.zipTo(archives);
-        return OnVirtualThread.start(() -> deployments.deploy("shop", Optional.of(revision), archive));
+    static String hex(String content) {
+        return content.substring("sha256:".length());
     }
 
-    /** {@code zip} as the archive, byte for byte: deployed twice, it is the same archive (a zip entry carries the time it was made). */
-    DeployResult deploy(byte[] zip, String revision) throws Exception {
-        Path archive = PackageDraft.write(archives, zip);
-        return OnVirtualThread.call(() -> deployments.deploy("shop", Optional.of(revision), archive));
+    DeployResult deploy(PackageDraft p, String label) throws Exception {
+        return deploy(p.files(), label);
+    }
+
+    OnVirtualThread.Call<DeployResult> deploying(PackageDraft p, String label) {
+        return deploying(p.files(), label);
+    }
+
+    /** Commits {@code files} to the repository {@code shop}, {@code label} naming the commit, and deploys it. */
+    DeployResult deploy(Map<String, byte[]> files, String label) throws Exception {
+        return OnVirtualThread.join(deploying(files, label));
+    }
+
+    OnVirtualThread.Call<DeployResult> deploying(Map<String, byte[]> files, String label) {
+        String id = repos.commit("shop", files);
+        commits.put(label, id);
+        return OnVirtualThread.start(() -> deployments.deploy("shop", id, "test"));
     }
 
     /** Waits until {@code call} ended, however (at most {@link OnVirtualThread#BOUND}); what it ended with is read afterwards. */
@@ -260,7 +276,7 @@ class DeploymentsRollbackEdgeTest {
      */
     @Test
     void aRetiredFlowWhoseDirectoryNoLongerBuildsIsFAILED() throws Exception {
-        String sha1 = deploy(syncFlows("a"), "r1").pkg().archiveSha256();
+        String sha1 = hex(deploy(syncFlows("a"), "r1").pkg().content());
         DeployedFlow v1 = deployments.flows().getFirst();
         Files.delete(packageDir(sha1).resolve("flows/a.yaml"));
         doors.failStartOf("shop/a", "address in use");
@@ -271,7 +287,7 @@ class DeploymentsRollbackEdgeTest {
         assertEquals("version 2.0.0 did not start; 1.0.0 runs again; flows [shop/a] FAILED", refused.error());
         assertTrue(refused.problems().stream().anyMatch(l -> l.startsWith("flow 'a' does not build again: ") && l.contains("flows/a.yaml") && !l.contains(data.toString())),
                 "a line says a does not build again, naming the file from the package root: " + refused.problems());
-        assertEquals(List.of(new DeployedFlow(v1.id(), v1.pkg(), v1.packageVersion(), v1.revision(), v1.flowVersion(), v1.delivery(), v1.hash(),
+        assertEquals(List.of(new DeployedFlow(v1.id(), v1.pkg(), v1.packageVersion(), v1.commit(), v1.flowVersion(), v1.delivery(), v1.hash(),
                 DeployedFlow.State.FAILED)), deployments.flows(), "a is listed under its v1 record, FAILED");
         DeploymentsTest.until(() -> doors.openProducers().isEmpty(), "no producer of a is open: " + doors.producers());
     }
@@ -340,8 +356,8 @@ class DeploymentsRollbackEdgeTest {
      */
     @Test
     void anErrorBuildingAConsumerInTheRollbackLeavesTheFlowFAILED() throws Exception {
-        byte[] zip1 = syncFlows("a", "b").zip();
-        deploy(zip1, "r1");
+        Map<String, byte[]> pkg1 = syncFlows("a", "b").files();
+        deploy(pkg1, "r1");
         Map<String, DeployedFlow> v1 = byId(deployments.flows());
         Doors.Door aDoor = doors.door("shop/a");
         doors.failStartOf("shop/b", "address in use");   // v2's b
@@ -367,7 +383,7 @@ class DeploymentsRollbackEdgeTest {
                 "a problem line says the rollback broke off, with the Error's reason: " + refused.problems());
         int mark = doors.events().size();
 
-        DeployResult r = deploy(zip1, "r3");
+        DeployResult r = deploy(pkg1, "r3");
 
         assertResult(List.of("shop/b"), List.of(), List.of(), r);
         assertEquals(List.of("consumer shop/b", "start shop/b"), consumerEvents(doors.events().subList(mark, doors.events().size())),
@@ -395,7 +411,7 @@ class DeploymentsRollbackEdgeTest {
      */
     @Test
     void anErrorRebuildingAChangedFlowInTheRollbackLeavesItFAILED() throws Exception {
-        String sha1 = deploy(probed(syncFlows("a", "b"), "b"), "r1").pkg().archiveSha256();
+        String sha1 = hex(deploy(probed(syncFlows("a", "b"), "b"), "r1").pkg().content());
         Map<String, DeployedFlow> v1 = byId(deployments.flows());
         Doors.Door aDoor = doors.door("shop/a");
         doors.failStartOf("shop/b", "address in use");   // v2's b
@@ -467,8 +483,8 @@ class DeploymentsRollbackEdgeTest {
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {"then close", "then v1 again"})
     void aWorkerStartThatThrowsIsAFailedStartAndRollsBack(String then) throws Exception {
-        byte[] zip1 = queuedAndSync().zip();
-        deploy(zip1, "r1");
+        Map<String, byte[]> pkg1 = queuedAndSync().files();
+        deploy(pkg1, "r1");
         List<DeployedFlow> flowsBefore = deployments.flows();
         List<DeployedPackage> packagesBefore = deployments.packages();
         Doors.Door aV1 = doors.door("shop/a");
@@ -516,7 +532,7 @@ class DeploymentsRollbackEdgeTest {
             DeploymentsTest.until(() -> doors.openProducers().isEmpty(), "every producer is closed: " + doors.producers());
             assertEquals(List.of(), doors.producersClosedTwice(), "each producer is closed once: " + doors.producers());
         } else {
-            DeployResult r = deploy(zip1, "r3");
+            DeployResult r = deploy(pkg1, "r3");
             assertResult(List.of(), List.of(), List.of(), r);
             assertEquals(List.of(), consumerEvents(doors.events().subList(mark, doors.events().size())), "nothing is built, stopped or started");
             assertEquals(flowsBefore, deployments.flows(), "every flow runs on as it was: a under its v1 record");
@@ -537,8 +553,8 @@ class DeploymentsRollbackEdgeTest {
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {"then close", "then v1 again"})
     void aWorkerStartThatThrowsInTheRollbackLeavesTheFlowFAILED(String then) throws Exception {
-        byte[] zip1 = queuedAndSync().zip();
-        deploy(zip1, "r1");
+        Map<String, byte[]> pkg1 = queuedAndSync().files();
+        deploy(pkg1, "r1");
         Map<String, DeployedFlow> v1 = byId(deployments.flows());
         List<DeployedPackage> packagesBefore = deployments.packages();
         Doors.Door uDoor = doors.door("shop/u");
@@ -575,7 +591,7 @@ class DeploymentsRollbackEdgeTest {
             DeploymentsTest.until(() -> doors.openProducers().isEmpty(), "every producer is closed: " + doors.producers());
             assertEquals(List.of(), doors.producersClosedTwice(), "each producer is closed once: " + doors.producers());
         } else {
-            DeployResult r = deploy(zip1, "r3");
+            DeployResult r = deploy(pkg1, "r3");
             assertResult(List.of("shop/a"), List.of(), List.of(), r);
             assertEquals(List.of("consumer shop/a", "start shop/a"), consumerEvents(doors.events().subList(mark, doors.events().size())),
                     "only a is built and started; nothing stops");

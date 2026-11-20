@@ -176,7 +176,7 @@ class NodeJournalIT {
         return env;
     }
 
-    /** A deployed node (NodeIT's pattern: an s3 archive store over https, contacted only to restore, so nothing need listen). */
+    /** A deployed node (NodeIT's pattern: an s3 archive store over https, which nothing contacts, so nothing need listen). */
     Map<String, String> deployed() {
         Map<String, String> env = env("prod");
         env.put("RAIL8_PG_DURABILITY", "local");   // FIX-136: a deployed node defaults to ha; the case's one Postgres has no standby

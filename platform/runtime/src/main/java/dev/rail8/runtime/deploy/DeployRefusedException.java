@@ -15,7 +15,7 @@ public final class DeployRefusedException extends Exception {
 
     /** What kind of refusal; the admin API's status in brackets. */
     public enum Kind {
-        /** A bad name or revision, or an archive {@code PackageArchive} refuses (400). */
+        /** A bad name, repository, commit or ref, or a folder holding anything but files and directories (400). */
         BAD_REQUEST,
         /** The package does not pass validation: every problem in {@link #problems()} (422). */
         INVALID,

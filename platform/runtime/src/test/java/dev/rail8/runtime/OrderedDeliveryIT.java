@@ -1,6 +1,7 @@
 package dev.rail8.runtime;
 
 import dev.rail8.components.http.HttpComponent;
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
@@ -177,6 +178,7 @@ class OrderedDeliveryIT {
     Map<String, String> env(String nodeId) throws IOException {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "ci");
+        GitRepos.with(env);   // the test JVM's package repositories, which its deploys commit to
         env.put("RAIL8_NODE_ID", nodeId);
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
@@ -200,7 +202,7 @@ class OrderedDeliveryIT {
         Node node = startNode(nodeId);
         Map<String, byte[]> files = InvoiceAsyncIT.asyncFiles("http://127.0.0.1:" + partnerPort);
         files.put("flows/invoice-async.yaml", NodeIT.replaced(files.get("flows/invoice-async.yaml"), Map.of("maxInFlight: 16", "maxInFlight: " + maxInFlight)));
-        InvoiceAsyncIT.deploy(client, node, NodeIT.zip(files));
+        InvoiceAsyncIT.deploy(client, node, files);
         return node.httpPort();
     }
 

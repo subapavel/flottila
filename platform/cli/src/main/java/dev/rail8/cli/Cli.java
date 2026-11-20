@@ -43,15 +43,17 @@ public final class Cli {
                   --deps, else of the package folder's parent, whose package.yaml loads (the package's own excluded),
                   matched by name and version; each must be the root of a git working tree whose files are its HEAD's;
                   validate and test read each pinned commit from the same folders; print one line per entry
-              deploy <dir> [--name <name>] [--revision <revision>] [--admin <url>]
-                  zip the package in <dir> and PUT it to <url>/admin/packages/<name> (name: package.yaml's unless --name;
-                  url: --admin, else $RAIL8_ADMIN, else http://localhost:8081; bearer token: $RAIL8_ADMIN_TOKEN only)
+              deploy <repository> <commit|ref> [--check] [--admin <url>]
+                  ask the node at <url>/admin/deploy to deploy that commit of the package repository <repository>, which
+                  it reads under its RAIL8_GIT_BASE (a ref such as HEAD or main in dev and ci only); with --check it
+                  answers what the deploy would do and changes nothing (url: --admin, else $RAIL8_ADMIN, else
+                  http://localhost:8081; bearer token: $RAIL8_ADMIN_TOKEN only)
               new-adapter <dir> --scheme <scheme> [--package <java package>]
-                  write the skeleton of a new adapter into <dir>, which must not exist or be empty: its Maven build, the
-                  component of <scheme> with its settings description, the plugin, the contract tests of the component and
-                  of its mock, and a package that uses it; it builds and passes the contract suite as written, over HTTP,
-                  the protocol to replace (scheme: a lower-case letter, then lower-case letters and digits, not a scheme the
-                  node has; package: --package, else com.example.<scheme>)
+                  write the skeleton of a new adapter into <dir>, which must not exist or be empty, as a git repository
+                  with one commit: its Maven build, the component of <scheme> with its settings description, the plugin,
+                  the contract tests of the component and of its mock, and a package that uses it; it builds and passes
+                  the contract suite as written, over HTTP, the protocol to replace (scheme: a lower-case letter, then
+                  lower-case letters and digits, not a scheme the node has; package: --package, else com.example.<scheme>)
               help
                   print this text
             exit codes: 0 done, 1 problems / a failed case / refused / unreachable, 2 usage / plugins refused
@@ -83,7 +85,7 @@ public final class Cli {
                     Options options = options("validate", args, Set.of("--env", "--deps", "--plugins"));
                     yield withPlugins(options, env, err, plugins -> Validate.run(options, plugins, out));
                 }
-                case "deploy" -> Deploy.run(options("deploy", args, Set.of("--name", "--revision", "--admin")), env, out, err);
+                case "deploy" -> Deploy.run(Deploy.arguments(args), env, out, err);
                 case "help" -> {
                     out.print(USAGE);
                     yield 0;

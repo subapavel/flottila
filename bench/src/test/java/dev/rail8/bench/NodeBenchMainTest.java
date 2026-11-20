@@ -3,13 +3,10 @@ package dev.rail8.bench;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -121,7 +118,7 @@ class NodeBenchMainTest {
     void anExplicitMaxInFlightIsTheBenchFlowsLimit() throws IOException {
         NodeBenchMain.Options o = NodeBenchMain.options(new String[] {"--scenario", "sync", "--concurrency", "64", "--max-in-flight", "128"});
         assertEquals(128, NodeBenchMain.inFlight(o), "2c at c=64 (packet P1-10, Notes for d)");
-        assertEquals(128, flowLimit(o), "the package PUT to the node carries it");
+        assertEquals(128, flowLimit(o), "the package deployed to the node carries it");
         assertEquals(1, NodeBenchMain.inFlight(NodeBenchMain.options(new String[] {"--scenario", "sync", "--max-in-flight", "1"})),
                 "1 is the smallest limit taken");
     }
@@ -136,15 +133,10 @@ class NodeBenchMainTest {
         }
     }
 
-    /** The {@code limits.maxInFlight} of {@code flows/bench.yaml} in the package the run PUTs. */
+    /** The {@code limits.maxInFlight} of {@code flows/bench.yaml} in the package the run deploys. */
     static int flowLimit(NodeBenchMain.Options o) throws IOException {
-        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(NodeBenchMain.benchPackage(o, 2)))) {
-            for (ZipEntry e = zip.getNextEntry(); e != null; e = zip.getNextEntry()) {
-                if (e.getName().equals("flows/bench.yaml")) {
-                    return new JsonObject(new String(zip.readAllBytes(), StandardCharsets.UTF_8)).getJsonObject("limits").getInteger("maxInFlight");
-                }
-            }
-        }
-        throw new AssertionError("no flows/bench.yaml in the bench package");
+        byte[] flow = NodeBenchMain.benchPackage(o, 2).get("flows/bench.yaml");
+        if (flow == null) throw new AssertionError("no flows/bench.yaml in the bench package");
+        return new JsonObject(new String(flow, StandardCharsets.UTF_8)).getJsonObject("limits").getInteger("maxInFlight");
     }
 }

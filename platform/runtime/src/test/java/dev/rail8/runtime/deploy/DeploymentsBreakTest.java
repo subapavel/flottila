@@ -47,8 +47,7 @@ class DeploymentsBreakTest {
         Map<String, String> e = Map.of("RAIL8_ENV", "dev", "RAIL8_NODE_ID", "node-1", "RAIL8_DATA_DIR", tmp.resolve("node-1").toString());
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
         deployments = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(),
-                new InMemoryMessageStore(), new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, new InMemoryDeploymentStore(),
-                new DirArchiveStore(tmp.resolve("bucket")));
+                new InMemoryMessageStore(), new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, new InMemoryDeploymentStore());
     }
 
     @AfterEach
@@ -76,8 +75,8 @@ class DeploymentsBreakTest {
 
     @Test
     void aConsumerThatBreaksIsReplacedAfterAGrowingDelayAndTheOtherFlowsServeAllAlong() throws Exception {
-        Path archive = PackageDraft.write(tmp.resolve("uploads"), DeploymentsRestoreGuardTest.pkg("shop", "a", "b"));
-        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), archive));
+        Path folder = DeploymentsRestoreGuardTest.pkg("shop", "a", "b").folderIn(tmp.resolve("folders"));
+        OnVirtualThread.call(() -> deployments.deploy("shop", folder));
         Doors.Door b = doors.door("shop/b");
         assertEquals(Health.up(), deployments.health(), "fixture: everything runs");
 

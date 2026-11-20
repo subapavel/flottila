@@ -1,6 +1,7 @@
 package dev.rail8.runtime;
 
 import dev.rail8.components.http.HttpComponent;
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.runtime.deploy.PackageDraft;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
@@ -148,6 +149,7 @@ class TargetLimitIT {
     Map<String, String> env() {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "ci");
+        GitRepos.with(env);   // the test JVM's package repositories, which its deploys commit to
         env.put("RAIL8_NODE_ID", "node-1");
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
@@ -232,10 +234,10 @@ class TargetLimitIT {
         Node node = start(env);
         int admin = node.adminPort();
         int http = node.httpPort();
-        NodeIT.putOk(admin, "one", NodeIT.relay("one", target + "/one").zip());   // served at /http/in
+        NodeIT.deployOk(admin, NodeIT.relay("one", target + "/one"));   // served at /http/in
         PackageDraft second = NodeIT.relay("two", target + "/two");
         second.endpointDoc("in").put("config", new JsonObject().put("address", "/two"));   // served at /http/two
-        NodeIT.putOk(admin, "two", second.zip());
+        NodeIT.deployOk(admin, second);
 
         try (HttpClient client = NodeIT.http()) {
             List<CompletableFuture<HttpResponse<String>>> answers = new ArrayList<>();

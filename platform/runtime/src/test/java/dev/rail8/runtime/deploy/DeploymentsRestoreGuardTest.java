@@ -10,6 +10,7 @@ import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -28,10 +29,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * P1-09c3b (D-070), beside {@link DeploymentsRestoreTest}: a restore runs once, at the node's start — on a node that lists a
- * package already, or once {@code close} began, it is refused and installs nothing; the {@code deployments} health check is DEGRADED
- * while a package is listed FAILED, its detail naming which, and while a flow's consumer is tried again; a missing archive is
- * named as such.
+ * Beside {@link DeploymentsRestoreTest}: a restore runs once, at the node's start — on a node that lists a package already, or once
+ * {@code close} began, it is refused and installs nothing; the {@code deployments} health check is DEGRADED while a package is
+ * listed FAILED, its detail naming which, and while a flow's consumer is tried again; a repository gone is named as such.
  */
 class DeploymentsRestoreGuardTest {
 
@@ -42,36 +42,42 @@ class DeploymentsRestoreGuardTest {
     final InMemoryDlq dlq = new InMemoryDlq();
     final InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
     final List<Deployments> made = new ArrayList<>();
+    GitRepos repos;
+
+    @BeforeEach
+    void repositories() {
+        repos = new GitRepos(tmp.resolve("repos"));
+    }
 
     @AfterEach
     void closeEach() throws Exception {
         for (Deployments d : made) OnVirtualThread.call(() -> { d.close(); return null; });
     }
 
-    /** A node {@code id} of the pool: its own data directory and {@code doors}, the pool's rows, archives in {@code <tmp>/bucket}. */
+    /** A node {@code id} of the pool: its own data directory and {@code doors}, the pool's rows and repositories. */
     Deployments node(String id, Doors doors) {
         Map<String, String> e = new HashMap<>();
         e.put("RAIL8_ENV", "dev");
         e.put("RAIL8_NODE_ID", id);
         e.put("RAIL8_DATA_DIR", tmp.resolve(id).toString());
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
-        Deployments d = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
-                new InMemoryWorkQueue(rt.clock()), () -> 0L, rows, new DirArchiveStore(tmp.resolve("bucket")));
+        Deployments d = new Deployments(NodeConfig.from(repos.env(e)), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
+                new InMemoryWorkQueue(rt.clock()), () -> 0L, rows);
         made.add(d);
         return d;
     }
 
-    static byte[] pkg(String name, String... flows) {
+    static PackageDraft pkg(String name, String... flows) {
         PackageDraft p = PackageDraft.of(name, "1.0.0").endpoint("partner", "out", new JsonObject().put("url", "rec://partner"));
         for (String id : flows) {
             p.endpoint(id + "-in", "in", new JsonObject().put("path", "/" + id)).flow(id, "1.0.0", "sync", id + "-in", 1024, PackageDraft.toPartner());
         }
-        return p.zip();
+        return p;
     }
 
-    void deploy(Deployments d, String name, byte[] zip) throws Exception {
-        Path archive = PackageDraft.write(tmp.resolve("uploads"), zip);
-        OnVirtualThread.call(() -> d.deploy(name, Optional.empty(), archive));
+    void deploy(Deployments d, PackageDraft p) throws Exception {
+        String commit = repos.commit(p);
+        OnVirtualThread.call(() -> d.deploy(p.name(), commit, "test"));
     }
 
     static void restore(Deployments d) throws Exception {
@@ -86,7 +92,7 @@ class DeploymentsRestoreGuardTest {
     void aRestoreRunsOnceBeforeAnyDeployAndBeforeClose() throws Exception {
         Doors one = new Doors();
         Deployments first = node("node-1", one);
-        deploy(first, "shop", pkg("shop", "a"));
+        deploy(first, pkg("shop", "a"));
         int doorsOfOne = one.doors().size();
         IllegalStateException afterDeploy = assertThrows(IllegalStateException.class, () -> restore(first), "a restore after a deploy");
         assertTrue(afterDeploy.getMessage().contains("at the node's start"), afterDeploy.getMessage());
@@ -111,16 +117,15 @@ class DeploymentsRestoreGuardTest {
      * health() is UP on a node with nothing deployed and on one where everything runs; DEGRADED while the consumer of a restored
      * flow that did not start waits for its next attempt — its detail naming that flow, its failures in a row and when the next
      * attempt is due, never the cause nor what runs — and UP once it started; DEGRADED, not DOWN, while a package could not be
-     * restored (its archive is not in the archive store, as its problem line says) — naming that package.
+     * restored (its repository is gone, as its problem line says) — naming that package.
      */
     @Test
     void healthIsDegradedWhileAFlowRestartsOrAPackageIsListedFailed() throws Exception {
         Doors one = new Doors();
         Deployments first = node("node-1", one);
         assertEquals(Health.up(), first.health(), "nothing deployed");
-        byte[] store = pkg("store", "c");
-        deploy(first, "shop", pkg("shop", "a", "b"));
-        deploy(first, "store", store);
+        deploy(first, pkg("shop", "a", "b"));
+        deploy(first, pkg("store", "c"));
         assertEquals(Health.up(), first.health(), "everything runs");
 
         Doors two = new Doors();
@@ -132,14 +137,15 @@ class DeploymentsRestoreGuardTest {
         rt.clock().advance(Duration.ofSeconds(1));
         DeploymentsTest.until(() -> Health.up().equals(second.health()), "UP once b's fresh consumer started: " + two.events());
 
-        Files.delete(tmp.resolve("bucket").resolve(PackageDraft.sha256(store) + ".zip"));
+        repos.delete("store");   // the third node's cache is its own: it holds no commit yet
         Deployments third = node("node-3", new Doors());
         restore(third);
         Health packageFailed = third.health();
         assertEquals(Health.degraded("FAILED: package store"), packageFailed, "the detail names the FAILED package and nothing that runs");
         DeployedPackage failed = third.packages().get(1);
         assertEquals("store", failed.name());
-        assertTrue(failed.problems().getFirst().contains("is not in the archive store"), "a missing object is named as such: " + failed.problems());
+        assertTrue(failed.problems().getFirst().contains("store at " + failed.commit().orElseThrow() + ": not found"),
+                "a repository gone is named as such: " + failed.problems());
     }
 
     /**
@@ -148,7 +154,7 @@ class DeploymentsRestoreGuardTest {
      */
     @Test
     void aConsumerThatDoesNotStartOnRestoreIsStoppedAndTheCloseEndsItsAttempts() throws Exception {
-        deploy(node("node-1", new Doors()), "shop", pkg("shop", "a", "b"));
+        deploy(node("node-1", new Doors()), pkg("shop", "a", "b"));
         Doors two = new Doors();
         two.failStartOf("shop/b", "address in use");
         Deployments second = node("node-2", two);

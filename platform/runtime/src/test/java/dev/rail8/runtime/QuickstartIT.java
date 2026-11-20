@@ -12,6 +12,9 @@ import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.PersonIdent;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -59,26 +62,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * P2-05a: the local quickstart as its user runs it, against a node in this JVM on a Postgres of its own (as {@link NodeIT}).
- * {@code deploy/quickstart/deploy.sh <package-dir> [name]} is run as a process — from the repository root, the way
- * docs/QUICKSTART.md runs it — with {@code RAIL8_ADMIN} pointing at the node's admin port; it zips the package as the admin
- * API expects ({@code package.yaml} at the archive root) and PUTs it to {@code /admin/packages/<name>}. The partner the demo
+ * The local quickstart as its user runs it, against a node in this JVM on a Postgres of its own (as {@link NodeIT}). The
+ * working folder holds the demo as the git repository {@code demo}, with a {@code .gitattributes} of {@code * -text}, and
+ * commits it; the node reads the working folder as its {@code file://} package repositories, as the quickstart's compose file
+ * mounts it; a deploy is the request {@code rail8 deploy demo HEAD} sends, {@code POST /admin/deploy}. The partner the demo
  * sends to is the quickstart's JDK echo, {@code java deploy/quickstart/PartnerEcho.java <port>}, a process of its own that
  * answers every path ({@code /echo} and {@code /echo-foreign}).
  *
- * <p>No fixed port is needed: the demo is deployed from a copy whose {@code http-in} listens on a free loopback port and whose
- * partners point at the echo's free port (every rewrite asserted, as {@link NodeIT#demoFiles}); the admin API listens on port 0.
- * The child processes get a cleared environment ({@code PATH}, {@code HOME} and what the case sets): an inherited proxy
- * variable would send the script's curl to the proxy instead of the loopback node.
+ * <p>No fixed port is needed: the demo is committed from a copy whose partners point at the echo's free port (every rewrite
+ * asserted, as {@link NodeIT#demoFiles}); the node's HTTP and admin ports are port 0. The echo gets a cleared environment
+ * ({@code PATH} and {@code HOME}).
  */
 class QuickstartIT {
 
     static final Duration BOUND = Duration.ofSeconds(60);
     static final Path REPO = Path.of("../..").toAbsolutePath().normalize();
     static final Path DEMO = REPO.resolve("examples/demo");
-    static final Path DEPLOY_SH = REPO.resolve("deploy/quickstart/deploy.sh");
     static final Path PARTNER_ECHO = REPO.resolve("deploy/quickstart/PartnerEcho.java");
-    /** The node's admin token: deploy.sh sends it from RAIL8_ADMIN_TOKEN, the case's own admin requests carry it too. */
+    /** The node's admin token: every admin request of a case carries it, as the command line sends it from RAIL8_ADMIN_TOKEN. */
     static final String TOKEN = "quickstart-it-token";
 
     static final SharedPostgres pg = SharedPostgres.database();
@@ -86,6 +87,7 @@ class QuickstartIT {
     static Vertx vertx;
 
     @TempDir Path work;
+    Path workspace;
     String database;
     Node node;
     Process echo;
@@ -116,6 +118,8 @@ class QuickstartIT {
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
         env.put("RAIL8_HTTP_PORT", "0");   // the node's HTTP port on any free port too
         env.put("RAIL8_DATA_DIR", Files.createDirectories(work.resolve("data")).toString());
+        workspace = Files.createDirectories(work.resolve("workspace"));
+        env.put("RAIL8_GIT_BASE", workspace.toUri().toString());   // the quickstart's working folder, read as file:///workspace/
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
         env.put("RAIL8_PG_DATABASE", database);
@@ -148,29 +152,29 @@ class QuickstartIT {
     // --- cases
 
     /**
-     * The quickstart's path: deploy.sh deploys the demo (no name given: the directory's), prints the node's answer and exits 0;
-     * the node holds exactly the package's files at their package-relative paths (the zip layout); a CZK invoice POSTed to the
-     * demo's door comes back with the echo's answer; the admin API finds the message by its key, shows the six steps of
-     * invoice-sync, and serves the partner step's recorded body — the answer the caller got.
+     * The quickstart's path: the demo committed in the working folder deploys at {@code HEAD}, and the node's answer names its
+     * flows; the node lists the package under the repository and the commit, holding exactly the commit's files at their
+     * package-relative paths ({@code .gitattributes} among them, {@code .git} not); a CZK invoice POSTed to the demo's door comes
+     * back with the echo's answer; the admin API finds the message by its key, shows the six steps of invoice-sync, and serves
+     * the partner step's recorded body — the answer the caller got.
      */
     @Test
-    void deployShDeploysTheDemoAndACzkInvoiceGetsTheEchosAnswerAndItsTimeline() throws Exception {
+    void theDemoCommittedInTheWorkingFolderDeploysAndACzkInvoiceGetsTheEchosAnswerAndItsTimeline() throws Exception {
         int echoPort = startTheEcho();
         Path demo = demoCopy(echoPort);
+        String commit = commit(demo);
 
-        Run deployed = deploySh(demo.toString());
+        HttpResponse<String> deployed = deploy("demo", "HEAD");
 
-        assertEquals(0, deployed.exit(), "a 200 deploy exits 0: " + deployed.output());
-        assertTrue(deployed.output().contains("\"package\":\"demo\"") && deployed.output().contains("\"demo/invoice-sync\""),
-                "the script prints the node's answer: " + deployed.output());
-        HttpResponse<String> packages = get(node.adminPort(), "/admin/packages");
-        assertEquals(200, packages.statusCode(), packages.body());
-        JsonArray items = new JsonObject(packages.body()).getJsonArray("items");
-        assertEquals(1, items.size(), "one package deployed: " + packages.body());
-        JsonObject item = items.getJsonObject(0);
-        assertEquals("demo", item.getString("name"), "deployed under the directory's name: " + item.encode());
+        assertEquals(200, deployed.statusCode(), deployed.body());
+        assertTrue(deployed.body().contains("\"package\":\"demo\"") && deployed.body().contains("\"demo/invoice-sync\""),
+                "the node answers the flows it deployed: " + deployed.body());
+        JsonObject item = onlyPackage();
+        assertEquals("demo", item.getString("name"), item.encode());
+        assertEquals("demo", item.getString("repository"), item.encode());
+        assertEquals(commit, item.getString("commit"), "HEAD is read as the commit it names: " + item.encode());
         assertEquals(filesOf(demo), item.getJsonArray("files").stream().collect(Collectors.toSet()),
-                "the archive held every file of the package at its package-relative path, package.yaml at the root, nothing else");
+                "the commit held every file of the package at its package-relative path, package.yaml at the root, nothing else");
 
         String invoice = Files.readString(DEMO.resolve("fixtures/sample-invoice.xml"));
         HttpResponse<String> answer = post(node.httpPort(), "/http/in", invoice);
@@ -196,9 +200,9 @@ class QuickstartIT {
     @Test
     void aForeignInvoiceGetsTheEchosAnswerFromEchoForeign() throws Exception {
         int echoPort = startTheEcho();
-        Path demo = demoCopy(echoPort);
-        Run deployed = deploySh(demo.toString(), "demo");
-        assertEquals(0, deployed.exit(), "fixture: the demo deploys: " + deployed.output());
+        commit(demoCopy(echoPort));
+        HttpResponse<String> deployed = deploy("demo", "HEAD");
+        assertEquals(200, deployed.statusCode(), "fixture: the demo deploys: " + deployed.body());
         String invoice = new String(replaced(Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")),
                 Map.of("<Id>4711</Id>", "<Id>4712</Id>", "<Currency>CZK</Currency>", "<Currency>EUR</Currency>")), StandardCharsets.UTF_8);
 
@@ -211,103 +215,66 @@ class QuickstartIT {
     }
 
     /**
-     * A refused deploy — the name in the URL is not the one in package.yaml: the node's 422 — makes the script exit non-zero and
-     * print the node's answer (which names the URL's package: the second argument reached the node); nothing is deployed.
+     * The quickstart's steps commit before every deploy: an edit of the working folder that is not committed is not deployed —
+     * a deploy of {@code HEAD} deploys the commit before it again — and once committed, a deploy of {@code HEAD} deploys it.
      */
     @Test
-    void deployShExitsNonZeroAndPrintsTheAnswerWhenTheNodeRefuses() throws Exception {
+    void anEditIsDeployedOnceItIsCommitted() throws Exception {
         Path demo = demoCopy(freePort());
+        String first = commit(demo);
+        assertEquals(200, deploy("demo", "HEAD").statusCode(), "fixture: the demo deploys");
+        rewrite(demo.resolve("package.yaml"), Map.of("version: 0.1.0", "version: 0.2.0"));
 
-        Run refused = deploySh(demo.toString(), "other");
+        HttpResponse<String> uncommitted = deploy("demo", "HEAD");
 
-        assertNotEquals(0, refused.exit(), "a non-2xx answer exits non-zero: " + refused.output());
-        assertTrue(refused.output().contains("package.yaml names the package 'demo', the deploy 'other'"),
-                "the script prints the node's refusal (the PUT reached the node under the given name): " + refused.output());
-        HttpResponse<String> packages = get(node.adminPort(), "/admin/packages");
-        assertEquals(new JsonArray(), new JsonObject(packages.body()).getJsonArray("items"), "nothing deployed: " + packages.body());
-    }
+        assertEquals(200, uncommitted.statusCode(), uncommitted.body());
+        assertEquals(first, onlyPackage().getString("commit"), "the edit is not committed: HEAD is still the first commit");
+        assertEquals("0.1.0", onlyPackage().getString("version"));
 
-    /**
-     * The node needs a token: deploy.sh run without RAIL8_ADMIN_TOKEN, or with a wrong one, gets the node's 401, prints it and
-     * exits non-zero; nothing is deployed. (That the right token is sent is pinned by every deploy that exits 0.)
-     */
-    @Test
-    void deployShExitsNonZeroOnTheNodes401WithoutTheTokenOrWithAWrongOne() throws Exception {
-        Path demo = demoCopy(freePort());
+        String second = commit(demo);
+        HttpResponse<String> committed = deploy("demo", "HEAD");
 
-        Run without = deploySh(Map.of(), demo.toString());
-        Run wrong = deploySh(Map.of("RAIL8_ADMIN_TOKEN", "not-the-token"), demo.toString());
-
-        for (Run refused : List.of(without, wrong)) {
-            assertNotEquals(0, refused.exit(), "a 401 exits non-zero: " + refused.output());
-            assertTrue(refused.output().contains("this route needs Authorization: Bearer <token>"),
-                    "the script prints the node's 401 (the PUT reached the node): " + refused.output());
-        }
-        HttpResponse<String> packages = get(node.adminPort(), "/admin/packages");
-        assertEquals(200, packages.statusCode(), packages.body());
-        assertEquals(new JsonArray(), new JsonObject(packages.body()).getJsonArray("items"), "nothing deployed: " + packages.body());
-    }
-
-    /**
-     * Without zip on the PATH the script archives with the JDK's jar: PATH is a directory of links to sh, the tools deploy.sh
-     * calls besides zip, and $JAVA_HOME/bin/jar — no zip. The deploy exits 0 and the node holds exactly the package's files at
-     * their package-relative paths, the same layout as the zip path.
-     */
-    @Test
-    void withoutZipDeployShArchivesWithTheJdksJarInTheSameLayout() throws Exception {
-        Path bin = Files.createDirectories(work.resolve("bin"));
-        for (String tool : List.of("sh", "curl", "mktemp", "rm", "basename", "cat")) Files.createSymbolicLink(bin.resolve(tool), onPath(tool));
-        Files.createSymbolicLink(bin.resolve("jar"), Path.of(System.getProperty("java.home"), "bin", "jar"));
-        assertTrue(Files.notExists(bin.resolve("zip")), "fixture: no zip on the script's PATH");
-        Path demo = demoCopy(freePort());
-
-        Run deployed = deploySh(Map.of("PATH", bin.toString(), "RAIL8_ADMIN_TOKEN", TOKEN), demo.toString());
-
-        assertEquals(0, deployed.exit(), "the jar-built archive deploys: " + deployed.output());
-        HttpResponse<String> packages = get(node.adminPort(), "/admin/packages");
-        JsonArray items = new JsonObject(packages.body()).getJsonArray("items");
-        assertEquals(1, items.size(), "one package deployed: " + packages.body());
-        assertEquals(filesOf(demo), items.getJsonObject(0).getJsonArray("files").stream().collect(Collectors.toSet()),
-                "the jar-built archive held every file of the package at its package-relative path, package.yaml at the root, nothing else");
+        assertEquals(200, committed.statusCode(), committed.body());
+        assertNotEquals(first, second, "fixture: the edit is a commit of its own");
+        assertEquals(second, onlyPackage().getString("commit"), "HEAD names the edit's commit");
+        assertEquals("0.2.0", onlyPackage().getString("version"));
     }
 
     // --- the quickstart's pieces
 
-    record Run(int exit, String output) {}
-
-    /** {@code tool} as the test JVM's PATH resolves it. */
-    static Path onPath(String tool) {
-        for (String dir : System.getenv("PATH").split(":")) {
-            Path candidate = Path.of(dir, tool);
-            if (Files.isExecutable(candidate)) return candidate;
-        }
-        return fail("fixture: " + tool + " is not on the PATH");
-    }
-
-    /** deploy.sh with {@code args} and the node's token. */
-    Run deploySh(String... args) throws Exception {
-        return deploySh(Map.of("RAIL8_ADMIN_TOKEN", TOKEN), args);
-    }
-
     /**
-     * deploy.sh with {@code args}, cwd the repository root, {@code RAIL8_ADMIN} the node's admin URL, {@code extra} laid over the
-     * plain environment (PATH, HOME); stdout and stderr together.
+     * The working folder {@code dir} as the quickstart keeps it: a git repository on {@code main}, with a {@code .gitattributes} of
+     * {@code * -text}, every file committed; answers the commit's id.
      */
-    Run deploySh(Map<String, String> extra, String... args) throws Exception {
-        assertTrue(Files.isRegularFile(DEPLOY_SH) && Files.isExecutable(DEPLOY_SH), "deploy/quickstart/deploy.sh exists and is executable: " + DEPLOY_SH);
-        List<String> command = new ArrayList<>(List.of(DEPLOY_SH.toString()));
-        command.addAll(List.of(args));
-        Path output = Files.createTempFile(work, "deploy-sh-", ".txt");
-        ProcessBuilder builder = new ProcessBuilder(command).directory(REPO.toFile()).redirectErrorStream(true).redirectOutput(output.toFile());
-        plainEnvironment(builder);
-        builder.environment().put("RAIL8_ADMIN", "http://127.0.0.1:" + node.adminPort());
-        builder.environment().putAll(extra);
-        Process script = builder.start();
-        if (!script.waitFor(BOUND.toSeconds(), TimeUnit.SECONDS)) {
-            script.destroyForcibly();
-            fail("deploy.sh did not exit within " + BOUND + ": " + Files.readString(output));
+    static String commit(Path dir) throws IOException {
+        Path attributes = dir.resolve(".gitattributes");
+        if (Files.notExists(attributes)) Files.writeString(attributes, "* -text\n");
+        PersonIdent who = new PersonIdent("Quickstart IT", "quickstart-it@rail8.invalid");
+        try (Git git = Files.exists(dir.resolve(".git")) ? Git.open(dir.toFile()) : Git.init().setDirectory(dir.toFile()).setInitialBranch("main").call()) {
+            git.add().addFilepattern(".").call();
+            return git.commit().setMessage("The quickstart's demo\n").setAuthor(who).setCommitter(who).setSign(false).call().name();
+        } catch (GitAPIException e) {
+            throw new IOException("fixture: " + dir + " not committed", e);
         }
-        return new Run(script.exitValue(), Files.readString(output));
+    }
+
+    /** The deploy {@code rail8 deploy <repository> <commit>} sends: {@code POST /admin/deploy} with the node's token. */
+    HttpResponse<String> deploy(String repository, String commit) throws IOException, InterruptedException {
+        byte[] body = new JsonObject().put("repository", repository).put("commit", commit).encode().getBytes(StandardCharsets.UTF_8);
+        try (HttpClient client = http()) {
+            return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + node.adminPort() + "/admin/deploy")).timeout(Duration.ofSeconds(60))
+                    .header("authorization", "Bearer " + TOKEN).header("content-type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(body)).build(), HttpResponse.BodyHandlers.ofString());
+        }
+    }
+
+    /** The one package the admin API lists. */
+    JsonObject onlyPackage() throws IOException, InterruptedException {
+        HttpResponse<String> packages = get(node.adminPort(), "/admin/packages");
+        assertEquals(200, packages.statusCode(), packages.body());
+        JsonArray items = new JsonObject(packages.body()).getJsonArray("items");
+        assertEquals(1, items.size(), "one package deployed: " + packages.body());
+        return items.getJsonObject(0);
     }
 
     /** The quickstart's echo on a free loopback port, once it accepts connections; fails with its output when it exits first. */
@@ -341,11 +308,11 @@ class QuickstartIT {
     }
 
     /**
-     * The demo copied to {@code <work>/demo}: http-in served at {@code /http/in} on the node's HTTP port as the demo has it, both
-     * partners at the echo on 127.0.0.1:{@code echoPort} (their paths kept), every rewrite asserted.
+     * The demo copied to the working folder's {@code demo}: http-in served at {@code /http/in} on the node's HTTP port as the demo
+     * has it, both partners at the echo on 127.0.0.1:{@code echoPort} (their paths kept), every rewrite asserted.
      */
     Path demoCopy(int echoPort) throws IOException {
-        Path copy = work.resolve("demo");
+        Path copy = workspace.resolve("demo");
         try (Stream<Path> walk = Files.walk(DEMO)) {
             for (Path p : walk.filter(Files::isRegularFile).toList()) {
                 if (NodeIT.addedByP206(DEMO.relativize(p).toString().replace('\\', '/'))) continue;   // the quickstart is the sync demo: no stack secrets here
@@ -373,11 +340,11 @@ class QuickstartIT {
         return text.getBytes(StandardCharsets.UTF_8);
     }
 
-    /** Every regular file under {@code dir} as the admin API lists it: package-relative path and SHA-256. */
+    /** Every regular file under {@code dir} but its {@code .git} as the admin API lists it: package-relative path and SHA-256. */
     static Set<Object> filesOf(Path dir) throws Exception {
         Set<Object> files = new HashSet<>();
         try (Stream<Path> walk = Files.walk(dir)) {
-            for (Path p : walk.filter(Files::isRegularFile).toList()) {
+            for (Path p : walk.filter(Files::isRegularFile).filter(p -> !p.startsWith(dir.resolve(".git"))).toList()) {
                 String sha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(p)));
                 files.add(new JsonObject().put("path", dir.relativize(p).toString().replace('\\', '/')).put("sha256", sha));
             }

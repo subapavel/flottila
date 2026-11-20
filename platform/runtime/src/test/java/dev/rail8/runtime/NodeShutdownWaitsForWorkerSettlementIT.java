@@ -5,6 +5,7 @@ import dev.rail8.api.BlobKey;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Headers;
 import dev.rail8.runtime.deploy.Doors;
+import dev.rail8.runtime.deploy.GitRepos;
 import dev.rail8.runtime.deploy.PackageDraft;
 import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.runtime.node.Node;
@@ -135,6 +136,7 @@ class NodeShutdownWaitsForWorkerSettlementIT {
     Map<String, String> env(String deadline) {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "ci");
+        GitRepos.with(env);   // the test JVM's package repositories, which its deploys commit to
         env.put("RAIL8_NODE_ID", "node-it");
         env.put("RAIL8_ADMIN_PORT", "0");
         env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
@@ -170,12 +172,13 @@ class NodeShutdownWaitsForWorkerSettlementIT {
                 .flow("relay", "1.0.0", "at-least-once", "in", 1024, PackageDraft.toPartner());
     }
 
-    /** {@code PUT /admin/packages/settle} within the request's 20 s; its answer. */
-    static HttpResponse<String> put(int admin, byte[] zip) throws Exception {
+    /** {@code p} committed to the repository of its name and that commit deployed with {@code POST /admin/deploy} within the request's 20 s; its answer. */
+    static HttpResponse<String> deploy(int admin, PackageDraft p) throws Exception {
+        byte[] body = NodeIT.deployBody(p.name(), GitRepos.shared().commit(p));
         try (HttpClient client = HttpClient.newBuilder().proxy(HttpClient.Builder.NO_PROXY).version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(5)).build()) {
-            return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + admin + "/admin/packages/settle")).timeout(Duration.ofSeconds(20))
-                    .header("content-type", "application/zip").PUT(HttpRequest.BodyPublishers.ofByteArray(zip)).build(), HttpResponse.BodyHandlers.ofString());
+            return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + admin + "/admin/deploy")).timeout(Duration.ofSeconds(20))
+                    .header("content-type", "application/json").POST(HttpRequest.BodyPublishers.ofByteArray(body)).build(), HttpResponse.BodyHandlers.ofString());
         }
     }
 
@@ -275,7 +278,7 @@ class NodeShutdownWaitsForWorkerSettlementIT {
         doors.onStop(door -> closeStarted.countDown());
         AtomicReference<ComponentContext> ctx = new AtomicReference<>();
         Node node = startWith(env, doors, ctx);
-        assertEquals(200, put(node.adminPort(), settle("1.0.0").zip()).statusCode(), "fixture: settle deploys");
+        assertEquals(200, deploy(node.adminPort(), settle("1.0.0")).statusCode(), "fixture: settle deploys");
 
         CountDownLatch hold = holdNextSend(doors);
         String id = accepted(doors, ctx.get());
@@ -343,7 +346,7 @@ class NodeShutdownWaitsForWorkerSettlementIT {
             Doors doors = new Doors();
             AtomicReference<ComponentContext> ctx = new AtomicReference<>();
             Node node = startWith(env("PT1S"), doors, ctx);
-            assertEquals(200, put(node.adminPort(), settle("1.0.0").zip()).statusCode(), "fixture: settle deploys");
+            assertEquals(200, deploy(node.adminPort(), settle("1.0.0")).statusCode(), "fixture: settle deploys");
 
             CountDownLatch hold = holdNextSend(doors);
             String id = accepted(doors, ctx.get());
@@ -419,7 +422,7 @@ class NodeShutdownWaitsForWorkerSettlementIT {
             Doors doors = new Doors();
             AtomicReference<ComponentContext> ctx = new AtomicReference<>();
             Node node = startWith(env, doors, ctx);
-            assertEquals(200, put(node.adminPort(), settle("1.0.0").zip()).statusCode(), "fixture: settle deploys");
+            assertEquals(200, deploy(node.adminPort(), settle("1.0.0")).statusCode(), "fixture: settle deploys");
 
             CountDownLatch holdA = holdNextSend(doors);
             String a = accepted(doors, ctx.get());
@@ -470,7 +473,7 @@ class NodeShutdownWaitsForWorkerSettlementIT {
         Doors doors = new Doors();
         AtomicReference<ComponentContext> ctx = new AtomicReference<>();
         Node node = startWith(env("PT2M"), doors, ctx);
-        assertEquals(200, put(node.adminPort(), settle("1.0.0").zip()).statusCode(), "fixture: settle 1.0.0 deploys");
+        assertEquals(200, deploy(node.adminPort(), settle("1.0.0")).statusCode(), "fixture: settle 1.0.0 deploys");
 
         CountDownLatch hold = holdNextSend(doors);
         String id = accepted(doors, ctx.get());
@@ -483,7 +486,7 @@ class NodeShutdownWaitsForWorkerSettlementIT {
         v2.flowDoc("relay").put("description", "changed in 1.0.1");
         HttpResponse<String> swap;
         try {
-            swap = put(node.adminPort(), v2.zip());
+            swap = deploy(node.adminPort(), v2);
         } catch (HttpTimeoutException waited) {
             throw new AssertionError("the redeploy did not answer within 20 s: it waits for the old worker's held send", waited);
         }

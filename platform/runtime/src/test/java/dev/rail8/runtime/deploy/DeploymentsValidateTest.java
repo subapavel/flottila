@@ -37,7 +37,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeSet;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
@@ -51,8 +50,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * P2-03a (D-079, F-16): {@code Deployments.validate(String name, Path dir)} is the dry run of a deploy over a package directory —
  * load, check, build — that answers every problem as a list (empty = valid) and then discards what it built: nothing is
- * unpacked, no deploy lock is taken, no archive is put, no record written, no consumer built or started, nothing enqueued or
- * scheduled, and the listing stays as it was.
+ * fetched or written, no deploy lock is taken, no record written, no consumer built or started, nothing enqueued or scheduled,
+ * and the listing stays as it was.
  *
  * <p>The shape these tests assume: {@code public List<String> Deployments.validate(String name, Path dir)} (blocking: called on
  * a virtual thread, as a deploy is).
@@ -75,10 +74,8 @@ class DeploymentsValidateTest {
     final InMemoryMessageStore messages = new InMemoryMessageStore();
     final InMemoryDlq dlq = new InMemoryDlq();
     final InMemoryDeploymentStore records = new InMemoryDeploymentStore();
-    final List<String> shelfTrace = new CopyOnWriteArrayList<>();
     TracingTimer timer;
     CountingQueue queue;
-    Shelf shelf;
     Vertx vertx;
 
     @BeforeEach
@@ -86,7 +83,6 @@ class DeploymentsValidateTest {
         data = tmp.resolve("data");
         timer = new TracingTimer(rt.timer());
         queue = new CountingQueue(rt.clock());
-        shelf = new Shelf(tmp.resolve("archives"), tmp.resolve("reads"), shelfTrace::add);
     }
 
     @AfterEach
@@ -108,11 +104,11 @@ class DeploymentsValidateTest {
         return env;
     }
 
-    /** Deployments over {@link Doors} only, its archives on the {@link Shelf}, its records in memory. */
+    /** Deployments over {@link Doors} only, its records in memory. */
     Deployments overDoors() {
         Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
         return new Deployments(NodeConfig.from(env("dev")), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), timer, DeploymentsTest.STEPS, List.of(),
-                messages, dlq, queue, () -> 0L, records, shelf);
+                messages, dlq, queue, () -> 0L, records);
     }
 
     /** Deployments of the environment {@code rail8Env} over the node's modules: their components, steps and languages. */
@@ -128,7 +124,7 @@ class DeploymentsValidateTest {
         Map<String, Component> byScheme = built.stream().map(replace).collect(Collectors.toMap(Component::scheme, c -> c));
         Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), byScheme);
         return new Deployments(NodeConfig.from(env(rail8Env)), runtime, byScheme, rt.clock(), timer, shipped.steps(), shipped.languages(),
-                messages, dlq, queue, () -> 0L, records, shelf);
+                messages, dlq, queue, () -> 0L, records);
     }
 
     static List<String> validate(Deployments d, String name, Path dir) throws Exception {
@@ -301,14 +297,14 @@ class DeploymentsValidateTest {
      * A dry build over a node that runs {@code shop}: a new version of shop (one flow changed, one at-least-once flow added) and a new
      * package validate clean; the build ran — it opened the flows' producers — and closed what it built: every producer it opened is
      * closed, no consumer was built or started and none of shop's running ones stopped, nothing was scheduled, enqueued, claimed,
-     * recorded, parked, put in the archive store or written as a record, nothing appeared under the data directory, and the
+     * recorded, parked or written as a record, nothing appeared under the data directory, and the
      * listing is the one before.
      */
     @Test
     void dryBuildStartsNothingAndStoresNothing() throws Exception {
         Deployments deployments = overDoors();
         PackageDraft shop = DeploymentsTest.shop("shop");
-        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), shop.zipTo(tmp.resolve("zips"))));
+        OnVirtualThread.call(() -> deployments.deploy("shop", shop.folderIn(tmp.resolve("folders"))));
         PackageDraft shopV2 = DeploymentsTest.shop("shop")
                 .endpoint("relay-in", "in", new JsonObject().put("path", "/relay"))
                 .flow("relay", "1.0.0", "at-least-once", "relay-in", 1024, PackageDraft.toPartner());
@@ -322,10 +318,8 @@ class DeploymentsValidateTest {
         int producers = doors.producers().size();
         int open = doors.openProducers().size();
         int scheduled = timer.all().size();
-        List<String> puts = shelf.puts();
         List<?> recorded = records.list().await();
         TreeSet<String> dataTree = tree(data);
-        TreeSet<String> archiveTree = tree(tmp.resolve("archives"));
         List<String> enqueued = queue.enqueued();
         List<String> claims = queue.claims();
 
@@ -340,8 +334,6 @@ class DeploymentsValidateTest {
         assertEquals(claims, queue.claims(), "nothing claimed");
         assertEquals(0, messages.size(), "nothing recorded");
         assertEquals(0, dlq.size(), "nothing parked");
-        assertEquals(puts, shelf.puts(), "no archive put");
-        assertEquals(archiveTree, tree(tmp.resolve("archives")), "the archive store holds what it held");
         assertEquals(recorded, records.list().await(), "no deploy record written");
         assertEquals(dataTree, tree(data), "nothing unpacked or written under the data directory");
         assertFalse(Files.exists(data.resolve("packages").resolve("store")), "store was never unpacked");
@@ -354,8 +346,8 @@ class DeploymentsValidateTest {
     void validateAnswersWhileADeployHoldsTheLock() throws Exception {
         Deployments deployments = overDoors();
         Doors.Gate gate = doors.holdStart(1);
-        Path archive = DeploymentsTest.shop("shop").zipTo(tmp.resolve("zips"));
-        OnVirtualThread.Call<DeployResult> deploying = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), archive));
+        Path folder = DeploymentsTest.shop("shop").folderIn(tmp.resolve("folders"));
+        OnVirtualThread.Call<DeployResult> deploying = OnVirtualThread.start(() -> deployments.deploy("shop", folder));
         DeploymentsTest.reached(gate.reached(), "the deploy starts its first consumer", deploying);
         Path store = written(DeploymentsTest.shop("store"), "store");
 
@@ -375,7 +367,7 @@ class DeploymentsValidateTest {
     @Test
     void validateChecksAgainstTheFlowsTheNodeRuns() throws Exception {
         Deployments deployments = overDoors();
-        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), DeploymentsTest.shop("shop").zipTo(tmp.resolve("zips"))));
+        OnVirtualThread.call(() -> deployments.deploy("shop", DeploymentsTest.shop("shop").folderIn(tmp.resolve("folders"))));
         queue.enqueue("m-left", "shop/audit", 1, null).await();
         assertEquals(1, queue.claim("node-2", "shop/audit", 1, Duration.ofMinutes(5)).await().size(), "fixture: node-2 leases the row");
         PackageDraft withoutAudit = DeploymentsTest.shop("shop").without("flows/audit.yaml").without("endpoints/audit-in.yaml");
@@ -394,7 +386,7 @@ class DeploymentsValidateTest {
         assertEquals(events, doors.events(), "nothing stopped or started");
         assertEquals(rows, queue.rows().toString(), "the queue's rows are as they were");
         DeployRefusedException refused = assertThrows(DeployRefusedException.class,
-                () -> OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), withoutAudit.zipTo(tmp.resolve("zips")))));
+                () -> OnVirtualThread.call(() -> deployments.deploy("shop", withoutAudit.folderIn(tmp.resolve("folders")))));
         assertEquals(refused.problems(), problems, "the same problem lines a deploy of that version is refused with");
     }
 
@@ -406,7 +398,7 @@ class DeploymentsValidateTest {
     @Test
     void aQueueQuestionThePoolRefusedFailsTheValidateAsTheNodes() throws Exception {
         Deployments deployments = overDoors();
-        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), DeploymentsTest.shop("shop").zipTo(tmp.resolve("zips"))));
+        OnVirtualThread.call(() -> deployments.deploy("shop", DeploymentsTest.shop("shop").folderIn(tmp.resolve("folders"))));
         Path dir = written(DeploymentsTest.shop("shop").without("flows/audit.yaml").without("endpoints/audit-in.yaml"), "shop-without-audit");
         PoolRefusedException refusal = new PoolRefusedException(new VertxException("Timeout", true));
         queue.failHasItems(refusal);

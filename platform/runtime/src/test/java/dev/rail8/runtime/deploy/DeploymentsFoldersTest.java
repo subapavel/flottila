@@ -264,7 +264,7 @@ class DeploymentsFoldersTest {
             assertTrue(refused.problems().contains(broken.get(1)), "the line '" + broken.get(1) + "': " + refused.problems());
             DeployedPackage listed = listedShop();
             assertEquals("1.0.0", listed.version(), "v1 stays listed");
-            assertEquals(v1.pkg().archiveSha256(), listed.archiveSha256(), "v1's archive");
+            assertEquals(v1.pkg().content(), listed.content(), "v1's content");
             assertEquals(DeployedFlow.State.RUNNING, listedFlow("shop/orders-a").state());
             assertEquals("A", reply("shop/orders-a"), "v1 serves");
         }

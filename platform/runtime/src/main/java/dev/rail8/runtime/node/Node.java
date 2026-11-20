@@ -21,11 +21,8 @@ import dev.rail8.ingress.SharedHttpPort;
 import dev.rail8.runtime.admin.AdminServer;
 import dev.rail8.runtime.blob.TieredBlobStore;
 import dev.rail8.runtime.db.Migrations;
-import dev.rail8.runtime.deploy.ArchiveStore;
 import dev.rail8.runtime.deploy.Deployments;
-import dev.rail8.runtime.deploy.DirArchiveStore;
 import dev.rail8.runtime.deploy.PgDeploymentStore;
-import dev.rail8.runtime.deploy.S3ArchiveStore;
 import dev.rail8.runtime.journal.Journal;
 import dev.rail8.runtime.journal.JournalFiles;
 import dev.rail8.runtime.journal.JournalKeys;
@@ -104,9 +101,8 @@ import java.util.function.Function;
  * the process exits with {@value #SUPERSEDED}), builds the blob store on the journal (bodies in the journal under the
  * {@code default} tenant's key, their refs in the work pool, bounded by {@code RAIL8_BLOB_DURABLE_MAX}; no spool; a body in another
  * live node's journal read through the peer link) and states its notices once — the profile's, one journal copy and, when no
- * other member is live, that nobody takes its items over —, opens the stores (the work queue claiming only what this journal holds) and the
- * archive store (an s3 store over
- * one S3 client the node builds) and the poller leases (in the Valkey of {@code RAIL8_VALKEY_URI} over one client the
+ * other member is live, that nobody takes its items over —, opens the stores (the work queue claiming only what this journal holds) and
+ * the poller leases (in the Valkey of {@code RAIL8_VALKEY_URI} over one client the
  * node builds; without it in the node's memory, with one WARNING), builds the {@link Deployments} over them and the node's
  * one {@link Targets} ({@code RAIL8_TARGET_*}: every flow it builds sends under it, across packages and versions), starts the
  * {@link CpuSampler} when {@code RAIL8_CPU_SAMPLING} sets a period, binds the HTTP port — until the start returns it answers
@@ -123,7 +119,7 @@ import java.util.function.Function;
  * the start, then the journal's {@link SegmentSweeper} ({@code RAIL8_JOURNAL_SWEEP_*}, its first pass an interval later); when any of this fails, what was opened closes again — the deployments first (the
  * restored flows stop while the pools are open; a stop that fails is added to the start's failure as suppressed), then the HTTP port, then the node lease
  * and its connection, then the sampler, then the work queue's completion batch, then the work events, then the peer link (its reads,
- * then its listener), then the journal, the store, the intake pool, the work pool, the S3 client, the Valkey client — so nothing is left running, listening
+ * then its listener), then the journal, the store, the intake pool, the work pool, the Valkey client — so nothing is left running, listening
  * or pooled; {@code /ready}'s lifecycle is UP only once the start returns. {@code close} first marks the node not ready
  * ({@code /ready} 503), then closes the deployments — no deploy is taken any more and every deployed flow stops within {@code RAIL8_STOP_DEADLINE}, its lease
  * released, while the admin port still answers; a request a consumer took on the HTTP port and has not answered by that deadline is
@@ -132,8 +128,8 @@ import java.util.function.Function;
  * batch in flight commits or rolls back first), then the sweeper (its pass in flight ends first), then the work queue's completion
  * batch (every completion handed over answered first), then the work events, then the peer link (its reads, then its
  * listener), then closes the journal (its spills and persists in flight first; its {@code LOCK}
- * given up), then flushes and closes the message store, then closes the intake pool, then the work pool, then the S3
- * client, then the Valkey client, each step even when the one before failed; Vert.x stays its caller's.
+ * given up), then flushes and closes the message store, then closes the intake pool, then the work pool, then the Valkey
+ * client, each step even when the one before failed; Vert.x stays its caller's.
  *
  * @since 0.1
  */
@@ -174,8 +170,6 @@ public final class Node implements AutoCloseable {
     private final Pool intake;
     /** The work pool: every other statement of the node. */
     private final Pool pool;
-    /** Closes the S3 client of an s3 archive store; nothing for a dir store. */
-    private final Runnable closeS3;
     /** Closes the Valkey client of the poller leases; nothing when they are held in memory. */
     private final Runnable closeValkey;
     private final Runnable closeSignals;
@@ -189,7 +183,7 @@ public final class Node implements AutoCloseable {
 
     private Node(Deployments deployments, SharedHttpPort http, NodeLease lease, PgMembership membership, Optional<CpuSampler> sampler, AdminServer admin,
                  int adminPort, Retention retention, SegmentSweeper sweeper, Journal journal, PgMessageStore messages, Pool intake, Pool pool,
-                 Runnable closeS3, Runnable closeValkey, Runnable closeSignals, Runnable closeWork, AtomicBoolean ready, PeerReads peerReads,
+                 Runnable closeValkey, Runnable closeSignals, Runnable closeWork, AtomicBoolean ready, PeerReads peerReads,
                  PeerServer peerServer) {
         this.deployments = deployments;
         this.http = http;
@@ -204,7 +198,6 @@ public final class Node implements AutoCloseable {
         this.messages = messages;
         this.intake = intake;
         this.pool = pool;
-        this.closeS3 = closeS3;
         this.closeValkey = closeValkey;
         this.closeSignals = closeSignals;
         this.closeWork = closeWork;
@@ -259,7 +252,6 @@ public final class Node implements AutoCloseable {
         Pool pool = PgBuilder.pool().connectingTo(workConnect).with(workSize).using(vertx).build();
         PgMessageStore messages = null;
         Journal journal = null;   // once open: closed after the deployments, before the store and the pools its rows go through
-        Runnable closeS3 = () -> {};   // the S3 client once built: closed after the pools
         Runnable closeValkey = () -> {};   // the Valkey client once built: closed last
         Runnable closeSignals = () -> {};   // the work events once built: closed after the deployments, before the stores and the pools
         Runnable closeWork = () -> {};   // the work queue's completion batch once built: closed after the deployments, before the signals
@@ -317,13 +309,6 @@ public final class Node implements AutoCloseable {
             // claims what this journal holds, its claims indexed; unkeyed completions in batches
             PgWorkQueue work = new PgWorkQueue(pool, opened.node(), blobs, timer);
             closeWork = () -> work.close().await();
-            ArchiveStore archives = new DirArchiveStore(config.archives().dir());
-            if (config.s3().isPresent()) {
-                NodeConfig.S3 settings = config.s3().get();
-                S3Client s3 = s3Client(settings);
-                closeS3 = s3::close;
-                archives = new S3ArchiveStore(s3, settings.bucket(), settings.prefix());
-            }
             PollerLeases leases;
             if (config.leases().valkey().isPresent()) {
                 Redis valkey = Redis.createClient(vertx, config.leases().valkey().get().toString());   // connects on its first command
@@ -345,7 +330,7 @@ public final class Node implements AutoCloseable {
             // grouped saves on the intake pool; the wake and the announce after a commit are fire-and-forget on the work pool
             PgIntake intake = new PgIntake(intakePool, blobs, messages, work, workers, timer, config.intakeGroup(), signals);
             Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
-                    Meter.system(), new PgDeploymentStore(pool), archives, intake, leases,
+                    Meter.system(), new PgDeploymentStore(pool), intake, leases,
                     new Targets(config.targets().defaults(), config.targets().overrides(), timer), lease, workers, signals);   // the node's one Targets and fence
             deployments = restored;
             StepCpu cpu = new StepCpu(StepCpu.Limits.DEFAULT);
@@ -371,7 +356,7 @@ public final class Node implements AutoCloseable {
             SegmentSweeper sweeper = new SegmentSweeper(opened, new PgSegmentRows(pool), intake::openSaves, config.journalSweep(), clock, timer);
             sweeper.start();
             Node node = new Node(restored, http, lease, membership, sampler, admin, port, retention, sweeper, opened, messages, intakePool, pool,
-                    closeS3, closeValkey, closeSignals, closeWork, ready, peerReads, peerServer);
+                    closeValkey, closeSignals, closeWork, ready, peerReads, peerServer);
             ready.set(true);   // the start's last act: from here /ready may answer UP
             return node;
         } catch (Throwable failure) {
@@ -402,7 +387,7 @@ public final class Node implements AutoCloseable {
                                 try {
                                     closePeers(peerReads, peerServer);   // before the journal it serves
                                 } finally {
-                                    closeStores(journal, messages, intakePool, pool, closeS3, closeValkey);
+                                    closeStores(journal, messages, intakePool, pool, closeValkey);
                                 }
                             }
                         }
@@ -470,7 +455,7 @@ public final class Node implements AutoCloseable {
     }
 
     /**
-     * The one S3 client of a node with an s3 archive store, as the S3 tier's tests build theirs: the JDK's HttpURLConnection, the
+     * An S3 client over the node's S3 settings, as the S3 tier's tests build theirs: the JDK's HttpURLConnection, the
      * region, path-style when asked, the endpoint when one is given (else the SDK's for the region) and static keys when both are
      * given (else the SDK's default credentials chain). Building it contacts nothing.
      */
@@ -484,8 +469,8 @@ public final class Node implements AutoCloseable {
     }
 
     /**
-     * A deployed node stores package archives where every node of the pool restores them from — S3, never its own disk —
-     * and reaches S3 over https only.
+     * A deployed node's archive settings name S3, never its own disk, reached over https only. No deploy stores an archive any
+     * more: packages come from git; the settings are read until they are removed.
      */
     private static void refuseArchiveStore(NodeConfig config) {
         if (config.archives().store() == NodeConfig.Archives.Store.DIR) {
@@ -564,7 +549,7 @@ public final class Node implements AutoCloseable {
      * completion batch (waits until every completion handed over is answered), then the work events
      * (their listening connection; nothing sent from then on), then the peer link (its reads, then its listener), then closes the
      * journal, then flushes and closes the message store, then closes
-     * the intake pool, then the work pool, then the S3 client, then the Valkey client — each step even when the one before failed.
+     * the intake pool, then the work pool, then the Valkey client — each step even when the one before failed.
      */
     @Override
     public void close() {
@@ -600,7 +585,7 @@ public final class Node implements AutoCloseable {
                                         try {
                                             closePeers(peerReads, peerServer);   // after the flows that read, before the journal it serves
                                         } finally {
-                                            closeStores(journal, messages, intake, pool, closeS3, closeValkey);
+                                            closeStores(journal, messages, intake, pool, closeValkey);
                                         }
                                     }
                                 }
@@ -615,40 +600,36 @@ public final class Node implements AutoCloseable {
     /**
      * Closes the journal (none yet: nothing to close; a failed close is thrown unchecked once the rest is closed, unless a later
      * close throws too: that one is thrown, as between the others), then
-     * flushes and closes the store (none yet: nothing to flush), then closes the intake pool, then the work pool, then the S3 client
-     * (none: nothing), then the Valkey client (none: nothing) — each even when the one before failed.
+     * flushes and closes the store (none yet: nothing to flush), then closes the intake pool, then the work pool, then the Valkey
+     * client (none: nothing) — each even when the one before failed.
      */
-    private static void closeStores(Journal journal, PgMessageStore messages, Pool intake, Pool pool, Runnable closeS3, Runnable closeValkey) {
+    private static void closeStores(Journal journal, PgMessageStore messages, Pool intake, Pool pool, Runnable closeValkey) {
         try {
             if (journal != null) journal.close();
         } catch (IOException e) {
             throw new UncheckedIOException("the journal did not close", e);
         } finally {
-            closeStores(messages, intake, pool, closeS3, closeValkey);
+            closeStores(messages, intake, pool, closeValkey);
         }
     }
 
-    private static void closeStores(PgMessageStore messages, Pool intake, Pool pool, Runnable closeS3, Runnable closeValkey) {
+    private static void closeStores(PgMessageStore messages, Pool intake, Pool pool, Runnable closeValkey) {
         try {
             if (messages != null) messages.close();
         } finally {
             try {
                 intake.close().await();
             } finally {
-                closePool(pool, closeS3, closeValkey);
+                closePool(pool, closeValkey);
             }
         }
     }
 
-    private static void closePool(Pool pool, Runnable closeS3, Runnable closeValkey) {
+    private static void closePool(Pool pool, Runnable closeValkey) {
         try {
             pool.close().await();
         } finally {
-            try {
-                closeS3.run();
-            } finally {
-                closeValkey.run();
-            }
+            closeValkey.run();
         }
     }
 
