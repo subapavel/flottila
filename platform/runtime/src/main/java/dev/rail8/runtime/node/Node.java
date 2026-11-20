@@ -34,6 +34,7 @@ import dev.rail8.runtime.journal.peer.PeerServer;
 import dev.rail8.runtime.lease.InMemoryPollerLeases;
 import dev.rail8.runtime.lease.PollerLeases;
 import dev.rail8.runtime.lease.ValkeyPollerLeases;
+import dev.rail8.runtime.plugin.Plugins;
 import dev.rail8.runtime.queue.PgFailedMessages;
 import dev.rail8.runtime.queue.PgWorkQueue;
 import dev.rail8.runtime.queue.PgWorkSignals;
@@ -68,6 +69,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * A running node: the Postgres stores, the blob store, the components and the admin API on its caller's
@@ -198,10 +200,10 @@ public final class Node implements AutoCloseable {
         this.peerServer = peerServer;
     }
 
-    /** {@link #start(NodeConfig, Vertx, Function, List, List, Map)} with no admin services of modules. */
+    /** {@link #start(NodeConfig, Vertx, Function, List, List, Map, Supplier)} with no modules to list and no admin services of modules. */
     public static Node start(NodeConfig config, Vertx vertx, Function<ComponentContext, List<Component>> components, List<StepFactory> steps,
                              List<Expressions> languages) throws IOException {
-        return start(config, vertx, components, steps, languages, Map.of());
+        return start(config, vertx, components, steps, languages, Map.of(), List::of);
     }
 
     /**
@@ -209,6 +211,8 @@ public final class Node implements AutoCloseable {
      *
      * @param components builds the node's components, once, from the node's own context
      * @param services   the admin services of the node's modules, by module name, served under {@code /admin/modules/<name>/}
+     * @param listed     the node's modules and plugins, as {@code GET /admin/modules} lists them; asked once, after
+     *                   {@code components} has built them
      * @throws IllegalStateException two components for one scheme, a component whose HTTP prefix is refused
      *                               ({@link SharedHttpPort#prefixes}), a deployed environment and a mock binding among the components,
      *                               or a Postgres the durability profile
@@ -221,7 +225,8 @@ public final class Node implements AutoCloseable {
      *                     {@code journal_keys} row cannot be unwrapped (named by its key id), or the journal cannot be opened
      */
     public static Node start(NodeConfig config, Vertx vertx, Function<ComponentContext, List<Component>> components, List<StepFactory> steps,
-                             List<Expressions> languages, Map<String, List<AdminService>> services) throws IOException {
+                             List<Expressions> languages, Map<String, List<AdminService>> services, Supplier<List<Plugins.Listed>> listed)
+            throws IOException {
         List<StepFactory> stepFactories = List.copyOf(steps);
         List<Expressions> expressions = List.copyOf(languages);
         Hasher hasher = Hasher.sha256();
@@ -340,7 +345,7 @@ public final class Node implements AutoCloseable {
                             "deployments", () -> Future.succeededFuture(restored.health()),
                             "journal", () -> Future.succeededFuture(opened.health())), messages::failed, notices, readiness),
                     Optional.of(restored), work, new PgFailedMessages(pool, work), sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)),
-                    new PgMessageList(pool), workers, signals, new AdminServer.Modules(services, clock));
+                    new PgMessageList(pool), workers, signals, new AdminServer.Modules(listed.get(), services, clock));
             int port = admin.start(vertx).await();
             retention.start();   // its first run on a virtual thread of its own: the start does not wait for it
             // the segments no row pins go; its first pass an interval later, on a virtual thread of its own

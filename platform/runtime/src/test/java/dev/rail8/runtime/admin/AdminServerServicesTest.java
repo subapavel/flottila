@@ -78,7 +78,7 @@ class AdminServerServicesTest {
     void start() throws Exception {
         List<AdminService> services = new AdminSamplePlugin(holds).services(PluginSettings.of(SAMPLE, Map.of()));
         server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), new InMemoryMessageStore(), new InMemoryDlq(), rt.blobs(),
-                new AdminServer.HealthProbe(Map.of(), () -> 0L), new AdminServer.Modules(Map.of(SAMPLE, services, OTHER, services), rt.clock()));
+                new AdminServer.HealthProbe(Map.of(), () -> 0L), new AdminServer.Modules(List.of(), Map.of(SAMPLE, services, OTHER, services), rt.clock()));
         port = server.start(vertx).await(10, TimeUnit.SECONDS);
     }
 

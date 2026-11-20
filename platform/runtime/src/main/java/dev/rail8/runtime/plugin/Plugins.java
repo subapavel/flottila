@@ -74,6 +74,9 @@ import java.util.stream.Stream;
  * is one —, a null scheme, step type, language or {@code settings()}, and more than {@link Plugin#MAX_CONTRIBUTIONS} of one kind.
  * Each call into a module or plugin runs with the thread's context class loader set to its own for that call.
  *
+ * <p>{@link #describe} gives each module and plugin as a line of the node's log, and {@link #list} gives each one with what it
+ * brings, as the admin API lists them; both from the same values.
+ *
  * <p>{@link #close} closes the plugins' class loaders: call it once nothing of theirs runs any more, after the node and its
  * Vert.x have stopped.
  *
@@ -110,12 +113,12 @@ public final class Plugins implements AutoCloseable {
      * @param own     a plugin's class loader of its own, closed with it; none for a module
      * @param name    what {@link Plugin#name()} answered
      * @param api     what {@link Plugin#api()} answered
-     * @param version the {@code Implementation-Version} of the jar its implementation comes from, {@code -} when none
-     * @param sha256  the SHA-256, in hex, over the bytes of its jars in name order; {@code -} for a module of a directory
+     * @param version the {@code Implementation-Version} of the jar its implementation comes from; empty when none
+     * @param sha256  the SHA-256, in hex, over the bytes of its jars in name order; empty for a module of a directory
      * @param from    where it came from, in its log line: a module's jar or directory, a plugin's entry
      */
     private record Loaded(String kind, String where, Plugin plugin, ClassLoader loader, Optional<URLClassLoader> own, String name, String api,
-                          String version, String sha256, String from) {
+                          Optional<String> version, Optional<String> sha256, String from) {
         /** Whose a contribution of it is, in a refusal: {@code module <name>} or {@code plugin <name>}. */
         String who() {
             return kind + " " + name;
@@ -125,14 +128,51 @@ public final class Plugins implements AutoCloseable {
     /** A name and an api that passed their checks. */
     private record Checked(String name, String api) {}
 
+    /**
+     * One module or plugin as the node lists it: who it is and what it brings.
+     *
+     * @param kind      {@code module} or {@code plugin}
+     * @param name      its name
+     * @param version   the {@code Implementation-Version} of the jar its implementation comes from; empty when none
+     * @param api       the api version it was built against
+     * @param sha256    the SHA-256, in hex, over the bytes of its jars in name order; empty for a module of a directory
+     * @param from      where it came from: a module's jar or directory, a plugin's entry of the plugin directory
+     * @param schemes   the schemes of its components, sorted; none until the node has built every component
+     *                  ({@link #components(ComponentContext)})
+     * @param steps     the types of its step factories, sorted
+     * @param languages the names of its expression languages, sorted
+     */
+    public record Listed(String kind, String name, Optional<String> version, String api, Optional<String> sha256, String from, List<String> schemes,
+                         List<String> steps, List<String> languages) {
+        public Listed {
+            Objects.requireNonNull(kind, "kind");
+            Objects.requireNonNull(name, "name");
+            Objects.requireNonNull(version, "version");
+            Objects.requireNonNull(api, "api");
+            Objects.requireNonNull(sha256, "sha256");
+            Objects.requireNonNull(from, "from");
+            schemes = List.copyOf(schemes);
+            steps = List.copyOf(steps);
+            languages = List.copyOf(languages);
+        }
+    }
+
     private final List<Loaded> loaded;
     private final List<StepFactory> steps;
     private final List<Expressions> languages;
+    /** The step types and the languages each one brings, by its name, sorted. */
+    private final Map<String, List<String>> stepTypes;
+    private final Map<String, List<String>> languageNames;
+    /** The schemes each one's components have, by its name, sorted: recorded when every component was built. */
+    private volatile Map<String, List<String>> schemes = Map.of();
 
-    private Plugins(List<Loaded> loaded, List<StepFactory> steps, List<Expressions> languages) {
+    private Plugins(List<Loaded> loaded, List<StepFactory> steps, Map<String, List<String>> stepTypes, List<Expressions> languages,
+                    Map<String, List<String>> languageNames) {
         this.loaded = List.copyOf(loaded);
         this.steps = List.copyOf(steps);
+        this.stepTypes = Map.copyOf(stepTypes);
         this.languages = List.copyOf(languages);
+        this.languageNames = Map.copyOf(languageNames);
     }
 
     /**
@@ -171,11 +211,13 @@ public final class Plugins implements AutoCloseable {
             }
             Map<String, String> builtIn = new HashMap<>();
             FlowBuilder.BUILT_INS.forEach(type -> builtIn.put(type, "is built in"));
+            Map<String, List<String>> stepTypes = new HashMap<>();
             List<StepFactory> steps = merge(loaded, "steps()", l -> l.plugin().steps(PluginSettings.of(l.name(), env)), StepFactory::type,
-                    "step type", builtIn, null, null, IllegalArgumentException::new);
+                    "step type", builtIn, null, null, IllegalArgumentException::new, stepTypes);
+            Map<String, List<String>> languageNames = new HashMap<>();
             List<Expressions> languages = merge(loaded, "languages()", l -> l.plugin().languages(), Expressions::language, "expression language",
-                    Map.of(), null, null, IllegalArgumentException::new);
-            return new Plugins(loaded, steps, languages);
+                    Map.of(), null, null, IllegalArgumentException::new, languageNames);
+            return new Plugins(loaded, steps, stepTypes, languages, languageNames);
         } catch (RuntimeException refused) {
             close(loaded);
             throw refused;
@@ -211,7 +253,7 @@ public final class Plugins implements AutoCloseable {
         Checked checked = checked(where, plugin, loader);
         Optional<Path> location = location(type);
         String from = location.map(l -> Files.isRegularFile(l) ? l.getFileName().toString() : l.toString()).orElse("the class path");
-        String sha256 = location.filter(Files::isRegularFile).map(jar -> sha256(List.of(jar), where)).orElse("-");
+        Optional<String> sha256 = location.filter(Files::isRegularFile).map(jar -> sha256(List.of(jar), where));
         return new Loaded("module", where, plugin, loader, Optional.empty(), checked.name(), checked.api(), version(type), sha256, from);
     }
 
@@ -259,7 +301,7 @@ public final class Plugins implements AutoCloseable {
             }
             Checked checked = checked(where, plugin, loader);
             return new Loaded("plugin", where, plugin, loader, Optional.of(loader), checked.name(), checked.api(), version(own.getFirst().type()),
-                    sha256(jars, where), at);
+                    Optional.of(sha256(jars, where)), at);
         } catch (RuntimeException refused) {
             close(at, loader);
             throw refused;
@@ -281,9 +323,9 @@ public final class Plugins implements AutoCloseable {
         return new Checked(name, api);
     }
 
-    /** The {@code Implementation-Version} of the jar {@code type} comes from, {@code -} when none. */
-    private static String version(Class<?> type) {
-        return Optional.ofNullable(type.getPackage()).map(Package::getImplementationVersion).orElse("-");
+    /** The {@code Implementation-Version} of the jar {@code type} comes from; empty when none. */
+    private static Optional<String> version(Class<?> type) {
+        return Optional.ofNullable(type.getPackage()).map(Package::getImplementationVersion);
     }
 
     /**
@@ -303,11 +345,15 @@ public final class Plugins implements AutoCloseable {
 
     /**
      * Each module's components, then each plugin's, built over {@code context}; an {@link IllegalStateException} for a refusal
-     * (see the class comment), as {@code Node.start} does for two components of one scheme.
+     * (see the class comment), as {@code Node.start} does for two components of one scheme. Their schemes are what
+     * {@link #list()} lists from then on.
      */
     public List<Component> components(ComponentContext context) {
         Objects.requireNonNull(context, "context");
-        return components(loaded, context);
+        Map<String, List<String>> owned = new HashMap<>();
+        List<Component> all = components(loaded, context, owned);
+        schemes = Map.copyOf(owned);
+        return all;
     }
 
     /**
@@ -319,12 +365,12 @@ public final class Plugins implements AutoCloseable {
     public List<Component> components(String name, ComponentContext context) {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(context, "context");
-        return components(loaded.stream().filter(l -> l.name().equals(name)).toList(), context);
+        return components(loaded.stream().filter(l -> l.name().equals(name)).toList(), context, new HashMap<>());
     }
 
-    private static List<Component> components(List<Loaded> loaded, ComponentContext context) {
+    private static List<Component> components(List<Loaded> loaded, ComponentContext context, Map<String, List<String>> owned) {
         return merge(loaded, "components()", l -> l.plugin().components(context), Component::scheme, "scheme",
-                Map.of("mock", "is the platform's mock"), "settings()", Component::settings, IllegalStateException::new);
+                Map.of("mock", "is the platform's mock"), "settings()", Component::settings, IllegalStateException::new, owned);
     }
 
     /**
@@ -385,10 +431,18 @@ public final class Plugins implements AutoCloseable {
 
     /**
      * One line per module, then per plugin, for the node's log: {@code module <name> <version> (api <api>, sha256 <hex>) from
-     * <jar>}, {@code plugin <name> <version> (api <api>, sha256 <hex>) from <entry>}.
+     * <jar>}, {@code plugin <name> <version> (api <api>, sha256 <hex>) from <entry>}; {@code -} for a version or digest it has not.
      */
     public List<String> describe() {
-        return loaded.stream().map(l -> l.who() + " " + l.version() + " (api " + l.api() + ", sha256 " + l.sha256() + ") from " + l.from()).toList();
+        return loaded.stream().map(l -> l.who() + " " + l.version().orElse("-") + " (api " + l.api() + ", sha256 " + l.sha256().orElse("-")
+                + ") from " + l.from()).toList();
+    }
+
+    /** Each module, then each plugin, with what it brings, in the order of {@link #describe()}. */
+    public List<Listed> list() {
+        Map<String, List<String>> built = schemes;
+        return loaded.stream().map(l -> new Listed(l.kind(), l.name(), l.version(), l.api(), l.sha256(), l.from(), built.getOrDefault(l.name(), List.of()),
+                stepTypes.getOrDefault(l.name(), List.of()), languageNames.getOrDefault(l.name(), List.of()))).toList();
     }
 
     /** Closes every plugin's class loader; one that fails to close is logged and the others are still closed. */
@@ -412,10 +466,12 @@ public final class Plugins implements AutoCloseable {
     /**
      * What each of {@code loaded} brings by {@code method} ({@code contributions}), keyed by {@code key}: a key that is
      * {@code reserved} is refused with the reason it maps to, and one that is already taken names its owner. When {@code check}
-     * is not null it is called on each contribution, as {@code checked}: what it throws, or a null it returns, refuses it.
+     * is not null it is called on each contribution, as {@code checked}: what it throws, or a null it returns, refuses it. The
+     * keys of each one that brings any go into {@code owned}, by its name, sorted.
      */
     private static <T> List<T> merge(List<Loaded> loaded, String method, Function<Loaded, List<T>> contributions, Function<T, String> key, String keyName,
-                                     Map<String, String> reserved, String checked, Function<T, ?> check, BiFunction<String, Throwable, RuntimeException> refusal) {
+                                     Map<String, String> reserved, String checked, Function<T, ?> check, BiFunction<String, Throwable, RuntimeException> refusal,
+                                     Map<String, List<String>> owned) {
         List<T> all = new ArrayList<>();
         Map<String, String> owners = new HashMap<>();
         for (Loaded p : loaded) {
@@ -424,6 +480,7 @@ public final class Plugins implements AutoCloseable {
             if (brought.size() > Plugin.MAX_CONTRIBUTIONS) {
                 throw refusal.apply(who + ": " + method + " brings " + brought.size() + "; at most " + Plugin.MAX_CONTRIBUTIONS, null);
             }
+            List<String> keys = new ArrayList<>();
             for (T t : brought) {
                 String k = call(who, p.loader(), keyName + " of " + t.getClass().getName(), () -> key.apply(t), refusal);
                 if (k == null) throw refusal.apply(who + ": the " + keyName + " of " + t.getClass().getName() + " is null", null);
@@ -436,7 +493,9 @@ public final class Plugins implements AutoCloseable {
                     throw refusal.apply(who + ": " + checked + " of " + t.getClass().getName() + " is null", null);
                 }
                 all.add(t);
+                keys.add(k);
             }
+            if (!keys.isEmpty()) owned.put(p.name(), keys.stream().sorted().toList());
         }
         return List.copyOf(all);
     }

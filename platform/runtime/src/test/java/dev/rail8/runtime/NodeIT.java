@@ -289,7 +289,7 @@ class NodeIT {
     void theNodeServesItsModulesAdminServices() throws Exception {
         NodeConfig config = NodeConfig.from(env("dev"));
         List<AdminService> services = new AdminSamplePlugin(new AdminSamplePlugin.Holds()).services(PluginSettings.of("admin-sample", Map.of()));
-        node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(), List.of(), List.of(), Map.of("admin-sample", services)));
+        node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(), List.of(), List.of(), Map.of("admin-sample", services), List::of));
         HttpResponse<String> clock = get(node.adminPort(), "/admin/modules/admin-sample/clock");
         assertEquals(200, clock.statusCode(), clock.body());
         assertFalse(new JsonObject(clock.body()).getString("now").isBlank(), "the node's clock: " + clock.body());

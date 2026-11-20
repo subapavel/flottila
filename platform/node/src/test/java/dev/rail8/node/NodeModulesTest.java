@@ -21,8 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The node's class path, which its jar's manifest and {@code target/lib} carry, names exactly the seven shipped modules —
  * direct, http, jq, mapping, sftp, xsd and xslt, in name order. Together they bring the direct, http and sftp components (no
- * mock: a node never names one), the jq, mapping, xsd and xslt steps and the xpath language. The tests' class path adds only
- * test libraries, none of which is a module.
+ * mock: a node never names one), the jq, mapping, xsd and xslt steps and the xpath language, and the node's listing of its
+ * modules says which module brings which. The tests' class path adds only test libraries, none of which is a module.
  */
 class NodeModulesTest {
 
@@ -41,6 +41,16 @@ class NodeModulesTest {
                     "the components a node serves");
             assertEquals(List.of("jq", "mapping", "xsd", "xslt"), plugins.steps().stream().map(StepFactory::type).toList());
             assertEquals(List.of("xpath"), plugins.languages().stream().map(Expressions::language).toList());
+            assertEquals(List.of(
+                            List.of("direct", List.of("direct"), List.of(), List.of()),
+                            List.of("http", List.of("http"), List.of(), List.of()),
+                            List.of("jq", List.of(), List.of("jq"), List.of()),
+                            List.of("mapping", List.of(), List.of("mapping"), List.of()),
+                            List.of("sftp", List.of("sftp"), List.of(), List.of()),
+                            List.of("xsd", List.of(), List.of("xsd"), List.of()),
+                            List.of("xslt", List.of(), List.of("xslt"), List.of("xpath"))),
+                    plugins.list().stream().map(m -> List.of(m.name(), m.schemes(), m.steps(), m.languages())).toList(),
+                    "what each module brings, as GET /admin/modules lists it");
         } finally {
             vertx.close().await();
         }
