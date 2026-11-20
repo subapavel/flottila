@@ -21,11 +21,6 @@ public final class Intrinsic2Op extends Op {
   /** The form's path side, for a rule that steps; null for any other. */
   private final PathStep step;
 
-  /** A call whose result is untracked in a path variant. */
-  public Intrinsic2Op(boolean valueForm, Fn2 fn, Argument a, Argument b) {
-    this(valueForm, fn, a, b, ResultPath.UNTRACKED);
-  }
-
   /** A call whose result's path is made by {@code rule}; a rule that steps needs a form that is a {@link PathStep}. */
   public Intrinsic2Op(boolean valueForm, Fn2 fn, Argument a, Argument b, ResultPath rule) {
     super(valueForm);

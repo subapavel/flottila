@@ -15,10 +15,6 @@ public final class VarOp extends Op {
   /** The cell that keeps the slot's path, or -1 when the slot keeps none. */
   private final int pathCell;
 
-  public VarOp(boolean valueForm, int slot) {
-    this(valueForm, slot, -1);
-  }
-
   /** The Var of {@code slot}, whose path waits in {@code pathCell}, or of a slot that keeps none for -1. */
   public VarOp(boolean valueForm, int slot, int pathCell) {
     super(valueForm);
