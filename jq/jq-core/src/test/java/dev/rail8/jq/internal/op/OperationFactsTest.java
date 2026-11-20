@@ -22,6 +22,7 @@ import dev.rail8.jq.query.ir.Function;
 import dev.rail8.jq.query.ir.Intrinsic;
 import dev.rail8.jq.query.ir.Node;
 import dev.rail8.jq.query.ir.Operation;
+import dev.rail8.jq.query.ir.PathRule;
 import dev.rail8.jq.query.ir.Program;
 import dev.rail8.jq.query.run.CallForm;
 import dev.rail8.jq.query.run.FilterException;
@@ -48,6 +49,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -67,11 +69,18 @@ import org.junit.jupiter.api.Test;
  * the arithmetic that may give an operand or its members ({@code +}, {@code -}, {@code *}), the sort family and
  * {@code flatten}, {@code keys}, {@code keys_unsorted} and {@code to_entries}, and {@code getpath}, {@code setpath} and
  * {@code delpaths}. The rest build their result afresh or give no container and no string, which
- * {@link #keepsArgsIsSound} checks on random inputs and arguments.
+ * {@link #keepsArgsIsSound} checks on random inputs and arguments. The path rule of each operation is pinned too, by
+ * the filters whose IR holds it.
  */
 class OperationFactsTest {
   /** A run of field steps long enough to be one fused step. */
   private static final String STEP_RUN = ".a".repeat(600);
+
+  /** A fused run whose first step is an index with a constant number. */
+  private static final String INDEX_RUN = ".[0]" + STEP_RUN;
+
+  /** A fused run whose first step is a slice with constant bounds. */
+  private static final String SLICE_RUN = ".[1:2]" + STEP_RUN;
 
   /** Filters whose IR holds every operation: each native by its name, each operator, step and construction. */
   private static final List<String> CORPUS =
@@ -85,7 +94,7 @@ class OperationFactsTest {
           "_match_impl(.;.;.)", "strptime(.)", "strftime(.)", "strflocaltime(.)", "mktime", "gmtime", "localtime",
           "now", "getpath(.)", "setpath(.;.)", "delpaths(.)",
           ".a", ".a?", ".\"a\"", ".[.]", ".[.]?", ".[0]", ".[\"a\"]", ".[null]", ".[0]?", ".[\"a\"]?", ".[1:2]",
-          ".[.:.]", ".[1:2]?", ".[.:.]?", ".[]", ".[]?", STEP_RUN,
+          ".[.:.]", ".[1:2]?", ".[.:.]?", ".[]", ".[]?", STEP_RUN, INDEX_RUN, SLICE_RUN,
           ". + .", ". - .", ". * .", ". / .", ". % .", "-.", ". == .", ". != .", ". < .", ". > .", ". <= .",
           ". >= .", "{a: .}", "{(.): .}", "\"\\(.)\"", "@text", "@json", "@csv", "@tsv", "@html", "@uri", "@urid",
           "@sh", "@base64", "@base64d", "@foo", "reduce . as $x (.; .)", "foreach . as $x (.; .)");
@@ -94,30 +103,35 @@ class OperationFactsTest {
   private static Map<Operation, Integer> corpus() {
     Map<Operation, Integer> found = new IdentityHashMap<>();
     for (String filter : CORPUS) {
-      Program program = Resolver.resolve(Parser.parse(filter));
-      ArrayDeque<Object> todo = new ArrayDeque<>();
-      todo.push(program.main());
-      program.functions().forEach(todo::push);
-      while (!todo.isEmpty()) {
-        Object next = todo.pop();
-        if (next instanceof Intrinsic i) {
-          found.putIfAbsent(i.op(), i.args().size());
-        }
-        for (RecordComponent c : next.getClass().getRecordComponents()) {
-          Object part = read(c, next);
-          if (part instanceof Node || part instanceof Alternative || part instanceof Function) {
-            todo.push(part);
-          } else if (part instanceof List<?> list) {
-            for (Object e : list) {
-              if (e instanceof Node || e instanceof Alternative || e instanceof Function) {
-                todo.push(e);
-              }
+      collect(filter, found);
+    }
+    return found;
+  }
+
+  /** Adds each operation of {@code filter}'s IR to {@code found}, with the number of arguments of its first Intrinsic. */
+  private static void collect(String filter, Map<Operation, Integer> found) {
+    Program program = Resolver.resolve(Parser.parse(filter));
+    ArrayDeque<Object> todo = new ArrayDeque<>();
+    todo.push(program.main());
+    program.functions().forEach(todo::push);
+    while (!todo.isEmpty()) {
+      Object next = todo.pop();
+      if (next instanceof Intrinsic i) {
+        found.putIfAbsent(i.op(), i.args().size());
+      }
+      for (RecordComponent c : next.getClass().getRecordComponents()) {
+        Object part = read(c, next);
+        if (part instanceof Node || part instanceof Alternative || part instanceof Function) {
+          todo.push(part);
+        } else if (part instanceof List<?> list) {
+          for (Object e : list) {
+            if (e instanceof Node || e instanceof Alternative || e instanceof Function) {
+              todo.push(e);
             }
           }
         }
       }
     }
-    return found;
   }
 
   private static Object read(RecordComponent c, Object record) {
@@ -166,6 +180,44 @@ class OperationFactsTest {
       expected.put(fresh, false);
     }
     assertThat(declared).as("keepsArgs of each operation").isEqualTo(expected);
+  }
+
+  /**
+   * The path rule each operation declares, read per filter of the corpus: the rules other than NONE of the operations
+   * in that filter's IR. A field step is KEY; an index is KEY for a constant string key, INDEX for a constant number
+   * and DYNAMIC for any other key; a slice is SLICE and an iteration ALL; a fused run declares its first step's rule;
+   * {@code getpath} is KEY_LIST. Every other filter's operations are all NONE, so it is not in the map.
+   */
+  @Test
+  void everyOperationDeclaresItsPathRule() {
+    Map<String, Set<PathRule>> declared = new TreeMap<>();
+    for (String filter : CORPUS) {
+      Map<Operation, Integer> found = new IdentityHashMap<>();
+      collect(filter, found);
+      Set<PathRule> rules = EnumSet.noneOf(PathRule.class);
+      found.keySet().forEach(op -> rules.add(op.facts().path()));
+      rules.remove(PathRule.NONE);
+      if (!rules.isEmpty()) {
+        declared.put(filter, rules);
+      }
+    }
+    Map<String, Set<PathRule>> expected = new TreeMap<>();
+    for (String key : new String[] {".a", ".a?", ".\"a\"", ".[\"a\"]", ".[\"a\"]?", STEP_RUN}) {
+      expected.put(key, Set.of(PathRule.KEY));
+    }
+    for (String index : new String[] {".[0]", ".[0]?", INDEX_RUN}) {
+      expected.put(index, Set.of(PathRule.INDEX));
+    }
+    for (String dynamic : new String[] {".[.]", ".[.]?", ".[null]"}) {
+      expected.put(dynamic, Set.of(PathRule.DYNAMIC));
+    }
+    for (String slice : new String[] {".[1:2]", ".[.:.]", ".[1:2]?", ".[.:.]?", SLICE_RUN}) {
+      expected.put(slice, Set.of(PathRule.SLICE));
+    }
+    expected.put(".[]", Set.of(PathRule.ALL));
+    expected.put(".[]?", Set.of(PathRule.ALL));
+    expected.put("getpath(.)", Set.of(PathRule.KEY_LIST));
+    assertThat(declared).as("the path rules other than NONE of the operations of each filter").isEqualTo(expected);
   }
 
   @Test
