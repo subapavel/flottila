@@ -139,7 +139,7 @@ class SpecialiseCensusTest {
   /**
    * How many filters of each family the engine does not compile, a Stub or a compile error; the ids are in the
    * log. Observed by the #117 census's test-author; the Resolver decides it, never the pass. A later ticket that builds a
-   * Stub lowers an entry: that is no weakened test. 269 filters in all.
+   * Stub lowers an entry: that is no weakened test. 258 filters in all.
    */
   static final Map<String, Integer> NOT_COMPILED =
       Map.ofEntries(
@@ -154,9 +154,9 @@ class SpecialiseCensusTest {
           Map.entry("dates", 1),
           Map.entry("defs", 22),
           Map.entry("depth", 7),
-          Map.entry("jq.test", 42),
+          Map.entry("jq.test", 33),
           Map.entry("literal", 12),
-          Map.entry("man.test", 4),
+          Map.entry("man.test", 2),
           Map.entry("natives", 8),
           Map.entry("prelude", 8),
           Map.entry("reduce", 4),
