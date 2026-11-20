@@ -136,8 +136,8 @@ The actor is the request's `X-Rail8-Actor` header, as for every audited act.
 The order:
 
 1. **Refusals before any fetch.** A bad body, repository name or commit id, or a ref in a deployed
-   environment (400); a deployed environment while other nodes cannot yet follow a deploy (403,
-   "Several nodes" below); a closing node (503); another deploy running (409).
+   environment (400); a closing node (503); another deploy or undeploy running on any node of the
+   pool (409, "Several nodes" below).
 2. **Fetch.** The commit is fetched within the timeout and the cache's size. When `RAIL8_GIT_REF` is
    set, the ref is fetched too, its tip resolved once, and the commit proved an ancestor of that tip
    (422 otherwise; history the cache lacks is refused as incomplete, never as unapproved).
@@ -147,8 +147,7 @@ The order:
    files are intact. A package of the same name recorded from another repository is refused (409).
 4. **Dependencies.** Every pin of the closure is resolved, fetched and written as "Dependencies" says.
 5. **Check.** The package is checked whole with today's checks: schemas, components, endpoints,
-   dependencies, listeners, calls between flows, and the queue of each at-least-once flow it removes.
-   Every problem is one line of one answer (422), and nothing has stopped. A check ends here.
+   dependencies, listeners and calls between flows. Every problem is one line of one answer (422), and nothing has stopped. A check ends here.
 6. **Apply.** Today's swap: the changed and removed flows stop, the added and changed ones start, the
    record is written (the commit point), and a failed start rolls back.
 7. **Audit.** One audit row: the actor, `deploy`, the repository and the commit, and the outcome.
@@ -159,8 +158,8 @@ the archive.
 A listener or a node-local address that moves from one package to another takes two deploys: first
 the one that removes it, then the one that adds it.
 
-**Undeploy** stays `DELETE /admin/packages/{name}`. A package whose at-least-once flows hold queued
-items is not undeployed, as today. Today's refusal of a package another record pins goes: a pin brings
+**Undeploy** stays `DELETE /admin/packages/{name}`. A package whose at-least-once flows hold items is
+undeployed all the same: its items run on the flows' drains ("Retiring" below). Today's refusal of a package another record pins goes: a pin brings
 its own files from its own commit, so a dependent runs on after its dependency is undeployed. **Rollback** is a
 deploy of an earlier commit of the same repository.
 
@@ -195,12 +194,9 @@ At its start, before its admin port opens, a node installs each record:
 
 ## Several nodes
 
-This part is agreed in outline. Its stage designs it in full first, as hard work of its own: where the
-mark of a retiring flow lives in Postgres, the connection that holds the advisory lock, a node that
-dies while a flow drains, and how long a drain may take.
-
 - **One deploy at a time in a pool.** A deploy or an undeploy holds a Postgres advisory lock for its
-  whole length; a second one on any node of the pool is 409.
+  whole length, on a connection of its own that no other work uses, taken without waiting; a second one
+  on any node of the pool is 409. A node that dies frees the lock with its connection.
 - **No stale plan.** At its end the deploy raises the pool's generation, a number in Postgres. A node
   that takes the lock while the generation is ahead of the one it last reconciled reconciles first,
   then plans.
@@ -209,14 +205,19 @@ dies while a flow drains, and how long a drain may take.
   restore does, and undeploys a package that has no record. It writes no record. At every tick it
   tries again a package it lists `FAILED` because its commit could not be fetched. A node that cannot
   reconcile is `DEGRADED`, naming the packages, and tries again at the next tick.
-- **Retiring.** A removed flow retires only when no node holds its work. A flow that an undeploy or a
-  redeploy removes is marked in Postgres; every node stops taking messages for it, and its worker runs
-  on until no node's work queue holds an item of it; only then does it stop and, for an undeploy, the
-  package's record go. A message accepted while the removal spreads is never stranded. Until then, dev
-  and ci keep today's order, in which an undeploy deletes the record before the worker stops.
-
-Until this is built, a deployed environment refuses deploys and undeploys, as today, and a running
-node learns of a deploy on another node only at its next start.
+- **Retiring.** A removed flow retires only when no node holds its work. A flow the pool no longer runs
+  at-least-once (an undeploy, or a redeploy that removes it or changes its delivery) is marked in the
+  table `retiring`, in the transaction that writes or deletes the record, with a copy of the record
+  it ran under. The work queue admits a message for a flow only while a record runs it at-least-once,
+  a mark retires it, or the node runs it before its record is written; a node that still runs the
+  flow until its next tick therefore writes into the drain, and a write after the mark ended is
+  refused with nothing kept. Each node, once it stops the flow, runs its drain: the flow built again
+  from its directory, with no consumer, running what the work queue holds of it. Each tick ends the
+  mark of a flow with no work row left, under that flow's advisory lock, which every admitted write
+  holds until it commits; a drain stops at the tick after that once its queue holds nothing of the
+  flow, and the package's directory goes then. A drain takes as long as its items do. A node that dies
+  while a flow drains leaves its items in the work queue; a restarted node builds no drain yet, so they
+  wait for one.
 
 ## Environments
 
