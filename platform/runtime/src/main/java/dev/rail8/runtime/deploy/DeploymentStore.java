@@ -21,15 +21,31 @@ public interface DeploymentStore {
      * @param generation how many deploys and undeploys the pool committed
      * @param records every record, sorted by name as {@link String#compareTo} sorts ({@code Deployments} lists its packages so),
      *                whatever the database's collation
+     * @param marked the qualified ids of the flows the pool retires, sorted: each was run at-least-once by a record that a later write
+     *               replaced with one that does not run it so, or deleted; the work queue still takes messages for it, and its rows are
+     *               drained, until {@link #endMarks} ends its mark
      */
-    record Snapshot(long generation, List<DeploymentRecord> records) {
+    record Snapshot(long generation, List<DeploymentRecord> records, List<String> marked) {
         public Snapshot {
             records = List.copyOf(records);
+            marked = List.copyOf(marked);
+        }
+
+        /** A pool that retires no flow. */
+        public Snapshot(long generation, List<DeploymentRecord> records) {
+            this(generation, records, List.of());
         }
     }
 
-    /** The pool's generation and every record, read in one snapshot. */
+    /** The pool's generation, every record and every mark, read in one snapshot. */
     Future<Snapshot> read();
+
+    /**
+     * Ends the mark of each retired flow whose work rows are gone, and raises the generation when one ended, in one transaction:
+     * only while no holder has the pool's lock, which it takes without waiting, and for each flow only while no write of a message
+     * for it is between its admission and its commit (the flow's admission lock, taken without waiting). Does nothing otherwise.
+     */
+    Future<Void> endMarks();
 
     /**
      * Takes the pool's lock without waiting: empty when another holder has it. The lock is held until {@link PoolLock#close}, or
@@ -53,10 +69,17 @@ public interface DeploymentStore {
         /** The pool as read once the lock was taken. */
         Snapshot snapshot();
 
-        /** Writes {@code record} as its package's one row (a row the package had is replaced whole); answers the new generation. */
+        /**
+         * Writes {@code record} as its package's one row (a row the package had is replaced whole); answers the new generation. In
+         * the same transaction each flow the replaced row runs at-least-once and {@code record} does not is marked, with a copy of
+         * that row, and the mark of each flow {@code record} runs at-least-once ends.
+         */
         Future<Long> save(DeploymentRecord record);
 
-        /** Deletes the row of the package {@code name}, and no other; answers the new generation, raised whether a row was there or not. */
+        /**
+         * Deletes the row of the package {@code name}, and no other, marking each flow it ran at-least-once with a copy of it, in one
+         * transaction; answers the new generation, raised whether a row was there or not.
+         */
         Future<Long> delete(String name);
 
         /** Frees the lock; never fails. */

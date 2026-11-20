@@ -30,8 +30,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * The Postgres {@link WorkQueue}: {@code SELECT … FOR UPDATE SKIP LOCKED}
@@ -319,10 +321,20 @@ public final class PgWorkQueue implements WorkQueue {
 
     /** Any row of the flow, held or not: a completed row is deleted ({@link #COMPLETE}). On the index {@code work_flow_seq}. */
     private static final String HAS_ITEMS = "select exists(select 1 from work where flow = $1)";
+    /**
+     * The admission lock of each flow of $1, shared, once each and in hash order: an end of a flow's mark takes it exclusive, without
+     * waiting, so it never ends between a message's admission and its commit.
+     */
+    static final String ADMIT_LOCK = "select pg_advisory_xact_lock_shared(295, h) from (select distinct hashtext(f) as h from unnest($1::text[]) as u(f) order by h) s";
+    /** The flows of $1 refused: none of $2 (run by the node without a record), no record runs them at-least-once, no mark retires them. */
+    static final String REFUSED = "select distinct f from unnest($1::text[]) as u(f) where not (f = any($2::text[])) "
+            + "and not exists (select 1 from deployments d where f = any(d.at_least_once)) and not exists (select 1 from retiring r where r.flow = f) order by f";
 
     private final Pool pool;
     private final String node;              // null: any node's items
     private final TieredBlobStore store;    // null: no index to tell
+    /** The flows the node runs at-least-once that no record names yet; null: every flow is admitted. */
+    private final Supplier<Set<String>> unrecorded;
     private final BatchingWriter<Member> batch;   // null: unkeyed rows complete one statement each
     private final AtomicLong statements = new AtomicLong();
     private final AtomicLong members = new AtomicLong();
@@ -355,6 +367,7 @@ public final class PgWorkQueue implements WorkQueue {
         this.pool = Objects.requireNonNull(pool, "pool");
         this.node = node;
         this.store = store;
+        this.unrecorded = null;
         this.batch = null;
     }
 
@@ -363,11 +376,40 @@ public final class PgWorkQueue implements WorkQueue {
      * {@code timer} bounding a member's wait for room.
      */
     public PgWorkQueue(Pool pool, String node, TieredBlobStore store, Timer timer) {
+        this(pool, node, store, timer, null);
+    }
+
+    /**
+     * {@link #PgWorkQueue(Pool, String, TieredBlobStore, Timer)} admitting new messages ({@link #admit}) only for a flow the pool runs
+     * at-least-once, retires, or that {@code unrecorded} names: the flows the node runs at-least-once that no record names yet. Asked
+     * on the event loop, it answers at once. Null: every flow is admitted.
+     */
+    public PgWorkQueue(Pool pool, String node, TieredBlobStore store, Timer timer, Supplier<Set<String>> unrecorded) {
         this.pool = Objects.requireNonNull(pool, "pool");
         this.node = Objects.requireNonNull(node, "node");
         this.store = store;
+        this.unrecorded = unrecorded;
         this.batch = new BatchingWriter<>(this::completeBatch, timer,
                 new BatchingWriter.Options(BATCH_MEMBERS, Duration.ZERO, BATCH_IN_FLIGHT, BATCH_BACKLOG, BATCH_MAX_WAIT));
+    }
+
+    /**
+     * Admits the messages {@code tx} writes for {@code flows}: takes each flow's admission lock shared on {@code tx} until it ends,
+     * then, in a later statement whose snapshot follows the locks, fails with {@link NotAdmittedException} when a flow is neither run
+     * at-least-once by a record, nor retired by a mark, nor run by the node without a record yet. Both are sent before any reply. A
+     * queue built without admission admits every flow and sends nothing; so it does for no flow.
+     */
+    public Future<Void> admit(SqlClient tx, Collection<String> flows) {
+        if (unrecorded == null || flows.isEmpty()) return Future.succeededFuture();
+        String[] asked = flows.toArray(String[]::new);
+        Future<?> locked = tx.preparedQuery(ADMIT_LOCK).execute(Tuple.of((Object) asked));
+        Future<RowSet<Row>> refused = tx.preparedQuery(REFUSED).execute(Tuple.of(asked, unrecorded.get().toArray(String[]::new)));
+        return locked.compose(held -> refused).compose(rows -> {
+            if (rows.rowCount() == 0) return Future.succeededFuture();
+            List<String> gone = new ArrayList<>();
+            rows.forEach(r -> gone.add(r.getString(0)));
+            return Future.failedFuture(new NotAdmittedException(gone));
+        });
     }
 
     /**

@@ -233,6 +233,11 @@ class DeploymentsRestoreTest {
         public Future<Void> audit(String actor, String repository, JsonObject detail) {
             return fail("a restore writes no audit row: " + detail);
         }
+
+        @Override
+        public Future<Void> endMarks() {
+            return fail("a restore ends no mark");
+        }
     }
 
     /**

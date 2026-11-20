@@ -340,6 +340,22 @@ public final class Deployments {
     private volatile PackageRepositories tickFetch;
     /** The pool's lock while a deploy or an undeploy holds it (under {@link #deploying}); null otherwise. */
     private PoolLock poolLock;
+    /**
+     * The drains this node runs, by qualified id: each the worker of an at-least-once flow that the node stopped because the
+     * pool no longer runs it at-least-once (a redeploy removed it or runs it otherwise, or its package was undeployed), built again
+     * from what it was built from, with no consumer, running what the work queue holds of the flow ({@link #settleDrains}).
+     * Written under {@link #deploying}.
+     */
+    private final Map<String, Flow> draining = new ConcurrentSkipListMap<>();
+    /** The flows whose drain did not build or start, by qualified id: every tick tries again ({@link #settleDrains}); under {@link #deploying}. */
+    private final Map<String, Flow> undrained = new ConcurrentSkipListMap<>();
+    /** Why the last end of the pool's marks failed ({@link DeploymentStore#endMarks}); null once one succeeded. Under {@link #deploying}. */
+    private String unended;
+    /**
+     * The qualified ids of the at-least-once flows the install running now starts, from its phase B until its listing is written:
+     * the work queue admits their messages before a record names them ({@link #unrecorded}).
+     */
+    private volatile Set<String> unsaved = Set.of();
     /** The end of the tick of {@link #follow} in flight; null while none runs. */
     private volatile Future<Void> ticking;
     /** Guards {@link #nextTick}. */
@@ -672,6 +688,18 @@ public final class Deployments {
     }
 
     /**
+     * The qualified ids of the at-least-once flows this node runs that no record of the pool names: those of a package deployed
+     * with no origin, and those an install starts until its listing is written. The work queue admits a message of one of them
+     * as it admits one of a flow a record or a mark of the pool names.
+     */
+    public Set<String> unrecorded() {
+        Set<String> ids = new HashSet<>(unsaved);
+        deployed.values().stream().filter(d -> d.record() == null).flatMap(d -> d.flows().stream()).filter(Flow::runs)
+                .filter(f -> AT_LEAST_ONCE.equals(f.flow().delivery())).forEach(f -> ids.add(f.id()));
+        return Set.copyOf(ids);
+    }
+
+    /**
      * The definition of the flow {@code flowId} ({@code <package>/<flow>}) deployed here now, {@link DeployedFlow.State#RUNNING} or
      * FAILED — what an admin restart reads its delivery mode and its {@code partitionBy} from; empty for a flow not
      * deployed here. During a deploy, the version listed before it.
@@ -715,7 +743,6 @@ public final class Deployments {
         } catch (IllegalArgumentException refused) {
             throw refused(Kind.BAD_REQUEST, refused.getMessage());
         }
-        if (config.deployed()) throw refused(Kind.FORBIDDEN, "manual deploy is non-production only (ARCHITECTURE §9)");
         GitCache cache = git.orElseThrow(() -> refused(Kind.FORBIDDEN, "the node has no RAIL8_GIT_BASE: it deploys nothing"));
         // closing is read where the lock decides: a close that holds the lock (stopping) or took it before this deploy (closed)
         // has set it first, so no deploy starts a flow after close stopped them all
@@ -896,12 +923,10 @@ public final class Deployments {
      *
      * @return the package undeployed, the version it was listed with and its flows, by qualified id
      * @throws DeployRefusedException what the admin API answers with its own status
-     * @throws IOException the package's record could not be deleted, or the work queue could not answer: the node's failure, and
-     *         nothing else changed
+     * @throws IOException the package's record could not be deleted: the node's failure, and nothing else changed
      */
     public UndeployResult undeploy(String name) throws DeployRefusedException, IOException {
         if (!NAME.matcher(name).matches()) throw badName(name);
-        if (config.deployed()) throw refused(Kind.FORBIDDEN, "manual undeploy is non-production only (ARCHITECTURE §9)");
         lockForChange();   // closing read where the lock decides, as a deploy reads it
         try {
             if (closing) throw stopping();
@@ -911,7 +936,6 @@ public final class Deployments {
                 if (listed == null) throw refused(Kind.NOT_FOUND, "no package '" + name + "' is deployed");
                 String version = listed.pkg().version();
                 List<Flow> running = listed.flows().stream().filter(Flow::runs).toList();
-                Set<String> leaving = queued(running);
                 if (listed.record() != null) {   // a deploy with no origin wrote none
                     // the commit point: the record is deleted before anything stops; a delete that fails changes nothing else
                     PoolLock pool = poolLock;
@@ -924,7 +948,7 @@ public final class Deployments {
                     }
                     applied = deleted.result();
                 }
-                undeployed(listed, running, leaving, "its package was undeployed; the undeploy goes on");
+                undeployed(listed, running, "its package was undeployed; the undeploy goes on");
                 return new UndeployResult(name, version, listed.flows().stream().map(Flow::id).toList());
             } finally {
                 releasePool();
@@ -936,24 +960,35 @@ public final class Deployments {
 
     /**
      * Ends {@code listed} on this node once its record is gone: its {@code running} flows stop and close as phase A stops a flow
-     * (a stop that fails is a WARNING and counts as settled; each of {@code leaving} is asked for queue items again once its worker
-     * drained, items left a WARNING), the listing drops it, and {@code packages/<name>/} is pruned of every directory no remaining
-     * record pins and no remaining flow reads (a failure is a WARNING).
+     * (a stop that fails is a WARNING and counts as settled), the listing drops it, a drain starts for each at-least-once one
+     * ({@link #startDrains}), and {@code packages/<name>/} is pruned of every directory no remaining record pins and no remaining
+     * flow or drain reads (a failure is a WARNING).
      */
-    private void undeployed(Deployed listed, List<Flow> running, Set<String> leaving, String why) {
+    private void undeployed(Deployed listed, List<Flow> running, String why) {
         String name = listed.pkg().name();
         try {
-            retire(running, leaving, why);
+            retire(running, why);
         } finally {
             deployed.remove(name);   // the record is gone: whatever the stop did, the package is no longer listed
             behind.remove(name);
         }
+        startDrains(running.stream().filter(f -> AT_LEAST_ONCE.equals(f.flow().delivery())).toList());
+        pruneLeft(name);
+    }
+
+    /**
+     * Prunes {@code packages/<name>/} to the directories the node keeps for the package while it is listed, every one a record
+     * pins and every one a listed flow, a drain or a flow whose drain did not start reads (a failure is a WARNING); a package with
+     * no directory is left alone.
+     */
+    private void pruneLeft(String name) {
         Path packageDir = config.dataDir().resolve("packages").resolve(name);
-        if (Files.isDirectory(packageDir)) {   // a package listed FAILED by a restore on a fresh data directory has none
-            Set<String> keep = new HashSet<>(pinned(name));   // what a remaining record pins or a remaining flow reads
-            keep.addAll(read(name));
-            prune(name, packageDir, keep);
-        }
+        if (!Files.isDirectory(packageDir)) return;   // a package listed FAILED by a restore on a fresh data directory has none
+        Set<String> keep = new HashSet<>(pinned(name));
+        keep.addAll(read(name));
+        Deployed listed = deployed.get(name);
+        if (listed != null) keep.addAll(listed.kept().keySet());
+        prune(name, packageDir, keep);
     }
 
     /**
@@ -1089,8 +1124,11 @@ public final class Deployments {
         if (fetch != null) fetch.abort();   // a tick's git fetch stops now, not at RAIL8_GIT_TIMEOUT; one it opens later is aborted at its open
         deploying.lock();
         try {
-            List<Flow> running = deployed.values().stream().flatMap(d -> d.flows().stream()).filter(Flow::runs).toList();
+            List<Flow> running = Stream.concat(deployed.values().stream().flatMap(d -> d.flows().stream()).filter(Flow::runs), draining.values().stream())
+                    .toList();
             deployed.clear();
+            draining.clear();
+            undrained.clear();
             Future<Void> stopped = stop(running, config.stopDeadline());   // every worker stopped first: no claim from here on
             Future<Void> drained = drain(running, stopped);                 // its bound runs from here, the start of the close
             stopped.eventually(() -> close(running)).eventually(() -> drained).await();
@@ -1169,6 +1207,7 @@ public final class Deployments {
             if (!deploying.tryLock()) return;
             try {
                 if (closing) return;
+                endMarks();
                 Future<Snapshot> read = bounded(records.read(), "the read of the pool's records");
                 read.otherwiseEmpty().await();
                 if (read.failed()) {
@@ -1190,12 +1229,85 @@ public final class Deployments {
                 } finally {
                     following = false;
                 }
+                settleDrains(read.result().marked());
             } finally {
                 deploying.unlock();
             }
         } finally {
             ticking = null;
             ended.complete();
+        }
+    }
+
+    /**
+     * Ends every mark of the pool whose flow has no work row left ({@link DeploymentStore#endMarks}), within the stop deadline; a
+     * failure is a WARNING, logged once per reason, and the next tick tries again.
+     */
+    private void endMarks() {
+        Future<Void> ended = bounded(records.endMarks(), "the end of the pool's marks");
+        ended.otherwiseEmpty().await();
+        if (ended.succeeded()) {
+            unended = null;
+            return;
+        }
+        String why = reason(ended.cause());
+        if (!why.equals(unended)) LOG.log(System.Logger.Level.WARNING, "the pool's marks could not be ended; every tick tries again: " + why, ended.cause());
+        unended = why;
+    }
+
+    /**
+     * Stops each drain whose flow is done — no mark of the pool names it ({@code marked}) and the work queue holds no item of it —
+     * and closes it, then prunes what it read; starts again each drain that did not start, unless its flow is done. A queue that
+     * cannot answer leaves the drain as it is until the next tick.
+     */
+    private void settleDrains(List<String> marked) {
+        Set<String> held = Set.copyOf(marked);
+        List<Flow> done = new ArrayList<>();
+        for (Flow f : List.copyOf(draining.values())) {
+            if (done(f, held)) done.add(draining.remove(f.id()));
+        }
+        retire(done, "its drain ended");
+        List<Flow> again = new ArrayList<>();
+        for (Flow f : List.copyOf(undrained.values())) {
+            if (done(f, held)) done.add(undrained.remove(f.id()));
+            else again.add(f);
+        }
+        startDrains(again);
+        Set<String> names = new HashSet<>();
+        done.forEach(f -> {
+            names.add(f.flow().pkg());
+            names.addAll(f.recipe().dependencies().dirs().keySet());
+        });
+        names.forEach(this::pruneLeft);
+    }
+
+    /** Whether the drain of {@code f} is done: no mark of {@code marked} names the flow and the work queue holds no item of it. */
+    private boolean done(Flow f, Set<String> marked) {
+        if (marked.contains(f.id())) return false;
+        Future<Boolean> items = bounded(queue.hasItems(f.id()), "the work queue's answer for flow '" + f.id() + "'");
+        return Boolean.FALSE.equals(items.otherwiseEmpty().await());
+    }
+
+    /**
+     * Starts a drain for each of {@code retired}, at-least-once flows this node stopped: the flow built again from the directory it
+     * was built from, with its stamps and no consumer ({@link #rebuild}), and its worker started. One that does not build or
+     * start is a WARNING and is tried again at every tick ({@link #undrained}).
+     */
+    private void startDrains(List<Flow> retired) {
+        for (Flow f : retired) {
+            List<String> problems = new ArrayList<>();
+            Flow drain = rebuild(f, config.dataDir().resolve("packages").resolve(f.flow().pkg()), problems);
+            try {
+                if (drain == null) throw new IllegalStateException(problems.getFirst());
+                drain.worker().start();
+                draining.put(f.id(), drain);
+                undrained.remove(f.id());
+            } catch (RuntimeException failed) {
+                if (drain != null) dropBuilt(drain);
+                if (undrained.put(f.id(), f) == null) {
+                    LOG.log(System.Logger.Level.WARNING, "flow '" + f.id() + "' is retired, but its drain did not start; every tick tries again: " + reason(failed), failed);
+                }
+            }
         }
     }
 
@@ -1217,10 +1329,7 @@ public final class Deployments {
             pool.records().forEach(r -> named.add(r.name()));
             for (Deployed d : List.copyOf(deployed.values())) {
                 if (d.record() == null || named.contains(d.pkg().name())) continue;   // a deploy with no origin is this node's own
-                List<Flow> running = d.flows().stream().filter(Flow::runs).toList();
-                Set<String> leaving = new HashSet<>();
-                running.stream().filter(f -> AT_LEAST_ONCE.equals(f.flow().delivery())).forEach(f -> leaving.add(f.id()));
-                undeployed(d, running, leaving, "its package was undeployed in the pool");
+                undeployed(d, d.flows().stream().filter(Flow::runs).toList(), "its package was undeployed in the pool");
             }
             List<DeploymentRecord> refused = new ArrayList<>();
             for (DeploymentRecord r : pool.records()) {
@@ -1260,6 +1369,7 @@ public final class Deployments {
         });
         List<String> detail = new ArrayList<>();
         if (!failed.isEmpty()) detail.add("FAILED: " + String.join(", ", failed));
+        if (!undrained.isEmpty()) detail.add("UNDRAINED: " + String.join(", ", undrained.keySet().stream().map(id -> "flow " + id).toList()));
         if (!waiting.isEmpty()) detail.add("RESTARTING: " + String.join(", ", waiting));
         if (!lagging.isEmpty()) detail.add("BEHIND: " + String.join(", ", lagging));
         return detail.isEmpty() ? Health.up() : Health.degraded(String.join("; ", detail));
@@ -1377,6 +1487,8 @@ public final class Deployments {
         List<Flow> built = new ArrayList<>();     // every flow built and neither run nor closed yet: a refusal stops and closes them
         List<Flow> stopped = List.of();           // the running flows phase A stopped: a refusal lists each FAILED unless it runs again
         List<Flow> again = new ArrayList<>();     // of those, the ones the rollback runs again, once its whole restart settled
+        List<Flow> revived = new ArrayList<>();   // the drains phase A stopped: this version runs their flows at-least-once again
+        List<Flow> drains = List.of();            // the at-least-once flows phase A stopped that this version does not run at-least-once
         Deployed next;
         DeployResult result;
         try {
@@ -1435,10 +1547,17 @@ public final class Deployments {
                 quietly("package '" + name + "': its directory could not be deleted after its check", () -> deleteIfEmpty(packageDir));
                 return new DeployResult(deployedPackage, added, swapped, List.copyOf(gone.keySet()));
             }
-            retire(retiring, checked.leaving(), "the redeploy replaced or removed it; the redeploy goes on");   // phase A, settled when it returns; it never throws
+            for (Flow f : now) {   // its own worker takes the items of a flow it runs at-least-once again
+                Flow drain = AT_LEAST_ONCE.equals(f.flow().delivery()) ? draining.remove(f.id()) : null;
+                if (drain != null) revived.add(drain);
+            }
+            // phase A, settled when it returns; it never throws
+            retire(Stream.concat(retiring.stream(), revived.stream()).toList(), "the redeploy replaced or removed it; the redeploy goes on");
             stopped = retiring;
+            drains = retiring.stream().filter(f -> checked.leaving().contains(f.id())).toList();
             built.clear();
             built.addAll(starting);   // phase B calls every start: from here on a refusal stops their consumers too
+            unsaved = Set.copyOf(starting.stream().filter(f -> AT_LEAST_ONCE.equals(f.flow().delivery())).map(Flow::id).toList());
             List<Start> started = start(starting, restoring != null);   // a restore tries a consumer that did not start again
             List<Start> failed = started.stream().filter(s -> s.failure() != null).toList();
             if (!failed.isEmpty()) {
@@ -1476,6 +1595,8 @@ public final class Deployments {
             next = new Deployed(deployedPackage, List.copyOf(now), Map.copyOf(kept), previous, pins, record);
             result = new DeployResult(deployedPackage, added, swapped, List.copyOf(gone.keySet()));
         } catch (Throwable failure) {
+            unsaved = Set.of();
+            revived.forEach(f -> undrained.put(f.id(), f));   // their flows are still to drain: the next tick starts them again
             if (!stopped.isEmpty()) deployed.put(name, afterFailure(running, stopped, again));   // the one write of a refused deploy
             cleanUp(failure, () -> {
                 Throwable unstopped = discard(List.of(), built);
@@ -1487,7 +1608,10 @@ public final class Deployments {
         }
         // the new flows run: from here on nothing undoes the deploy
         deployed.put(name, next);
+        unsaved = Set.of();
         behind.remove(name);   // what runs is what the deploy recorded, or the record a restore or a tick installed
+        next.flows().stream().filter(f -> AT_LEAST_ONCE.equals(f.flow().delivery())).forEach(f -> undrained.remove(f.id()));
+        startDrains(drains);
         if (restoring == null) {   // its own calls no flow serves, and others' calls to an address the replaced version served
             Set<Calls.Address> left = new HashSet<>();
             before.stream().filter(Flow::runs).forEach(f -> f.recipe().calls().serves().ifPresent(left::add));
@@ -1798,25 +1922,11 @@ public final class Deployments {
         });
         Set<String> unread = new HashSet<>(pkg.flows().keySet());   // the flows the new version names whose yaml did not read: their problems say it all
         unread.removeAll(flows.keySet());
-        Set<String> leaving = new HashSet<>();
-        IOException unanswered = null;   // a question the queue failed for real: the node's failure, unless the package is refused anyway
-        String pooled = null;   // a question the node's Postgres pool refused: BUSY, unless a real failure or a problem outranks it
+        Set<String> leaving = new HashSet<>();   // their drains run what the work queue holds of them
         for (Flow f : running) {
-            if (!AT_LEAST_ONCE.equals(f.flow().delivery()) || stayQueued.contains(f.id()) || unread.contains(local(f.flow()))) continue;
-            leaving.add(f.id());
-            Future<Boolean> items = queue.hasItems(f.id());
-            if (Boolean.TRUE.equals(items.otherwiseEmpty().await())) {
-                problems.add("flow '" + local(f.flow()) + "' runs at-least-once and the work queue holds items of it (queued, leased, held or stopped): this version "
-                        + "does not run it at-least-once, so they would never run; deploy it once they are done");
-            } else if (items.failed()) {
-                String line = "the work queue could not say whether it holds items of flow '" + f.id() + "': " + reason(items.cause());
-                if (PgTx.refusedByThePool(items.cause())) pooled = line;
-                else unanswered = new IOException(line, items.cause());
-            }
+            if (AT_LEAST_ONCE.equals(f.flow().delivery()) && !stayQueued.contains(f.id()) && !unread.contains(local(f.flow()))) leaving.add(f.id());
         }
         if (!problems.isEmpty()) throw invalid(name, problems);
-        if (unanswered != null) throw unanswered;
-        if (pooled != null) throw refused(Kind.BUSY, pooled);   // every failed question was the pool's: retryable, nothing changed
         return new Checked(schemes, configs, resolved, flows, Set.copyOf(leaving), Map.copyOf(listening), Map.copyOf(paths), Map.copyOf(calls),
                 dependencies);
     }
@@ -1983,17 +2093,18 @@ public final class Deployments {
     }
 
     /**
-     * The content hexes of {@code name} whose directories a listed flow's recipe reads as a dependency: a flow kept by
-     * hash across a lock bump reads the directory it was built from, and a rollback builds it from there again.
+     * The content hexes of {@code name} whose directories a listed flow's recipe reads as a dependency — a flow kept by hash
+     * across a lock bump reads the directory it was built from, and a rollback builds it from there again — and those a drain, or a
+     * flow whose drain did not start, was built from or reads as a dependency.
      */
     private Set<String> read(String name) {
         Set<String> read = new HashSet<>();
-        for (Deployed d : deployed.values()) {
-            for (Flow f : d.flows()) {
-                Path dir = f.recipe().dependencies().dirs().get(name);
-                if (dir != null) read.add(dir.getFileName().toString());
-            }
-        }
+        List<Flow> drains = Stream.concat(draining.values().stream(), undrained.values().stream()).toList();
+        Stream.concat(deployed.values().stream().flatMap(d -> d.flows().stream()), drains.stream()).forEach(f -> {
+            Path dir = f.recipe().dependencies().dirs().get(name);
+            if (dir != null) read.add(dir.getFileName().toString());
+        });
+        drains.stream().filter(f -> f.flow().pkg().equals(name)).forEach(f -> read.add(f.dir()));
         return read;
     }
 
@@ -2464,36 +2575,16 @@ public final class Deployments {
     /**
      * Phase A of the swap, and the stop of an undeploy: every flow of {@code retiring} at once — stopped with the node's stop deadline, then closed
      * ({@link #stopAndClose}); a stop that fails, throws or does not complete in time is logged ({@code why} it stopped) and counts as settled, and keeps
-     * no other flow from its stop. Those whose id is in
-     * {@code leaving} are asked for queue items once their worker drained ({@link #recheck}). Returns once every one has settled:
-     * the barrier phase B waits behind. Never throws.
+     * no other flow from its stop. Returns once every one has settled: the barrier phase B waits behind. Never throws.
      */
-    private void retire(List<Flow> retiring, Set<String> leaving, String why) {
+    private void retire(List<Flow> retiring, String why) {
         List<Future<Void>> settled = new ArrayList<>(retiring.size());
         for (Flow f : retiring) {
             Future<Void> retired = stopAndClose(f, config.stopDeadline());
-            if (leaving.contains(f.id())) recheck(f, retired);
             settled.add(retired.onFailure(failed -> LOG.log(System.Logger.Level.WARNING, "flow '" + f.id() + "' did not stop cleanly as " + why + ": "
                     + failed, failed)).otherwiseEmpty());
         }
         Future.join(settled).await();   // never fails: each settled one is otherwiseEmpty
-    }
-
-    /**
-     * Once {@code retired} settled, asks the worker of the at-least-once flow {@code f} — removed, or run otherwise by the new
-     * version — to close, which completes once its items finished (it drained); then asks the queue whether items of the flow are
-     * left. Items left, or a queue that cannot answer, are a WARNING naming the flow; nothing waits for it.
-     */
-    private void recheck(Flow f, Future<Void> retired) {
-        retired.transform(stopped -> f.worker().close()).compose(drained -> queue.hasItems(f.id())).onComplete(left -> {
-            if (left.failed()) {
-                LOG.log(System.Logger.Level.WARNING, "flow '" + f.id() + "' is no longer run at-least-once and its old worker drained, but the work queue "
-                        + "could not say whether items of it are left: " + left.cause(), left.cause());
-            } else if (left.result()) {
-                LOG.log(System.Logger.Level.WARNING, "flow '" + f.id() + "' is no longer run at-least-once and its old worker drained, but the work queue "
-                        + "still holds items of it: they run only once a version runs the flow at-least-once again");
-            }
-        });
     }
 
     /**
@@ -2683,37 +2774,6 @@ public final class Deployments {
     /** The refusal of a deploy or undeploy that finds the node's lock held: {@link #stopping} while closing, else {@link Kind#CONFLICT}. */
     private DeployRefusedException busy() {
         return closing ? stopping() : refused(Kind.CONFLICT, "another deploy or undeploy is running: try again once it is done");
-    }
-
-    /**
-     * The qualified ids of the at-least-once flows of {@code running}, once the work queue said it holds no item of any:
-     * items of one refuse the undeploy ({@link Kind#CONFLICT}, a line per such flow by its local id, sorted as the flows are), since they would
-     * never run; a question the queue fails is the node's {@link IOException} at once, naming the flow and the cause, whether or not
-     * the pool refused an earlier one. A question the node's Postgres pool refused a connection ({@link PgTx#refusedByThePool}) does
-     * not stop the asking: once every flow was asked without a real failure, items of any flow are still the CONFLICT, and only when
-     * no flow holds items is it {@link Kind#BUSY} with the last such line (a real failure, then a flow known to hold
-     * items, outranks a refusal in any flow order).
-     */
-    private Set<String> queued(List<Flow> running) throws DeployRefusedException, IOException {
-        Set<String> queued = new HashSet<>();
-        List<String> held = new ArrayList<>();
-        String pooled = null;   // a question the node's Postgres pool refused: BUSY, unless a question fails for real or a flow holds items
-        for (Flow f : running) {
-            if (!AT_LEAST_ONCE.equals(f.flow().delivery())) continue;
-            queued.add(f.id());
-            Future<Boolean> items = queue.hasItems(f.id());
-            if (Boolean.TRUE.equals(items.otherwiseEmpty().await())) {
-                held.add("flow '" + local(f.flow()) + "' runs at-least-once and the work queue holds items of it (queued, leased, held or stopped): undeploy it once "
-                        + "they are done");
-            } else if (items.failed()) {
-                String unanswered = "the work queue could not say whether it holds items of flow '" + f.id() + "': " + reason(items.cause());
-                if (!PgTx.refusedByThePool(items.cause())) throw new IOException(unanswered, items.cause());
-                pooled = unanswered;   // the later flows are still asked: a real failure of one outranks it
-            }
-        }
-        if (!held.isEmpty()) throw refused(Kind.CONFLICT, String.join("\n", held));   // known items outrank a refusal
-        if (pooled != null) throw refused(Kind.BUSY, pooled);   // every failed question was the pool's, no flow holds items: retryable
-        return queued;
     }
 
     private static DeployRefusedException invalid(String name, List<String> problems) {

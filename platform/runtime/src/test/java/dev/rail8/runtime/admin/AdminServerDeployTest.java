@@ -1071,6 +1071,7 @@ class AdminServerDeployTest {
                 }));
             }
             @Override public Future<Void> audit(String actor, String repository, JsonObject detail) { return rows.audit(actor, repository, detail); }
+            @Override public Future<Void> endMarks() { return rows.endMarks(); }
         };
         Deployments failing = deployments(tmp.resolve("node-3"), failingDelete, true);
         String solo = repos.commit(pkg("solo", "1.0.0", Map.of("one", "sync")));
