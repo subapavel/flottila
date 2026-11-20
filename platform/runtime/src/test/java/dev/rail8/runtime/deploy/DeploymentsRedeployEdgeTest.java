@@ -67,10 +67,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * P1-09d2b, what {@link DeploymentsRedeployTest} leaves open (implementer): a directory the prune cannot delete is a WARNING and
  * the deploy stands; a first deploy prunes what an earlier node left for another archive; a refused redeploy that reused a kept
- * directory leaves it in place; a phase-A stop that fails is a WARNING and the swap goes on; a flow made non-at-least-once is
- * checked again once its old worker drained, like a removed one; a queue that cannot answer the check before the swap fails the
- * deploy (the node's failure, nothing stops), one that cannot answer the check after the drain is a WARNING; an at-least-once flow
- * whose hash cannot read a file its build read closes its own worker's producer at once (the consumer is built after the hash).
+ * directory leaves it in place; a phase-A stop that fails is a WARNING and the swap goes on; a redeploy asks the work queue
+ * nothing; an at-least-once flow whose hash cannot read a file its build read closes its own worker's producer at once (the
+ * consumer is built after the hash).
  */
 class DeploymentsRedeployEdgeTest {
 

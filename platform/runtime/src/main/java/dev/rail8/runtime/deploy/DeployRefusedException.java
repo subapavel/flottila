@@ -40,7 +40,7 @@ public final class DeployRefusedException extends Exception {
          * run again from the directories they ran from, or are listed FAILED.
          */
         FAILED,
-        /** A deployed environment: manual deploy and undeploy are non-production only (403). */
+        /** A deploy with no origin in a deployed environment, or a deploy on a node without {@code RAIL8_GIT_BASE} (403). */
         FORBIDDEN,
         /** The package to undeploy is not deployed on this node (404). */
         NOT_FOUND

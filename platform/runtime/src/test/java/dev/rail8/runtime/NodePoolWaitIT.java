@@ -665,38 +665,31 @@ class NodePoolWaitIT {
     }
 
     /**
-     * FIX-172b F1 (D-133): {@code DELETE /admin/packages/demo} under the work pool held by two parks, PT0.2S, answers 503 with an
-     * {@code error} while the parks hold the pool — retryable, never 500 — and the package is still deployed: its record row stays
-     * and the listing names it. After the release the same undeploy answers 200 naming the package, and the row is gone.
+     * {@code DELETE /admin/packages/demo} under the work pool held by two parks, PT0.2S, answers 200 naming the package while the
+     * parks still hold the pool: the undeploy asks the work queue nothing and deletes the record on the pool lock's own
+     * connection. The row is gone and the listing drops the package; once the lock is released the parks go through.
      */
     @Test
-    void anUndeployRefusedByTheWorkPoolAnswers503AndKeepsThePackage() throws Exception {
+    void anUndeployUnderTheHeldWorkPoolGoesThrough() throws Exception {
         try (HttpClient client = NodeIT.http()) {
             Node node = startDeployed(client, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
             int httpPort = node.httpPort();
             assertEquals(1, count("select count(*) from deployments where package = 'demo'"), "fixture: demo is recorded");
-            List<LogRecord> warnings = adminWarnings();
 
             PgConnection locker = lock("dlq");
             holdTheWorkPool(client, httpPort);
-            HttpResponse<String> refused = NodeIT.send(client, "DELETE", node.adminPort(), "/admin/packages/demo", new byte[0], "application/json");
-            assertEquals(503, refused.statusCode(), "an undeploy the pool refused is retryable, 503, never 500: " + refused.body()
-                    + "; the admin log saw " + thrown(warnings));
-            String error = new JsonObject(refused.body()).getString("error");
-            assertTrue(error != null && !error.isBlank(), "an error body {error, ..}: " + refused.body());
-            assertEquals(2, waitingOnALock(WORK), "the refusal came while the parks still held the work pool");
-            assertEquals(1, count("select count(*) from deployments where package = 'demo'"), "the refused undeploy deleted no record");
+            HttpResponse<String> undeployed = NodeIT.send(client, "DELETE", node.adminPort(), "/admin/packages/demo", new byte[0], "application/json");
+            assertEquals(200, undeployed.statusCode(), "the undeploy needs nothing of the work pool: " + undeployed.body());
+            assertEquals("demo", new JsonObject(undeployed.body()).getString("name"), "it names the package: " + undeployed.body());
+            assertEquals(2, waitingOnALock(WORK), "it answered while the parks still held the work pool");
+            assertEquals(0, count("select count(*) from deployments where package = 'demo'"), "the record is deleted");
 
             locker.query("rollback").execute().await();
             NodeIT.until(() -> count("select count(*) from dlq") == 2 && count("select count(*) from work") == 0,
                     "the parks go through once the lock is gone, and the queue holds no item of the flow");
             HttpResponse<String> listed = NodeIT.send(client, "GET", node.adminPort(), "/admin/packages", new byte[0], "application/json");
             assertTrue(listed.statusCode() == 200 && new JsonObject(listed.body()).getJsonArray("items").stream()
-                    .anyMatch(p -> "demo".equals(((JsonObject) p).getString("name"))), "demo is still deployed after the refusal: " + listed.body());
-            HttpResponse<String> undeployed = NodeIT.send(client, "DELETE", node.adminPort(), "/admin/packages/demo", new byte[0], "application/json");
-            assertEquals(200, undeployed.statusCode(), "witness: the same undeploy once the pool is free: " + undeployed.body());
-            assertEquals("demo", new JsonObject(undeployed.body()).getString("name"), "it names the package: " + undeployed.body());
-            assertEquals(0, count("select count(*) from deployments where package = 'demo'"), "the record is deleted");
+                    .noneMatch(p -> "demo".equals(((JsonObject) p).getString("name"))), "demo is not listed: " + listed.body());
         }
     }
 

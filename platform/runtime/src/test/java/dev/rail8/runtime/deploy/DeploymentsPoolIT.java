@@ -11,6 +11,7 @@ import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.deploy.DeployRefusedException.Kind;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
+import dev.rail8.runtime.queue.PgWorkQueue;
 import dev.rail8.testkit.FakeRuntime;
 import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
@@ -53,8 +54,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Two nodes of one pool over one Postgres, on a fake clock: each a {@code Deployments} with its own data directory, git cache and
- * {@link Doors}, both over the pool's {@code deployments} and {@code deploy_pool} tables ({@link PgDeploymentStore}, its lock on a
- * connection of its own per deploy). A deploy or an undeploy on one node holds the pool's lock, and a second one on the other node
+ * {@link Doors}, both over the pool's {@code deployments}, {@code deploy_pool}, {@code retiring} and {@code work} tables
+ * ({@link PgDeploymentStore}, its lock on a connection of its own per deploy; a {@link PgWorkQueue} of each node). A deploy or an undeploy on one node holds the pool's lock, and a second one on the other node
  * is refused while it runs; a node behind the pool's generation installs what the records name before it plans its own deploy; the
  * other node installs and undeploys at its next tick ({@code follow}), and a package it could not install, its repository not
  * answering, at a later tick once it does. An at-least-once flow the pool no longer runs stops taking messages on every node, and
@@ -97,6 +98,7 @@ class DeploymentsPoolIT {
     @BeforeEach
     void wire() {
         pool.query("truncate deployments, retiring").execute().await();
+        pool.query("delete from work").execute().await();
         repos = new GitRepos(tmp.resolve("repos"));
     }
 
@@ -106,14 +108,10 @@ class DeploymentsPoolIT {
         for (Peer p : peers) p.close();
     }
 
-    /**
-     * One node of the pool: its data directory {@code <tmp>/<id>}, its Doors, its work queue (a node claims the items it accepted),
-     * its Deployments over the pool's Postgres.
-     */
+    /** One node of the pool: its data directory {@code <tmp>/<id>}, its Doors, its Deployments over the pool's Postgres. */
     final class Peer {
         final String id;
         final Doors doors = new Doors();
-        final CountingQueue queue = new CountingQueue(rt.clock());
         final Deployments deployments;
 
         /** A node in dev reading the pool's repositories. */
@@ -143,7 +141,7 @@ class DeploymentsPoolIT {
             e.put("RAIL8_GIT_BASE", base);
             Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
             deployments = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
-                    queue, () -> 0L, records);
+                    new PgWorkQueue(pool, id), () -> 0L, records);
             peers.add(this);
         }
 
@@ -475,9 +473,10 @@ class DeploymentsPoolIT {
 
     /**
      * An undeploy on node a of a package with an at-least-once flow, while node a holds one of its messages at the partner and has
-     * the next queued: no door of the flow runs on node a from the answer, nor on node b from its next tick, and the pool marks the
-     * flow. The queued message runs on node a's drain once the held one is let go; the package's directory stays on node a while
-     * the drain runs, node b's goes at its tick, and node a's at the tick after the drain's last item.
+     * the next queued in the pool's work table. No door of the flow runs on node a from the answer, nor on node b from its next
+     * tick. The pool marks the flow, and the mark outlives both nodes' ticks while a work row of it is left. The queued message
+     * runs on node a's drain; once the held one completes, node a's tick ends the mark and its drain, and node b's tick ends its own.
+     * Each node keeps the package's directory until its drain ends.
      */
     @Test
     void aRemovedFlowTakesNoNewMessageOnAnyNodeAndDrainsBeforeItStops() throws Exception {
@@ -496,30 +495,44 @@ class DeploymentsPoolIT {
             a.accept("shop/keep");
             a.doors.partner().awaitSent(1);
             queued = a.accept("shop/keep");
-            assertEquals(2, a.queue.size(), "fixture: the first runs held at the partner, the second waits behind it");
+            assertEquals(2L, rows("shop/keep"), "fixture: the first runs held at the partner, the second waits behind it");
 
             assertEquals("shop", a.undeploy("shop").name());
 
             assertEquals(List.of(), a.live("shop/keep"), "no door of the flow runs on node a: " + a.doors.events());
-            List<String> marks = new ArrayList<>();
-            pool.query("select flow from retiring").execute().await().forEach(r -> marks.add(r.getString(0)));
-            assertEquals(List.of("shop/keep"), marks, "the pool marks the flow it retires");
+            assertEquals(List.of("shop/keep"), marks(), "the pool marks the flow it retires");
             b.follow();
             assertEquals(List.of(), b.listed(), "node b undeploys shop at its next tick");
             assertEquals(List.of(), b.live("shop/keep"), "and no door of the flow runs on node b: " + b.doors.events());
-            assertEquals(List.of(), b.packageDirs("shop"), "node b had no item of it: its drain ended at that tick and the directory went");
+            assertEquals(List.of("shop/keep"), marks(), "a work row of the flow is left: the mark stays");
+            assertEquals(dirs, b.packageDirs("shop"), "node b's drain waits for the mark: its directory stays");
             a.follow();
-            assertEquals(dirs, a.packageDirs("shop"), "node a's drain still has both items: shop's directory stays");
+            assertEquals(List.of("shop/keep"), marks(), "still: node a's tick keeps the mark");
+            assertEquals(dirs, a.packageDirs("shop"), "and node a's drain runs: shop's directory stays");
         } finally {
             release.countDown();
         }
-        until(() -> a.queue.size() == 0, "the held message completes and the queued one runs on node a's drain: " + a.queue.rows());
-        assertTrue(a.doors.partner().sent().stream().anyMatch(e -> e.id().equals(queued.id())), "the queued message reached the partner");
+        until(() -> rows("shop/keep") == 0, "the held message completes and the queued one runs on a drain");
+        assertTrue(a.doors.partner().sent().stream().anyMatch(e -> e.id().equals(queued.id())), "the queued message reached node a's partner");
 
         a.follow();
-
-        assertEquals(List.of(), a.packageDirs("shop"), "the drain ended at node a's tick: shop's directory is pruned");
-        assertEquals(0L, pool.query("select count(*) from retiring").execute().await().iterator().next().getLong(0), "no mark is left");
+        assertEquals(List.of(), marks(), "no row is left: node a's tick ends the mark");
+        assertEquals(List.of(), a.packageDirs("shop"), "and node a's drain: shop's directory is pruned");
+        b.follow();
+        assertEquals(List.of(), b.packageDirs("shop"), "node b's tick ends its drain and prunes the directory");
         assertEquals(Health.up(), a.deployments.health());
+        assertEquals(Health.up(), b.deployments.health());
+    }
+
+    /** The work rows of {@code flow} in the pool's work table. */
+    static long rows(String flow) {
+        return pool.preparedQuery("select count(*) from work where flow = $1").execute(io.vertx.sqlclient.Tuple.of(flow)).await().iterator().next().getLong(0);
+    }
+
+    /** The flows the pool marks retired, by id. */
+    static List<String> marks() {
+        List<String> marked = new ArrayList<>();
+        pool.query("select flow from retiring order by flow").execute().await().forEach(r -> marked.add(r.getString(0)));
+        return marked;
     }
 }

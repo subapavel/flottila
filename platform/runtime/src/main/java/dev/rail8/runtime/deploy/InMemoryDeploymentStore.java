@@ -11,12 +11,11 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.Predicate;
 
 /**
  * The {@link DeploymentStore} of a node without Postgres records (dev, tests): lost with the process. The {@code Deployments} that
- * share one such store are one pool: they share its records, its marks, its generation and its lock. Whether a retired flow has
- * work rows left is the predicate it is built with; a store built without one ends every mark at the first {@link #endMarks}.
+ * share one such store are one pool: they share its records, its marks, its generation and its lock. It sees no work rows, so
+ * {@link #endMarks} ends every mark.
  */
 public final class InMemoryDeploymentStore implements DeploymentStore {
 
@@ -35,17 +34,6 @@ public final class InMemoryDeploymentStore implements DeploymentStore {
     private long generation;
     private Held holder;
     private final List<Audited> audited = new CopyOnWriteArrayList<>();
-    private final Predicate<String> hasRows;
-
-    /** A store over no work queue: no retired flow has work rows left. */
-    public InMemoryDeploymentStore() {
-        this(flow -> false);
-    }
-
-    /** A store asking {@code hasRows} whether a retired flow, by its qualified id, still has work rows. */
-    public InMemoryDeploymentStore(Predicate<String> hasRows) {
-        this.hasRows = hasRows;
-    }
 
     @Override
     public synchronized Future<Snapshot> read() {
@@ -65,7 +53,7 @@ public final class InMemoryDeploymentStore implements DeploymentStore {
 
     @Override
     public synchronized Future<Void> endMarks() {
-        marked.removeIf(flow -> !hasRows.test(flow));
+        marked.clear();
         return Future.succeededFuture();
     }
 

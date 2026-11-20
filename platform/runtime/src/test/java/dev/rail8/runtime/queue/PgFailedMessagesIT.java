@@ -11,6 +11,8 @@ import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.store.PgDlq;
+import dev.rail8.testkit.FakeClock;
+import dev.rail8.testkit.FakeTimer;
 import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -32,6 +34,7 @@ import org.junit.jupiter.api.Timeout;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
@@ -85,7 +88,7 @@ class PgFailedMessagesIT {
 
     @BeforeEach
     void clean() {
-        pool.query("truncate work, dlq, body_refs, journal_segments, audit, messages").execute().await();
+        pool.query("truncate work, dlq, body_refs, journal_segments, audit, messages, retiring, deployments").execute().await();
         rows = new PgWorkQueue(pool, NODE);
         failed = new PgFailedMessages(pool, rows);
     }
@@ -215,6 +218,31 @@ class PgFailedMessagesIT {
         long lost = ParkedRows.count(pool, "select seq from work where id = 'm-2'");
         assertEquals(new FailedMessages.Unsettled(lost), await(failed.end("m-2", BY, Optional.empty())), "a lost row is not ended");
         assertEquals(1, audits(), "and writes nothing");
+    }
+
+    /**
+     * A retry through a queue with admission, of a message whose flow no record runs at-least-once, no mark retires and the node
+     * does not name, fails {@link NotAdmittedException} naming the flow and changes nothing; once a mark retires the flow, the
+     * retry goes through.
+     */
+    @Test
+    void aRetryOfAFlowThePoolNoLongerRunsFailsNotAdmittedAndChangesNothing() throws Exception {
+        Parked p = parked("m-1");
+        PgFailedMessages admitting = new PgFailedMessages(pool, new PgWorkQueue(pool, NODE, null, new FakeTimer(FakeClock.at(java.time.Instant.EPOCH)), Set::of));
+
+        Throwable thrown = assertThrows(Throwable.class, () -> await(admitting.retry("m-1", "t", null, 2, BY)));
+
+        assertEquals(List.of("t"), assertInstanceOf(NotAdmittedException.class, thrown).flows(), "names the flow");
+        unchanged(p);
+        mark(pool, "t");
+        assertInstanceOf(FailedMessages.Done.class, await(admitting.retry("m-1", "t", null, 2, BY)), "a retired flow is admitted: its drain runs the retry");
+    }
+
+    /** Marks {@code flow} retired, as the deploy store marks it. */
+    static void mark(Pool on, String flow) {
+        on.preparedQuery("insert into retiring (flow, package, version, repository, commit, content, dependencies, deployed_at, marked_at) "
+                + "values ($1, 'shop', '1.0.0', 'shop', repeat('1', 40), 'sha256:' || repeat('1', 64), '[]'::jsonb, now(), now())")
+                .execute(Tuple.of(flow)).await();
     }
 
     @Test
