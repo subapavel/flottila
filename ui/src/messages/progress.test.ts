@@ -116,6 +116,18 @@ describe('account', () => {
     expect(rows.filter((r) => r.kind === 'wait')).toEqual([{ kind: 'wait', reason: 'between', nanos: 2_000_000 }]);
   });
 
+  it('shows no wait under 100 µs, even when it is 1% of the duration or more', () => {
+    const steps = [
+      at(1, 0, 'ingress', '2026-11-20T09:50:08Z', 0),
+      at(1, 1, 'validate', '2026-11-20T09:50:08.000060Z', 1_000_000),
+      at(1, 2, 'send', '2026-11-20T09:50:08.001120Z', 2_000_000),
+    ];
+    const { attempts, otherNanos, totalNanos } = account(steps);
+    expect(totalNanos).toBe(3_120_000);
+    expect(attempts[0]!.rows.every((r) => r.kind === 'step')).toBe(true);
+    expect(otherNanos).toBe(120_000);
+  });
+
   it('always shows the wait before a retry, and the duration runs to the end of the latest attempt', () => {
     const steps = [
       at(1, 0, 'ingress', '2026-11-20T09:50:08Z', 0),
