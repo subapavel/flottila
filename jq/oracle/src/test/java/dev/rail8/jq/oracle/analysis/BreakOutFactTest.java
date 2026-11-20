@@ -68,7 +68,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  * <p>Not watched, and counted: the places where only an atomic node may stand, an AltBind match's Bind chain, a bare
  * ParamCall a Call passes on and an Advance, where the verifier may refuse the probe (CardinalityBoundsTest). Any
  * other refusal is a failure. A {@code label} filter the engine does not compile has nothing to watch and is counted; every
- * core-v1 seed must compile.
+ * core-v1 seed must compile. A Foreach's ITEM-tracked source Bind is watched tracked VALUE, which changes nothing a run
+ * without paths does ({@link BoundProbe#watchable}).
  *
  * <p>Seam (the design's): {@code Executable.facts()} and {@code Facts.mayBreakOut(int body, int id)}, -1 for main, by
  * the freeze ids of the frozen program ({@code Executable.frozen()}, #117).
@@ -141,13 +142,14 @@ class BreakOutFactTest {
 
     /** {@code program} with the node {@code n} of the body {@code function} (-1 for main) watched. */
     Program wrapped(Program program, int function, Node n) {
+      Node watched = BoundProbe.watchable(program, n);
       if (function < 0) {
         Node main = program.main();
-        return new Program(BoundProbe.replace(main, n, wrap(n, BoundProbe.freshSlot(main, 0))), program.functions());
+        return new Program(BoundProbe.replace(main, n, wrap(watched, BoundProbe.freshSlot(main, 0))), program.functions());
       }
       List<Function> functions = new ArrayList<>(program.functions());
       Function f = functions.get(function);
-      Node body = BoundProbe.replace(f.body(), n, wrap(n, BoundProbe.freshSlot(f.body(), f.values())));
+      Node body = BoundProbe.replace(f.body(), n, wrap(watched, BoundProbe.freshSlot(f.body(), f.values())));
       functions.set(function, new Function(f.source(), f.closures(), f.values(), body));
       return new Program(program.main(), functions);
     }
