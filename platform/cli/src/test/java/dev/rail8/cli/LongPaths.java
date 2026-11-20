@@ -75,7 +75,7 @@ final class LongPaths {
         int relative = PATH_MAX - cwd - 1;   // cwd + '/' + relative = PATH_MAX
         int length = top.toString().length() + 1 + leaf.length();
         List<String> names = new ArrayList<>();
-        while (relative - length > LINK.length() + 1) {
+        while (relative - length > LINK.length() + 2) {   // leaves at least 2: a '/' and a pad of 1 char or more
             names.add(LINK);
             length += LINK.length() + 1;
         }
