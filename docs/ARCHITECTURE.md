@@ -438,8 +438,8 @@ names a repository and a commit: `POST /admin/deploy` with `{"repository", "comm
 repositories under one base, `RAIL8_GIT_BASE` (a `file://` base only in `dev` and `ci`), each by its
 name, with the package at `RAIL8_GIT_PATH` in it, through a JGit cache in its data directory that is
 not state: a commit the cache lacks is fetched within `RAIL8_GIT_TIMEOUT`, and with `RAIL8_GIT_REF`
-set the commit must be reachable from that ref. A bad request, a deployed environment, a closing node
-and a deploy already running are refused before any fetch. The package's folder in the commit is
+set the commit must be reachable from that ref. A bad request, a closing node and a deploy or undeploy
+already running on any node of the pool are refused before any fetch. The package's folder in the commit is
 written to `packages/<name>/<content hex>/` in the data directory, keyed by its content digest, and
 each dependency's from the repository and commit `package.lock` pins.
 
@@ -454,17 +454,38 @@ its flow is listed `FAILED` only when its consumer cannot be built at all, until
 Undeploy is `DELETE /admin/packages/{name}`; a package that pins it runs on from its pin's own commit.
 A rollback is a deploy of an earlier commit.
 
-Manual deploy is allowed only in the `dev` and `ci` environments. A node restores every record at its
-start, before its admin port opens: the commit is read from its git cache, or fetched, and the content
-checked against the record. A package that cannot be read, or whose content differs, is listed
-`FAILED` with the reason and the others run; once the git host cannot be reached, the restore fetches
-nothing more. A running node does not learn of a deploy made on another node.
+Every environment takes deploys and undeploys. A deployed one takes only commits reachable from its
+`RAIL8_GIT_REF`, so the same commit moves from dev to test to prod; what differs per environment
+stays in the files' overlays and `secret://` names. A deploy with no origin (`rail8 test`) is `dev`
+and `ci` only. A node restores every record at its start, before its admin port opens: the commit is
+read from its git cache, or fetched, and the content checked against the record. A package that
+cannot be read, or whose content differs, is listed `FAILED` with the reason and the others run; once
+the git host cannot be reached, the restore fetches nothing more.
+
+The nodes of a pool deploy as one. One deploy or undeploy runs at a time per pool: it holds a
+Postgres advisory lock, taken without waiting on a connection of its own, and a second one on any
+node is 409. Each write of a record raises the pool's generation in the same transaction, compared
+with the generation read under the lock. A node whose generation is behind installs and undeploys
+what the records name before it plans. Every 5 s, on its injected timer, each node follows the
+records: it installs a record whose content it does not run, undeploys a package from git that has
+no record, and tries again a package it could not install. A package that ran keeps its old version
+while a newer record does not install; it is listed behind, and `/health` is `DEGRADED` meanwhile.
+
+A flow retires when the pool no longer runs it at-least-once: a redeploy removes it or changes its
+delivery, or its package is undeployed. The write of the record marks it in the table `retiring`,
+with a copy of the record. The work queue admits a message only for a flow a record runs
+at-least-once, a mark retires, or the node runs before its record is written: a node that still runs
+the flow until its next tick writes into the drain, and a write after the mark ended is refused with
+nothing kept. Each node, once it stops the flow, starts its drain: the flow built again from its
+directory, with no consumer, running what the work queue holds of it. A tick ends the mark of a flow
+with no work row left, under the flow's advisory lock that every admitted write holds until it
+commits, and stops a drain once no mark names its flow and the queue holds nothing of it; the
+package's directory goes then. A redeploy that runs the flow at-least-once again ends its mark and
+its drain.
 
 **Planned**
-- Deployment from git, the rest of its design (`docs/DEPLOY-FROM-GIT.md`):
-  - the other nodes of a pool follow a deploy on a timer, and a deployed environment then takes
-    deploys of commits reachable from its ref, so the same commit moves from dev to test to prod;
-    what differs per environment stays in the files' overlays and `secret://` names.
+- A node that restarts builds the drain of a retired flow from its mark's copy of the record. Today
+  it builds none, and what the flow left in the work queue waits there.
 - A graphical flow editor (React Flow). The flow file and the editor are two views of the same
   thing: an edit in either shows in the other. The flow file holds no layout. The editor shows a
   step's default name but never writes it, and an edit changes only the step edited, keeping the
@@ -781,6 +802,11 @@ so it cannot act after others think it dead. A node replaced by a newer start of
   its bodies are lost, and an operator must accept the loss before the work can move on.
 - **Polling.** A polling consumer (SFTP) runs only on the node that holds the endpoint's lease in
   Valkey, so one file is read by one node.
+- **Deploys** (part 4). One deploy or undeploy at a time per pool, under a Postgres advisory lock that
+  a dead node frees with its connection. Every node follows the records every 5 s. A removed
+  at-least-once flow stops taking messages on every node, and its items run on each node's drain of
+  it. A node that dies while a flow drains leaves its items in the work queue; restarted, it builds no
+  drain yet, so they wait.
 - **Second copy.** The receiving side of a copy of journal segments on another node exists, the
   sending side does not, and the setting `RAIL8_JOURNAL_COPIES` is read but has no effect. Every
   node warns at start that it keeps one copy.

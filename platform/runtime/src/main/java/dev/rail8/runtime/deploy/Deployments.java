@@ -43,7 +43,6 @@ import dev.rail8.runtime.git.PackageRepositories;
 import dev.rail8.runtime.lease.InMemoryPollerLeases;
 import dev.rail8.runtime.lease.PollerLeases;
 import dev.rail8.runtime.node.NodeConfig;
-import dev.rail8.runtime.pg.PgTx;
 import dev.rail8.schemas.Package;
 import dev.rail8.schemas.Schemas;
 import io.vertx.core.Future;
@@ -102,8 +101,8 @@ import java.util.stream.Stream;
  * succeeded on this node) is a first deploy.
  *
  * <p>{@link #deploy(String, String, String)} blocks: call it on a virtual thread. Its order: a bad repository name or commit, or
- * a ref in a deployed environment ({@link Kind#BAD_REQUEST}); a deployed environment ({@link Kind#FORBIDDEN}: manual deploy is
- * non-production only), or a node without {@code RAIL8_GIT_BASE} ({@link Kind#FORBIDDEN}); a closing node
+ * a ref in a deployed environment ({@link Kind#BAD_REQUEST}); a node without {@code RAIL8_GIT_BASE} ({@link Kind#FORBIDDEN}); a
+ * closing node
  * ({@link Kind#STOPPING}); another deploy, an undeploy or a restore holding the node's lock ({@link Kind#CONFLICT}: one deploy at
  * a time per node, whatever the package), or a tick holding it, which the deploy waits for within the stop deadline
  * ({@link Kind#BUSY} after it); then the pool's lock ({@link DeploymentStore#lock}), never waited for: {@link Kind#CONFLICT} while a
@@ -135,13 +134,7 @@ import java.util.stream.Stream;
  * running flow of another package takes requests at (its component's prefix and its {@code address}, {@code Component.httpPrefix},
  * {@link #paths}), no flow
  * serving a node-local address another of the package or a running flow of another package serves and no cycle of calls between
- * flows ({@code Component.internalAddress}, {@link #links}, {@link Calls#check}), and
- * no at-least-once flow the package runs that the new version removes or makes non-at-least-once while the work queue holds
- * items of it (queued, leased, held or stopped: they would never run; a flow whose new yaml does not read is not asked, its own problems
- * are listed; a queue that cannot answer is the node's failure, and only when every question that failed was one the node's Postgres
- * pool refused a connection ({@link PgTx#refusedByThePool}) {@link Kind#BUSY}, retryable — unless the package has
- * problems: then it is their 422) — and
- * every flow built: its delivery, its worker (at-least-once)
+ * flows ({@code Component.internalAddress}, {@link #links}, {@link Calls#check}) — and every flow built: its delivery, its worker (at-least-once)
  * and its effective hash ({@link DeployedFlow#hash()}). Each flow is then added (an id the package does not run, or one it lists
  * {@link DeployedFlow.State#FAILED}: nothing of that one runs), unchanged (the hash of the flow running: that flow runs on
  * untouched, with the stamps it was built with, and the new build is stopped with a zero deadline and closed), changed, or removed
@@ -157,9 +150,8 @@ import java.util.stream.Stream;
  * to close its own, never awaited; a stop that fails or does not complete is logged at WARNING and the swap goes on. Phase B starts every
  * added and changed flow at once — its consumer, whose start is bounded by the node's stop deadline on the node's timer, then,
  * once that start succeeded, its worker, as worker {@code nodeId} — only once
- * every flow of phase A has settled: a new flow on the in endpoint of an old one never meets the old consumer there. A removed
- * at-least-once flow, or one the new version runs otherwise, is asked for queue items again once its old worker drained: items
- * left are a WARNING naming it, never a delay of the answer. Then the deploy saves its {@link DeploymentRecord} (name, version,
+ * every flow of phase A has settled: a new flow on the in endpoint of an old one never meets the old consumer there. Then the
+ * deploy saves its {@link DeploymentRecord} (name, version,
  * repository, commit, content digest, the package's {@code deployedAt}, the pins of its dependencies and its at-least-once flows)
  * under the pool's lock, in one transaction that raises the pool's generation and fails when the generation is no longer the one
  * read under the lock, and waits for it within the stop deadline: the commit point. A save that fails
@@ -173,6 +165,20 @@ import java.util.stream.Stream;
  * package's record, FAILED ones included, or during a restore any row read); one that cannot be deleted is a WARNING. Each call of
  * the package's flows that no flow on the node serves, and each call of another package's flow to an address the replaced
  * version served and no flow serves now, is then a WARNING, never a refusal.
+ *
+ * <p>An at-least-once flow the pool no longer runs at-least-once — the new version removes it or runs it otherwise, or its
+ * package is undeployed — is retired. The save or the delete of the record marks it in the pool ({@link DeploymentStore}), with
+ * a copy of the record it ran under; once the record is written this node starts the flow's drain: the flow built again from
+ * its directory, with no consumer, its worker started, running what the work queue holds of the flow (queued, leased, held
+ * or stopped) through its own producers. A message for a flow is admitted to the work queue only while a record runs the flow
+ * at-least-once, a mark retires it, or this node runs it with no record naming it yet (a deploy with no origin, or the install
+ * of a deploy before its save): a node that still runs a retired flow until its next tick writes into the drain, and one whose
+ * write comes after the mark ended is refused, nothing kept. Each tick first ends, in the store, the mark of every retired flow
+ * with no work row left ({@link DeploymentStore#endMarks}), then stops each drain whose flow no mark names and whose items the
+ * work queue says are gone, and prunes its directories; a drain whose queue does not answer runs on. A drain that does not build
+ * or start is a WARNING and is tried again at every tick, and {@link #health} is DEGRADED while one is (UNDRAINED). A deploy that
+ * runs the flow at-least-once again ends its mark and stops its drain before the new flow starts. A node that restarts builds
+ * no drain: what a retired flow left in the work queue waits there for one.
  *
  * <p>A deploy is atomic to readers: while it runs, {@link #flows()} and {@link #packages()} answer what they
  * answered before it, phase A and B and a rollback included; the listing changes once, when the deploy returns (the new version)
@@ -207,7 +213,7 @@ import java.util.stream.Stream;
  * <p>{@link #restore} runs at the node's start, before the node's admin port opens, under the deploy lock: each record's commit
  * is read from the git cache, fetched only when the cache lacks it and never checked for reachability, written into
  * {@code .incoming}, its content checked against the record's, and installed in restore mode — the record's repository, commit
- * and {@code deployedAt}; no record, no audit, no deployed-environment refusal; a flow whose consumer does not start runs, its
+ * and {@code deployedAt}; no record and no audit; a flow whose consumer does not start runs, its
  * consumer tried again (below), one whose worker's start throws is FAILED, and the others run; each pin of the record is read
  * from its own repository and commit the same way — and a package refused whole is listed FAILED with its problems (one whose
  * consumer would listen where a package restored before it does, or that serves an address one of those serves or closes a
@@ -223,21 +229,15 @@ import java.util.stream.Stream;
  * {@link #restarting} gives its failures, its next attempt and the last cause. A fresh consumer starts only once the one before
  * it stopped: a polling one without a bound, any other within the node's stop deadline.
  *
- * <p>{@link #undeploy} blocks too. Its order: a bad name ({@link Kind#BAD_REQUEST}); a deployed environment
- * ({@link Kind#FORBIDDEN}: manual undeploy is non-production only); the node's lock held by a deploy, an undeploy or a restore
+ * <p>{@link #undeploy} blocks too. Its order: a bad name ({@link Kind#BAD_REQUEST}); the node's lock held by a deploy, an undeploy or a restore
  * ({@link Kind#CONFLICT}, or {@link Kind#STOPPING} while closing), or by a tick, waited for as a deploy waits; a closing node
  * ({@link Kind#STOPPING}); the pool's lock, taken and caught up with as a deploy takes it; a package the node does
- * not list ({@link Kind#NOT_FOUND}); a running
- * at-least-once flow of it whose items the work queue holds ({@link Kind#CONFLICT}, a line per such flow: they would never run;
- * a queue that cannot answer is the node's {@link IOException}, and only when every question that failed was one the node's Postgres
- * pool refused a connection ({@link PgTx#refusedByThePool}) and no flow holds items {@link Kind#BUSY}, retryable). Then, under the
- * pool's lock, its record is deleted in one transaction that raises the pool's generation, as a save does: the commit point. A delete
+ * not list ({@link Kind#NOT_FOUND}). Then, under the pool's lock, its record is deleted in one transaction that raises the pool's generation, as a save does: the commit point. A delete
  * that fails is the node's {@link IOException} ("whether the deploy record ... was deleted is unknown: ..." when it did not answer in
  * time), and changes nothing else; the node's next tick follows whatever the pool's records hold.
- * Then every flow of it that runs stops and closes as phase A stops a flow (a stop that fails is a WARNING and counts as settled;
- * an at-least-once one is asked for queue items again once its worker drained, items that arrived meanwhile a WARNING),
- * the listing drops it, and {@code packages/<name>/} is pruned of every directory no remaining record pins and no remaining flow
- * reads (a failure is a WARNING, the undeploy stands). A package that pins it runs on: its pin's directory stays while a record
+ * Then every flow of it that runs stops and closes as phase A stops a flow (a stop that fails is a WARNING and counts as settled),
+ * the listing drops it, each at-least-once flow of it starts its drain (above), and {@code packages/<name>/} is pruned of every
+ * directory no remaining record pins and no remaining flow or drain reads (a failure is a WARNING, the undeploy stands). A package that pins it runs on: its pin's directory stays while a record
  * pins it, and a restore reads it from the pin's own commit. Deploying a commit of it again is the rollback. The other nodes
  * undeploy it at their next tick, and a restore after it does not install it: its record is gone.
  *
@@ -1045,13 +1045,12 @@ public final class Deployments {
      * a virtual thread.
      *
      * <p>It reports what the load, the check and the build refuse. It does not reach what only {@link #deploy(String, String, String)}
-     * and its install check: the package name's pattern, the non-production-only rule, the fetch and the write of the commit with
+     * and its install check: the package name's pattern, the fetch and the write of the commit with
      * their limits, the dependencies a deploy would fetch, the consumer of each flow (its component may still refuse it), the start
      * of each flow and the write of its record. An empty list is no promise that a deploy succeeds.
      *
      * @return the problems the load, the check and the build find, each path in it from the package root; empty when they find none
-     * @throws IOException a file the build read cannot be hashed, or the work queue could not answer (the node's Postgres pool
-     *                     refused the question included): the node's failure
+     * @throws IOException a file the build read cannot be hashed: the node's failure
      */
     public List<String> validate(String name, Path dir) throws IOException {
         return validate(name, dir, List.of());
@@ -1070,8 +1069,7 @@ public final class Deployments {
      *
      * @param held the closure's package folders, each a package that loads with a name and a version
      * @return the problems, as {@link #validate(String, Path)} returns them
-     * @throws IOException a held folder or a file of it cannot be read, a file the build read cannot be hashed, or the work queue
-     *                     could not answer (the node's Postgres pool refused the question included): the node's failure
+     * @throws IOException a held folder or a file of it cannot be read, or a file the build read cannot be hashed: the node's failure
      * @throws IllegalArgumentException a file of a held folder does not parse ({@code Package.load})
      */
     public List<String> validate(String name, Path dir, List<Path> held) throws IOException {
@@ -1826,14 +1824,9 @@ public final class Deployments {
 
     /**
      * Every check that needs no component built; all problems at once, as one {@link Kind#INVALID}. Each endpoint's
-     * {@code secret://} references are resolved after its schema check, which sees them as written ({@link #resolved}). Of the flows {@code running}
-     * (the package's, empty on a first deploy), every at-least-once one the new version does not run at-least-once — removed, or
-     * another delivery mode — is asked whether the work queue holds items of it (blocking): if so, those items would never run.
-     * One the new version names with a yaml that does not read is not asked: its problems are listed already. A question the queue
-     * fails is the node's {@link IOException} (its cause the queue's failure, the last such flow's) once every one was asked; only
-     * when every question that failed was one the node's Postgres pool refused a connection ({@link PgTx#refusedByThePool}) is it
-     * {@link Kind#BUSY} with the last such line instead (a real failure outranks a refusal in any flow order) —
-     * unless there are problems: then they are the answer. Against the flows the node runs, each flow's consumer is asked where it
+     * {@code secret://} references are resolved after its schema check, which sees them as written ({@link #resolved}). Of the flows
+     * {@code running} (the package's, empty on a first deploy), the at-least-once ones the new version does not run at-least-once
+     * — removed, or another delivery mode — are the ones leaving: the deploy drains them. Against the flows the node runs, each flow's consumer is asked where it
      * listens ({@link #listeners}), and each flow which node-local addresses it serves and calls ({@link #links}): one flow per address
      * and no cycle of calls ({@link Calls#check}, against {@link #others}). {@code held} holds the versions an off-node validate
      * holds, empty otherwise; {@code commits} and {@code written} are as {@link #dependencies} takes them.
