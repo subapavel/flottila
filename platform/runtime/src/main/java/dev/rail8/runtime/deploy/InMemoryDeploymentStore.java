@@ -3,12 +3,17 @@ package dev.rail8.runtime.deploy;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.Optional;
+import java.util.TreeMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-/** The {@link DeploymentStore} of a node without Postgres records (dev, tests): lost with the process. */
+/**
+ * The {@link DeploymentStore} of a node without Postgres records (dev, tests): lost with the process. The {@code Deployments} that
+ * share one such store are one pool: they share its records, its generation and its lock.
+ */
 public final class InMemoryDeploymentStore implements DeploymentStore {
 
     /**
@@ -20,25 +25,22 @@ public final class InMemoryDeploymentStore implements DeploymentStore {
      */
     public record Audited(String actor, String subject, JsonObject detail) {}
 
-    /** By name: sorted as {@link String#compareTo} sorts. */
-    private final Map<String, DeploymentRecord> rows = new ConcurrentSkipListMap<>();
+    /** By name: sorted as {@link String#compareTo} sorts. Guarded by {@code this}, with the generation and the lock's holder. */
+    private final Map<String, DeploymentRecord> rows = new TreeMap<>();
+    private long generation;
+    private Held holder;
     private final List<Audited> audited = new CopyOnWriteArrayList<>();
 
     @Override
-    public Future<Void> save(DeploymentRecord record) {
-        rows.put(record.name(), record);
-        return Future.succeededFuture();
+    public synchronized Future<Snapshot> read() {
+        return Future.succeededFuture(new Snapshot(generation, new ArrayList<>(rows.values())));
     }
 
     @Override
-    public Future<Void> delete(String name) {
-        rows.remove(name);
-        return Future.succeededFuture();
-    }
-
-    @Override
-    public Future<List<DeploymentRecord>> list() {
-        return Future.succeededFuture(List.copyOf(rows.values()));
+    public synchronized Future<Optional<PoolLock>> lock() {
+        if (holder != null) return Future.succeededFuture(Optional.empty());
+        holder = new Held(new Snapshot(generation, new ArrayList<>(rows.values())));
+        return Future.succeededFuture(Optional.of(holder));
     }
 
     @Override
@@ -50,5 +52,50 @@ public final class InMemoryDeploymentStore implements DeploymentStore {
     /** The audit rows written so far, oldest first. */
     public List<Audited> audited() {
         return List.copyOf(audited);
+    }
+
+    /** The lock as one holder holds it: its writes fail once it is closed. */
+    private final class Held implements PoolLock {
+        private final Snapshot pool;
+        private long read;
+
+        Held(Snapshot pool) {
+            this.pool = pool;
+            this.read = pool.generation();
+        }
+
+        @Override
+        public Snapshot snapshot() {
+            return pool;
+        }
+
+        @Override
+        public Future<Long> save(DeploymentRecord record) {
+            return write(record.name(), record);
+        }
+
+        @Override
+        public Future<Long> delete(String name) {
+            return write(name, null);
+        }
+
+        private Future<Long> write(String name, DeploymentRecord record) {
+            synchronized (InMemoryDeploymentStore.this) {
+                if (holder != this) return Future.failedFuture(new IllegalStateException("the pool's lock is no longer held"));
+                if (generation != read) return Future.failedFuture(new IllegalStateException("the pool's generation moved from " + read + " to " + generation));
+                if (record == null) rows.remove(name);
+                else rows.put(name, record);
+                read = ++generation;
+                return Future.succeededFuture(generation);
+            }
+        }
+
+        @Override
+        public Future<Void> close() {
+            synchronized (InMemoryDeploymentStore.this) {
+                if (holder == this) holder = null;
+            }
+            return Future.succeededFuture();
+        }
     }
 }

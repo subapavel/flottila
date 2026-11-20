@@ -572,7 +572,7 @@ class DeploymentsSecretsTest {
         for (String value : List.of(partnerValue, inboundValue)) {
             assertFalse(String.valueOf(n.deployments.packages()).contains(value), "the package listing: " + n.deployments.packages());
             assertFalse(String.valueOf(n.deployments.flows()).contains(value), "the flow listing: " + n.deployments.flows());
-            assertFalse(String.valueOf(within(records.list(), "the records")).contains(value), "the record");
+            assertFalse(String.valueOf(within(records.read(), "the records")).contains(value), "the record");
             assertFalse(String.valueOf(within(messages.timeline(e.id()), "the timeline")).contains(value), "the timeline");
             assertEquals(List.of(), filesHolding(tmp, value), "no file the node wrote holds the value");
             assertNotLogged(value);

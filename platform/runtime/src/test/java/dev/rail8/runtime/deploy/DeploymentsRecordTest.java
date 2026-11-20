@@ -227,7 +227,7 @@ class DeploymentsRecordTest {
         assertEquals(List.of(), deployments.flows());
         save1.release();
         DeployResult v1 = OnVirtualThread.join(d1);
-        DeploymentRecord rec1 = new DeploymentRecord("shop", "1.0.0", "shop", p1.commit(), p1.content(), v1.pkg().deployedAt(), List.of());
+        DeploymentRecord rec1 = new DeploymentRecord("shop", "1.0.0", "shop", p1.commit(), p1.content(), v1.pkg().deployedAt(), List.of(), List.of());
         assertEquals(List.of(rec1), records.saves(), "one save: the package, its version, repository, commit and content");
         assertEquals(Instant.parse("2026-10-27T09:30:00.123456Z"), records.saves().getFirst().deployedAt(),
                 "deployedAt is the package's (the clock at the checkout, before the second the case advanced), to the microsecond");
@@ -252,7 +252,7 @@ class DeploymentsRecordTest {
         assertTrue(Files.isDirectory(shopDir().resolve(sha1)), "nothing is pruned before the record is written: " + children(shopDir()));
         save3.release();
         DeployResult r3 = OnVirtualThread.join(d3);
-        assertEquals(List.of(new DeploymentRecord("shop", "3.0.0", "shop", v3.commit(), v3.content(), r3.pkg().deployedAt(), List.of())), records.rows(),
+        assertEquals(List.of(new DeploymentRecord("shop", "3.0.0", "shop", v3.commit(), v3.content(), r3.pkg().deployedAt(), List.of(), List.of())), records.rows(),
                 "v3's row replaced v2's");
         assertEquals(List.of(r3.pkg()), deployments.packages());
         assertEquals(Set.of(sha2, sha3), Set.copyOf(children(shopDir())), "pruned once recorded: v3's directory and the previous one stay");

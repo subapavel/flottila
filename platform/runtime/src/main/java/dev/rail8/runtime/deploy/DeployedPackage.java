@@ -35,8 +35,9 @@ public record DeployedPackage(String name, String version, Optional<String> repo
                               List<String> problems, String content, List<Dependency> dependencies) {
 
     /**
-     * {@link #RUNNING}: installed, its flows listed each with its own state; {@link #FAILED}: the restore at the node's start could
-     * not install it — nothing of it runs on this node until a deploy of it, which is a first deploy.
+     * {@link #RUNNING}: installed, its flows listed each with its own state; {@link #FAILED}: no install of its record succeeded on
+     * this node, at the node's start or at a tick since — nothing of it runs on this node until a tick installs it or a deploy of
+     * it, which is a first deploy.
      */
     public enum State { RUNNING, FAILED }
 

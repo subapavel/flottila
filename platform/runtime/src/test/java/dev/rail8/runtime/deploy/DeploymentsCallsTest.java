@@ -300,7 +300,10 @@ class DeploymentsCallsTest {
     void aRestoredPackageThatClosesACycleIsFailedAndOneWarningNamesTheCallLeftUnserved() throws Exception {
         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
         deployCommitted(node(env("node-a"), rows, new Doors()), flow(callee(pkg("alpha"), "beta", "/b"), "a", "/a", "beta"));
-        deployCommitted(node(env("node-b"), rows, new Doors()), flow(callee(pkg("beta"), "alpha", "/a"), "b", "/b", "alpha"));
+        // the pool refuses beta beside alpha: its record comes from a store of its own, where node b runs nothing else
+        InMemoryDeploymentStore elsewhere = new InMemoryDeploymentStore();
+        deployCommitted(node(env("node-b"), elsewhere, new Doors()), flow(callee(pkg("beta"), "alpha", "/a"), "b", "/b", "alpha"));
+        Ledger.copy(elsewhere, rows);
         logged.clear();
         Doors third = new Doors();
         Deployments restored = node(env("node-c"), rows, third);

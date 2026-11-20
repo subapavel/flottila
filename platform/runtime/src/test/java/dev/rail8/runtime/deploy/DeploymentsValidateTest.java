@@ -318,7 +318,7 @@ class DeploymentsValidateTest {
         int producers = doors.producers().size();
         int open = doors.openProducers().size();
         int scheduled = timer.all().size();
-        List<?> recorded = records.list().await();
+        List<?> recorded = records.read().await().records();
         TreeSet<String> dataTree = tree(data);
         List<String> enqueued = queue.enqueued();
         List<String> claims = queue.claims();
@@ -334,7 +334,7 @@ class DeploymentsValidateTest {
         assertEquals(claims, queue.claims(), "nothing claimed");
         assertEquals(0, messages.size(), "nothing recorded");
         assertEquals(0, dlq.size(), "nothing parked");
-        assertEquals(recorded, records.list().await(), "no deploy record written");
+        assertEquals(recorded, records.read().await().records(), "no deploy record written");
         assertEquals(dataTree, tree(data), "nothing unpacked or written under the data directory");
         assertFalse(Files.exists(data.resolve("packages").resolve("store")), "store was never unpacked");
         assertEquals(flows, deployments.flows(), "the flows listed are the ones before");

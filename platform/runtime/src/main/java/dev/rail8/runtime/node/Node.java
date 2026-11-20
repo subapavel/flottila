@@ -50,6 +50,7 @@ import io.vertx.core.net.ClientSSLOptions;
 import io.vertx.core.net.PemTrustOptions;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
+import io.vertx.pgclient.PgConnection;
 import io.vertx.redis.client.Redis;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
@@ -326,7 +327,8 @@ public final class Node implements AutoCloseable {
             // grouped saves on the intake pool; the wake and the announce after a commit are fire-and-forget on the work pool
             PgIntake intake = new PgIntake(intakePool, blobs, messages, work, workers, timer, config.intakeGroup(), signals);
             Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
-                    Meter.system(), new PgDeploymentStore(pool), intake, leases,
+                    Meter.system(), new PgDeploymentStore(pool, () -> PgConnection.connect(vertx, connectOptions(pg, "deploy", config.nodeId())).map(c -> c)),
+                    intake, leases,
                     new Targets(config.targets().defaults(), config.targets().overrides(), timer), lease, workers, signals);   // the node's one Targets and fence
             deployments = restored;
             StepCpu cpu = new StepCpu(StepCpu.Limits.DEFAULT);
@@ -336,6 +338,7 @@ public final class Node implements AutoCloseable {
             // before the restore, whose consumers mount on it; a path no mount takes is 503 until the start finished
             http.listen(prefixes, path -> !ready.get() || restored.serves(path)).await();
             restored.restore();   // before the admin port opens: what the pool recorded runs before a deploy can be taken
+            restored.startFollowing();   // every node runs what the pool's records name, a deploy on another node included
             Retention retention = new Retention(pool, clock, timer, config.retention());
             // /ready's inputs are in-memory reads: the fence, the journal's and the deployments' health — both synchronous
             AdminServer.Readiness readiness = new AdminServer.Readiness(ready::get, lease,

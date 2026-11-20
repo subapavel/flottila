@@ -6,13 +6,14 @@ import io.vertx.core.Promise;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
 /**
  * A {@link DeploymentStore} at the SPI boundary of {@code Deployments} (P1-09c3a test fixture): an {@link InMemoryDeploymentStore}
- * that records every save call, traces it ({@code "save <name> <version>"} at the call, on the calling thread), and can be told to
+ * whose lock records every save call, traces it ({@code "save <name> <version>"} at the call, on the calling thread), and can be told to
  * fail or to hold the next save. A failed save writes nothing; a held one writes once it is released.
  *
  * <p>P2-02c: deletes likewise — traced {@code "delete <name>"} at the call, recorded, the next one failed ({@link #failNextDelete},
@@ -94,7 +95,7 @@ final class Ledger implements DeploymentStore {
 
     /** What the store holds now, as {@link #list()} answers it, awaited. */
     List<DeploymentRecord> rows() {
-        return rows.list().await();
+        return list().await();
     }
 
     /** The audit rows written, oldest first. */
@@ -102,46 +103,93 @@ final class Ledger implements DeploymentStore {
         return rows.audited();
     }
 
+    /** Writes every record of {@code from} into {@code to} through its lock: a record the pool would refuse, written by hand. */
+    static void copy(DeploymentStore from, DeploymentStore to) {
+        PoolLock lock = to.lock().await().orElseThrow(() -> new IllegalStateException("the pool's lock is held"));
+        try {
+            for (DeploymentRecord r : from.read().await().records()) lock.save(r).await();
+        } finally {
+            lock.close().await();
+        }
+    }
+
     /** Releases every hold: nothing a case held outlives it. */
     void releaseAll() {
         holds.forEach(Hold::release);
     }
 
-    @Override
-    public Future<Void> save(DeploymentRecord record) {
-        saves.add(record);
-        trace.accept("save " + record.name() + " " + record.version());
-        Throwable failure = failNext;
-        failNext = null;
-        if (failure != null) return Future.failedFuture(failure);
-        Hold held = holdNext;
-        holdNext = null;
-        if (held == null) return rows.save(record);
-        held.reached.countDown();
-        return held.gate.future().compose(v -> rows.save(record));
+    /** Saves {@code record} through the pool's lock, as a deploy saves it (traced, held or failed as told), and frees the lock. */
+    Future<Void> save(DeploymentRecord record) {
+        return lock().compose(held -> {
+            PoolLock lock = held.orElseThrow(() -> new IllegalStateException("the pool's lock is held"));
+            return lock.save(record).eventually(lock::close).mapEmpty();
+        });
+    }
+
+    /** Every record, as {@link #read()} answers them. */
+    Future<List<DeploymentRecord>> list() {
+        return rows.read().map(Snapshot::records);
     }
 
     @Override
-    public Future<Void> delete(String name) {
-        deletes.add(name);
-        trace.accept("delete " + name);
-        Throwable failure = failNextDelete;
-        failNextDelete = null;
-        if (failure != null) return Future.failedFuture(failure);
-        Hold held = holdNextDelete;
-        holdNextDelete = null;
-        if (held == null) return rows.delete(name);
-        held.reached.countDown();
-        return held.gate.future().compose(v -> rows.delete(name));
+    public Future<Snapshot> read() {
+        return rows.read();
     }
 
     @Override
-    public Future<List<DeploymentRecord>> list() {
-        return rows.list();
+    public Future<Optional<PoolLock>> lock() {
+        return rows.lock().map(held -> held.map(Traced::new));
     }
 
     @Override
     public Future<Void> audit(String actor, String repository, JsonObject detail) {
         return rows.audit(actor, repository, detail);
+    }
+
+    /** The lock of the wrapped store, its saves and deletes recorded, traced, and failed or held as told. */
+    private final class Traced implements PoolLock {
+        private final PoolLock lock;
+
+        Traced(PoolLock lock) {
+            this.lock = lock;
+        }
+
+        @Override
+        public Snapshot snapshot() {
+            return lock.snapshot();
+        }
+
+        @Override
+        public Future<Long> save(DeploymentRecord record) {
+            saves.add(record);
+            trace.accept("save " + record.name() + " " + record.version());
+            Throwable failure = failNext;
+            failNext = null;
+            if (failure != null) return Future.failedFuture(failure);
+            Hold held = holdNext;
+            holdNext = null;
+            if (held == null) return lock.save(record);
+            held.reached.countDown();
+            return held.gate.future().compose(v -> lock.save(record));
+        }
+
+        @Override
+        public Future<Long> delete(String name) {
+            deletes.add(name);
+            trace.accept("delete " + name);
+            Throwable failure = failNextDelete;
+            failNextDelete = null;
+            if (failure != null) return Future.failedFuture(failure);
+            Hold held = holdNextDelete;
+            holdNextDelete = null;
+            if (held == null) return lock.delete(name);
+            held.reached.countDown();
+            return held.gate.future().compose(v -> lock.delete(name));
+        }
+
+        @Override
+        public Future<Void> close() {
+            return lock.close();
+        }
     }
 }

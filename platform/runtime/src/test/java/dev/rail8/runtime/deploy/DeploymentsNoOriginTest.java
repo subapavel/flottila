@@ -74,7 +74,7 @@ class DeploymentsNoOriginTest {
 
         assertEquals(Kind.FORBIDDEN, refused.kind(), refused.getMessage());
         assertEquals(List.of(), node.packages(), "nothing listed");
-        assertEquals(List.of(), records.list().await(), "no record");
+        assertEquals(List.of(), records.read().await().records(), "no record");
         assertEquals(List.of(), under(tmp.resolve("data")), "nothing written into the data directory");
         assertEquals(before, under(folder), "the folder as it was");
     }
@@ -92,7 +92,7 @@ class DeploymentsNoOriginTest {
         assertEquals(content, deployed.pkg().content());
         String hex = content.substring("sha256:".length());
         assertTrue(node.flows().stream().allMatch(f -> f.state() == DeployedFlow.State.RUNNING), node.flows().toString());
-        assertEquals(List.of(), records.list().await(), "no record");
+        assertEquals(List.of(), records.read().await().records(), "no record");
         assertEquals(List.of(), under(tmp.resolve("archives")), "no archive stored");
         assertEquals(files, under(tmp.resolve("data").resolve("packages").resolve("shop").resolve(hex)), "the node's own copy");
         assertEquals(List.of(), under(node.incomingDir()), "nothing left in .incoming");

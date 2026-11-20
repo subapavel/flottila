@@ -503,7 +503,10 @@ class DeploymentsListenerTest {
     void aRestoredPackageClashingWithOneRestoredBeforeIsFailed() throws Exception {
         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
         deploy(node(env("node-a"), rows, new Doors()), listening(pkg("alpha"), "invoices", port(8080)));
-        deploy(node(env("node-b"), rows, new Doors()), listening(pkg("beta"), "orders", on("0.0.0.0", 8080)));   // node b runs nothing else
+        // the pool refuses beta beside alpha: its record comes from a store of its own, where node b runs nothing else
+        InMemoryDeploymentStore elsewhere = new InMemoryDeploymentStore();
+        deploy(node(env("node-b"), elsewhere, new Doors()), listening(pkg("beta"), "orders", on("0.0.0.0", 8080)));
+        Ledger.copy(elsewhere, rows);
         Doors third = new Doors();
         Deployments restored = node(env("node-c"), rows, third);
 
