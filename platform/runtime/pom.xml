@@ -13,7 +13,7 @@
   <artifactId>rail8-runtime</artifactId>
   <packaging>jar</packaging>
   <name>Rail8 :: runtime</name>
-  <description>Vert.x bootstrap, endpoint verticles, Postgres stores, the body journal, Valkey poller leases, the S3 deployment archive store, admin API.</description>
+  <description>Vert.x bootstrap, endpoint verticles, Postgres stores, the body journal, Valkey poller leases, the package repositories, admin API.</description>
 
   <build>
     <resources>
