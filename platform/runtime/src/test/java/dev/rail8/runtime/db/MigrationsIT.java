@@ -140,7 +140,7 @@ class MigrationsIT {
         assertEquals(0, second.migrationsExecuted(), "already at V27");
         assertEquals("27", second.schemaVersion());
         long applied = pool.query("select count(*) from flyway_schema_history where success").execute().await().iterator().next().getLong(0);
-        assertEquals(26, applied);
+        assertEquals(27, applied);
     }
 
     /**
@@ -755,10 +755,11 @@ class MigrationsIT {
         pool.preparedQuery("insert into deployments(package, version, revision, archive_sha256, deployed_at) values ($1, $2, $3, $4, now())")
                 .execute(io.vertx.sqlclient.Tuple.of("shop", "1.0.0", "r1", sha)).await();
 
-        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+        org.flywaydb.core.api.output.MigrateResult r = org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword())
+                .locations(Migrations.LOCATION).target("26").load().migrate();
 
-        assertEquals(2, r.migrationsExecuted(), "V26 and V27 on top of V25");
-        assertEquals("27", r.schemaVersion());
+        assertEquals(1, r.migrationsExecuted, "V26 on top of V25");
+        assertEquals("26", r.targetSchemaVersion);
         assertEquals(0L, pool.query("select count(*) from deployments").execute().await().iterator().next().getLong(0), "the row that named an archive is gone");
         assertEquals(List.of("package", "version", "deployed_at", "dependencies", "repository", "commit", "content"), List.copyOf(columnsOf("deployments").keySet()),
                 "V26: the archive's columns gone, the commit's added");

@@ -1456,6 +1456,7 @@ public final class Deployments {
         }
         // the new flows run: from here on nothing undoes the deploy
         deployed.put(name, next);
+        behind.remove(name);   // what runs is what the deploy recorded, or the record a restore or a tick installed
         if (restoring == null) {   // its own calls no flow serves, and others' calls to an address the replaced version served
             Set<Calls.Address> left = new HashSet<>();
             before.stream().filter(Flow::runs).forEach(f -> f.recipe().calls().serves().ifPresent(left::add));
