@@ -524,3 +524,29 @@ engine-rc 0
 engine-stdout {"a":[1],"b":7,"c":7,"d":0}\n
 engine-stderr
 end
+
+case path-update/getpath-untracked
+arg -c
+filter .a as $x | try path($x | getpath(["b"])) catch .
+stdin {"a":{"b":1}}\n
+end
+
+case path-update/deviation-modify-in-path
+arg -c
+filter try path(.a |= 1) catch .
+stdin {"a":5}\n
+deviation modify-untracked
+engine-rc 0
+engine-stdout "Invalid path expression with result {\\"a\\":1}"\n
+engine-stderr
+end
+
+case path-update/deviation-modify-in-path-unused
+arg -c
+filter try [path((.a |= 1) | empty)] catch .
+stdin {"a":5}\n
+deviation modify-untracked
+engine-rc 0
+engine-stdout []\n
+engine-stderr
+end

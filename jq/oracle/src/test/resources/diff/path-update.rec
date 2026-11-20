@@ -601,3 +601,24 @@ rc 5
 stdout
 stderr jq: error (at <stdin>:1): Paths must be specified as an array\n
 end
+
+case path-update/getpath-untracked
+def 0b7949489842
+rc 0
+stdout "Invalid path expression with result 1"\n
+stderr
+end
+
+case path-update/deviation-modify-in-path
+def 6dc1421a83b5
+rc 0
+stdout "Invalid path expression near attempt to access element 0 of [{\\"a\\":1},[]]"\n
+stderr
+end
+
+case path-update/deviation-modify-in-path-unused
+def 3010295df560
+rc 0
+stdout "Invalid path expression near attempt to access element 0 of [{\\"a\\":1},[]]"\n
+stderr
+end

@@ -89,6 +89,23 @@ error the filter does not name. The engine keeps the edit made so far and goes o
 Reason: the engine's edit lives outside the run of the left side, so an error the left side catches leaves it
 whole (ADR-0048's path-mode contract). jq's own test files contain no such case.
 
+## An update in a path expression gives an untracked result (ADR-0048, issue #292)
+
+In a path expression, `|=` and what is built on it (`op=`, `//=`, `_modify`, `map_values`, `walk` and the others)
+give an untracked result, as `=` does. jq's `_modify` ends by indexing its `reduce` state, the updated input beside
+the delete list, and in a path expression that index is a step on an untracked value. So jq raises at the update,
+naming that state, even when nothing after it uses the result as a path. The engine raises "Invalid path expression
+with result …" only where the result is used as a path:
+
+| case | filter | jq 1.8.2 | Rail8 jq |
+| --- | --- | --- | --- |
+| `path-update/deviation-modify-in-path` (`deviation modify-untracked`) | `{"a":5} \| try path(.a \|= 1) catch .` | `"Invalid path expression near attempt to access element 0 of [{\"a\":1},[]]"` | `"Invalid path expression with result {\"a\":1}"` |
+| `path-update/deviation-modify-in-path-unused` (`deviation modify-untracked`) | `{"a":5} \| try [path((.a \|= 1) \| empty)] catch .` | `"Invalid path expression near attempt to access element 0 of [{\"a\":1},[]]"` | `[]` |
+
+Reason: the engine's Update has no `reduce` state to index. Its edit holds the input and the delete list outside
+the run, and the path-mode contract makes an Update's result untracked (ADR-0048). jq's own test files contain no
+such case.
+
 ## A break is not an error (ADR-0008, issue #7)
 
 In jq, `break $l` raises the error `{"__jq":n}`, where `n` is a per-process label counter. A `try`,
