@@ -2,27 +2,18 @@ package dev.rail8.cli;
 
 import io.vertx.core.json.JsonObject;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
 import java.io.PrintStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletionException;
-import java.util.stream.Stream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 /**
  * {@code rail8 deploy <repository> <commit|ref> [--check] [--admin URL]}: {@code POST <admin>/admin/deploy}, with
@@ -36,8 +27,6 @@ import java.util.zip.ZipOutputStream;
 final class Deploy {
 
     static final String DEFAULT_ADMIN = "http://localhost:8081";
-    /** The one modification time of every entry of {@link #zip}: a DOS date-time, no extended timestamp, the same in every time zone. */
-    static final LocalDateTime ENTRY_TIME = LocalDateTime.of(2000, 1, 1, 0, 0);
     private static final Duration CONNECT = Duration.ofSeconds(10);
     /** A deploy answers once its flows started or it was refused; the node bounds that by its stop deadline, this bounds the wait. */
     private static final Duration ANSWER = Duration.ofMinutes(5);
@@ -106,28 +95,5 @@ final class Deploy {
         } catch (IllegalArgumentException wrong) {
             throw new Cli.Usage("deploy: the admin URL '" + admin + "' is not an http or https URL: " + wrong.getMessage());
         }
-    }
-
-    /**
-     * The package directory {@code dir} as a zip, the same bytes for the same files wherever they lie and whenever they were
-     * written: one entry per regular file at its {@code /}-path from {@code dir} ({@code package.yaml} at the root), entries in
-     * plain string order of that path, no directory entries, every entry's time {@link #ENTRY_TIME}.
-     */
-    static byte[] zip(Path dir) throws IOException {
-        List<String> paths;
-        try (Stream<Path> walk = Files.walk(dir)) {
-            paths = walk.filter(Files::isRegularFile).map(p -> dir.relativize(p).toString().replace(File.separatorChar, '/')).sorted().toList();
-        }
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
-            for (String path : paths) {
-                ZipEntry entry = new ZipEntry(path);
-                entry.setTimeLocal(ENTRY_TIME);
-                zip.putNextEntry(entry);
-                Files.copy(dir.resolve(path), zip);
-                zip.closeEntry();
-            }
-        }
-        return bytes.toByteArray();
     }
 }

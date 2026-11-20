@@ -26,7 +26,7 @@ class ComposeStackTest {
     private static final Path DIR = Path.of("..", "..", "deploy", "compose").toAbsolutePath().normalize();
     private static final Path FILE = DIR.resolve("docker-compose.yml");
     private static final Set<String> GATE_SERVICES =
-            Set.of("postgres", "valkey", "s3", "kafka", "sftp", "sftp-keys", "rail8", "echo", "deploy", "clickhouse");
+            Set.of("postgres", "valkey", "kafka", "sftp", "sftp-keys", "rail8", "echo", "deploy", "clickhouse");
 
     private static JsonNode services() throws IOException {
         assertTrue(Files.isRegularFile(FILE), FILE + " must exist");
@@ -92,7 +92,7 @@ class ComposeStackTest {
             assertFalse(tag.isBlank() || tag.contains("latest"), e.getKey() + ": image '" + ref + "' is not pinned");
         }
         assertTrue(built <= 1, "only the node image may be built, " + built + " services have no image");
-        for (String name : List.of("postgres", "valkey", "s3", "kafka", "sftp", "sftp-keys", "echo", "clickhouse")) {
+        for (String name : List.of("postgres", "valkey", "kafka", "sftp", "sftp-keys", "echo", "clickhouse")) {
             assertTrue(service(name).path("image").isTextual(), name + " names a registry image");
         }
     }
@@ -140,7 +140,7 @@ class ComposeStackTest {
         services().fields().forEachRemaining(e -> {
             if (!e.getValue().has("profiles")) unprofiled.add(e.getKey());
         });
-        assertEquals(new java.util.TreeSet<>(Set.of("postgres", "valkey", "s3", "sftp-keys", "sftp", "netns", "rail8", "echo", "deploy")),
+        assertEquals(new java.util.TreeSet<>(Set.of("postgres", "valkey", "sftp-keys", "sftp", "netns", "rail8", "echo", "deploy")),
                 unprofiled, "a plain `docker compose up` starts exactly these: everything but kafka and clickhouse");
     }
 
@@ -187,21 +187,18 @@ class ComposeStackTest {
     }
 
     @Test
-    void theNodeRunsDevWithS3ValkeyAndATokenFromTheEnv() throws IOException {
+    void theNodeRunsDevWithValkeyAndATokenFromTheEnv() throws IOException {
         JsonNode node = service("rail8");
         Map<String, String> env = environment(node);
         assertEquals("dev", env.get("RAIL8_ENV"));
         assertEquals("postgres", env.get("RAIL8_PG_HOST"));
-        assertEquals("s3", env.get("RAIL8_ARCHIVE_STORE"));
-        assertEquals("true", env.get("RAIL8_S3_PATH_STYLE"));
-        assertTrue(env.getOrDefault("RAIL8_S3_ENDPOINT", "").startsWith("http://s3:"), "the S3 endpoint is the s3 service: " + env.get("RAIL8_S3_ENDPOINT"));
         assertEquals("redis://valkey:6379", env.get("RAIL8_VALKEY_URI"));
         assertEquals("0.0.0.0", env.get("RAIL8_ADMIN_HOST"));
         String token = env.getOrDefault("RAIL8_ADMIN_TOKEN", "");
         assertTrue(token.startsWith("${RAIL8_ADMIN_TOKEN:?") && token.endsWith("}"),
                 "the token is required from the environment (${RAIL8_ADMIN_TOKEN:?...}), was '" + token + "'");
         JsonNode dependsOn = node.path("depends_on");
-        for (String dependency : List.of("postgres", "valkey", "s3")) {
+        for (String dependency : List.of("postgres", "valkey")) {
             assertEquals("service_healthy", dependsOn.path(dependency).path("condition").asText(), "the node waits for " + dependency + " healthy");
         }
     }
@@ -262,24 +259,6 @@ class ComposeStackTest {
             }
         }
         assertTrue(Files.isRegularFile(FILE), FILE + " must exist (the scan is vacuous without the stack)");
-    }
-
-    @Test
-    void theS3SecretComesFromTheEnvAndIsRequired() throws IOException {
-        for (String name : List.of("rail8", "s3")) {
-            String secret = environment(service(name)).getOrDefault("RAIL8_S3_SECRET_KEY", "");
-            assertTrue(secret.startsWith("${RAIL8_S3_SECRET_KEY:?"), name + ": the S3 secret is required from the environment, was '" + secret + "'");
-        }
-        java.util.regex.Pattern value = java.util.regex.Pattern.compile("\\\\?\"secretKey\\\\?\"\\s*:\\s*\\\\?\"([^\"\\\\]*)");
-        try (Stream<Path> files = Files.walk(DIR)) {
-            for (Path file : files.filter(Files::isRegularFile).toList()) {
-                var m = value.matcher(Files.readString(file, StandardCharsets.ISO_8859_1));
-                while (m.find()) {
-                    String v = m.group(1);
-                    assertTrue(v.startsWith("$") || v.equals("%s"), DIR.relativize(file) + " holds a literal S3 secret key value '" + v + "'");
-                }
-            }
-        }
     }
 
     // ---- P2-06: the async door, the SFTP host key and the demo's secrets -----------------------------------------------------

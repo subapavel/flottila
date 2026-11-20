@@ -215,121 +215,6 @@ class NodeConfigTest {
                 "deployed is no record component: no constructor takes a flag that could contradict env");
     }
 
-    // --- P1-09c3a (D-070): the archive store
-
-    /** {@code minimal()} with the archive store s3, a bucket and a region: the least an s3 node needs. */
-    static Map<String, String> s3() {
-        return with(with(with(minimal(), "RAIL8_ARCHIVE_STORE", "s3"), "RAIL8_S3_BUCKET", "rail8-archives"), "RAIL8_S3_REGION", "eu-central-1");
-    }
-
-    @Test
-    void archiveStoreDefaultsToDirUnderTheDataDir() {
-        NodeConfig c = NodeConfig.from(with(minimal(), "RAIL8_DATA_DIR", "/srv/rail8"));
-        assertAll(
-                () -> assertEquals(NodeConfig.Archives.Store.DIR, c.archives().store(), "RAIL8_ARCHIVE_STORE defaults to dir"),
-                () -> assertEquals(Path.of("/srv/rail8/archives"), c.archives().dir(), "RAIL8_ARCHIVE_DIR defaults to <dataDir>/archives"),
-                () -> assertEquals(Optional.empty(), c.s3(), "no S3 for a dir store"));
-        assertEquals(Path.of("/var/lib/rail8/archives"), NodeConfig.from(minimal()).archives().dir(), "under the default data dir too");
-        NodeConfig explicit = NodeConfig.from(with(with(minimal(), "RAIL8_ARCHIVE_STORE", "dir"), "RAIL8_ARCHIVE_DIR", "/mnt/archives"));
-        assertEquals(NodeConfig.Archives.Store.DIR, explicit.archives().store());
-        assertEquals(Path.of("/mnt/archives"), explicit.archives().dir(), "RAIL8_ARCHIVE_DIR is read under its own name");
-        NodeConfig read = NodeConfig.from(with(minimal(), "RAIL8_DATA_DIR", "/srv/rail8"));
-        NodeConfig built = new NodeConfig(read.nodeId(), read.env(), read.admin(), read.dataDir(), read.stopDeadline(), read.maxPackageBytes(), read.pg(), read.blobs());
-        assertEquals(NodeConfig.Archives.Store.DIR, built.archives().store(), "the 8-argument constructor stays: a dir store");
-        assertEquals(Path.of("/srv/rail8/archives"), built.archives().dir(), "under the data dir it was given");
-        assertEquals(Optional.empty(), built.s3());
-    }
-
-    @Test
-    void s3NeedsBucketAndRegion() {
-        NodeConfig c = NodeConfig.from(s3());
-        assertEquals(NodeConfig.Archives.Store.S3, c.archives().store());
-        NodeConfig.S3 s3 = c.s3().orElseThrow(() -> new AssertionError("an s3 store has its S3 settings: " + c));
-        assertAll(
-                () -> assertEquals("rail8-archives", s3.bucket()),
-                () -> assertEquals("eu-central-1", s3.region()),
-                () -> assertEquals(Optional.empty(), s3.endpoint(), "no endpoint: the SDK's for the region"),
-                () -> assertFalse(s3.pathStyle(), "RAIL8_S3_PATH_STYLE defaults to false"),
-                () -> assertEquals("rail8", s3.prefix(), "RAIL8_S3_PREFIX defaults to rail8"),
-                () -> assertEquals(Optional.empty(), s3.accessKey(), "no keys: the SDK's default chain"),
-                () -> assertEquals(Optional.empty(), s3.secretKey()));
-        for (String key : List.of("RAIL8_S3_BUCKET", "RAIL8_S3_REGION")) {
-            IllegalArgumentException absent = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(with(s3(), key, null)), key + " absent");
-            assertTrue(String.valueOf(absent.getMessage()).contains(key), "the refusal names " + key + ": " + absent.getMessage());
-            IllegalArgumentException blank = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(with(s3(), key, " ")), key + " blank");
-            assertTrue(String.valueOf(blank.getMessage()).contains(key), "the refusal names " + key + ": " + blank.getMessage());
-        }
-    }
-
-    @Test
-    void s3ReadsEveryKeyUnderItsOwnName() {
-        Map<String, String> env = s3();
-        env.put("RAIL8_S3_ENDPOINT", "https://s3.example.net:9000");
-        env.put("RAIL8_S3_PATH_STYLE", "true");
-        env.put("RAIL8_S3_PREFIX", "fleet/eu");
-        env.put("RAIL8_S3_ACCESS_KEY", "AKIAEXAMPLE");
-        env.put("RAIL8_S3_SECRET_KEY", "secret-example");
-        NodeConfig.S3 s3 = NodeConfig.from(env).s3().orElseThrow();
-        assertAll(
-                () -> assertEquals("rail8-archives", s3.bucket()),
-                () -> assertEquals("eu-central-1", s3.region()),
-                () -> assertEquals(Optional.of(URI.create("https://s3.example.net:9000")), s3.endpoint()),
-                () -> assertTrue(s3.pathStyle()),
-                () -> assertEquals("fleet/eu", s3.prefix()),
-                () -> assertEquals(Optional.of("AKIAEXAMPLE"), s3.accessKey()),
-                () -> assertEquals(Optional.of("secret-example"), s3.secretKey()));
-    }
-
-    @Test
-    void anS3EndpointMustBeAnAbsoluteHttpUri() {
-        for (String ok : List.of("http://127.0.0.1:4566", "https://s3.example.net")) {
-            assertEquals(Optional.of(URI.create(ok)), NodeConfig.from(with(s3(), "RAIL8_S3_ENDPOINT", ok)).s3().orElseThrow().endpoint(), ok);
-        }
-        for (String bad : List.of("s3.example.net", "s3.example.net:9000", "/s3", "ftp://s3.example.net", "file:///srv/s3", "http://s3 example.net")) {
-            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(with(s3(), "RAIL8_S3_ENDPOINT", bad)), bad);
-            assertTrue(String.valueOf(e.getMessage()).contains("RAIL8_S3_ENDPOINT"), "the refusal of '" + bad + "' names the key: " + e.getMessage());
-        }
-    }
-
-    @Test
-    void s3KeysComeInPairs() {
-        IllegalArgumentException accessOnly = assertThrows(IllegalArgumentException.class,
-                () -> NodeConfig.from(with(s3(), "RAIL8_S3_ACCESS_KEY", "AKIAEXAMPLE")), "an access key without its secret");
-        assertTrue(String.valueOf(accessOnly.getMessage()).contains("RAIL8_S3_SECRET_KEY"), "the refusal names the missing key: " + accessOnly.getMessage());
-        IllegalArgumentException secretOnly = assertThrows(IllegalArgumentException.class,
-                () -> NodeConfig.from(with(s3(), "RAIL8_S3_SECRET_KEY", "secret-example")), "a secret without its access key");
-        assertTrue(String.valueOf(secretOnly.getMessage()).contains("RAIL8_S3_ACCESS_KEY"), "the refusal names the missing key: " + secretOnly.getMessage());
-        NodeConfig.S3 both = NodeConfig.from(with(with(s3(), "RAIL8_S3_ACCESS_KEY", "AKIAEXAMPLE"), "RAIL8_S3_SECRET_KEY", "secret-example")).s3().orElseThrow();
-        assertEquals(Optional.of("AKIAEXAMPLE"), both.accessKey());
-        assertEquals(Optional.of("secret-example"), both.secretKey());
-        NodeConfig.S3 neither = NodeConfig.from(s3()).s3().orElseThrow();
-        assertEquals(Optional.empty(), neither.accessKey(), "neither: the SDK's default chain");
-        assertEquals(Optional.empty(), neither.secretKey());
-    }
-
-    @Test
-    void anUnknownArchiveStoreIsRefused() {
-        for (String unknown : List.of("gcs", "file", "", "s3 ", "dir/")) {
-            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                    () -> NodeConfig.from(with(minimal(), "RAIL8_ARCHIVE_STORE", unknown)), "RAIL8_ARCHIVE_STORE '" + unknown + "'");
-            assertTrue(String.valueOf(e.getMessage()).contains("RAIL8_ARCHIVE_STORE"), "the refusal names the key: " + e.getMessage());
-        }
-    }
-
-    @Test
-    void theSecretKeyIsRedacted() {
-        String secret = "wJalrXUtnFEMI-K7MDENG-4711";
-        NodeConfig c = NodeConfig.from(with(with(s3(), "RAIL8_S3_ACCESS_KEY", "AKIAEXAMPLE"), "RAIL8_S3_SECRET_KEY", secret));
-        NodeConfig.S3 s3 = c.s3().orElseThrow();
-        assertEquals(Optional.of(secret), s3.secretKey(), "the secret is read: the checks below are not vacuous");
-        for (Object shown : new Object[] {c, s3, c.s3()}) {
-            String text = shown.toString();
-            assertFalse(text.contains(secret), "a log line of " + shown.getClass().getSimpleName() + " must not carry the S3 secret key: " + text);
-        }
-        assertTrue(s3.toString().contains("rail8-archives"), "the rest still shows: " + s3);
-        assertTrue(c.toString().contains("rail8-archives"), "the config's line shows its S3 settings, redacted: " + c);
-    }
-
     // --- P2-02L (D-083): poller leases
 
     /**
@@ -587,8 +472,7 @@ class NodeConfigTest {
         assertEquals(Optional.empty(), NodeConfig.from(with(minimal(), "RAIL8_CPU_SAMPLING", "off")).cpuSampling(), "off");
         NodeConfig built = new NodeConfig("node-1", "ci", new AdminServer.Config("127.0.0.1", 0, Optional.empty()), Path.of("/tmp/rail8"),
                 Duration.ofSeconds(10), 64 * MIB, new NodeConfig.Pg("localhost", 5432, "rail8", "rail8", "", 16),
-                new NodeConfig.Blobs(8 * MIB, MIB, 256 * MIB, MIB), new NodeConfig.Archives(NodeConfig.Archives.Store.DIR, Path.of("/tmp/rail8/archives")),
-                Optional.empty(), Secrets.fromEnv(Map.of()), NodeConfig.Leases.DEFAULTS,
+                new NodeConfig.Blobs(8 * MIB, MIB, 256 * MIB, MIB), Secrets.fromEnv(Map.of()), NodeConfig.Leases.DEFAULTS,
                 new Retention.Config(Duration.ofDays(7), Duration.ofHours(1), 1000));
         assertEquals(Optional.empty(), built.cpuSampling(), "the constructor of every key before FIX-108 stays, sampling off");
     }

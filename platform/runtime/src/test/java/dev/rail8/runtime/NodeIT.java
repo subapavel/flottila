@@ -205,14 +205,6 @@ class NodeIT {
         Map<String, String> env = env("prod");
         env.put("RAIL8_PG_DURABILITY", "local");   // FIX-136: a deployed node defaults to ha; the case's one Postgres has no standby
         env.put("RAIL8_BLOB_TREE_LIMIT", "65536");
-        // a deployed node refuses the dir archive store and a plain-http S3 endpoint; nothing contacts S3, so an https endpoint
-        // nothing listens on will do
-        env.put("RAIL8_ARCHIVE_STORE", "s3");
-        env.put("RAIL8_S3_BUCKET", "rail8-archives");
-        env.put("RAIL8_S3_REGION", "eu-central-1");
-        env.put("RAIL8_S3_ENDPOINT", "https://127.0.0.1:9");
-        env.put("RAIL8_S3_ACCESS_KEY", "AKIAEXAMPLE");
-        env.put("RAIL8_S3_SECRET_KEY", "secret-example");
         NodeConfig config = NodeConfig.from(env);
         assertTrue(config.deployed(), "a deployed node: it accepts the real component and a plain one");
         List<ComponentContext> asked = new CopyOnWriteArrayList<>();

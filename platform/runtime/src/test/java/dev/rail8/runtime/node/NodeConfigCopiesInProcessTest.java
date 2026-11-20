@@ -15,7 +15,7 @@ class NodeConfigCopiesInProcessTest {
     /** {@code base} with {@code copies}, every other component its own. */
     static NodeConfig with(NodeConfig base, int copies) {
         return new NodeConfig(base.nodeId(), base.env(), base.admin(), base.dataDir(), base.stopDeadline(), base.maxPackageBytes(), base.pg(),
-                base.blobs(), base.archives(), base.s3(), base.secrets(), base.leases(), base.retention(), base.cpuSampling(), base.targets(),
+                base.blobs(), base.secrets(), base.leases(), base.retention(), base.cpuSampling(), base.targets(),
                 base.journal(), base.journalKey(), base.journalSweep(), base.intakeGroup(), base.nodeLease(), base.nodeLeaseRenew(), base.retries(),
                 base.peer(), copies);
     }

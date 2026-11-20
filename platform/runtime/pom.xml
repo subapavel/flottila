@@ -237,19 +237,6 @@
     </dependency>
     <!-- *IT classes run under -Pit against Testcontainers Postgres -->
     <dependency>
-      <!-- S3 tier: the synchronous S3 client over the JDK's HttpURLConnection; blocking calls run on the message's virtual thread -->
-      <groupId>software.amazon.awssdk</groupId>
-      <artifactId>s3</artifactId>
-      <exclusions>
-        <exclusion><groupId>software.amazon.awssdk</groupId><artifactId>netty-nio-client</artifactId></exclusion>
-        <exclusion><groupId>software.amazon.awssdk</groupId><artifactId>apache-client</artifactId></exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>software.amazon.awssdk</groupId>
-      <artifactId>url-connection-client</artifactId>
-    </dependency>
-    <dependency>
       <!-- the package repositories a node deploys from, read into its git cache: pure Java, no git binary -->
       <groupId>org.eclipse.jgit</groupId>
       <artifactId>org.eclipse.jgit</artifactId>
@@ -260,13 +247,7 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <!-- S3 API for the tier's IT: LocalStack (Apache-2.0 image) through the official module (MIT) -->
-      <groupId>org.testcontainers</groupId>
-      <artifactId>testcontainers-localstack</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <!-- the node's one SLF4J provider: Netty, the AWS SDK, MINA SSHD and custom code log through java.util.logging -->
+      <!-- the node's one SLF4J provider: Netty, MINA SSHD and custom code log through java.util.logging -->
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-jdk14</artifactId>
       <scope>runtime</scope>

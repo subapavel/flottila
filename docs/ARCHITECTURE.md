@@ -240,8 +240,7 @@ node that holds the body (see part 6).
 
 - **Valkey** is used only for poller leases (part 6). It is optional; a node without it warns that
   two nodes would both poll.
-- **S3** is not used: packages are deployed from git. The node still reads the `RAIL8_ARCHIVE_*` and
-  `RAIL8_S3_*` settings of the archive store it no longer writes to; they go with the archive code.
+- **S3** is not used: packages are deployed from git.
 - **ClickHouse** is in the compose file but not used by any code. Kafka likewise: a flow asking for a
   Kafka queue is refused.
 
@@ -459,7 +458,6 @@ nothing more. A running node does not learn of a deploy made on another node.
 
 **Planned**
 - Deployment from git, the rest of its design (`docs/DEPLOY-FROM-GIT.md`):
-  - the archive store, its settings and the AWS SDK are deleted;
   - the other nodes of a pool follow a deploy on a timer, and a deployed environment then takes
     deploys of commits reachable from its ref, so the same commit moves from dev to test to prod;
     what differs per environment stays in the files' overlays and `secret://` names.
@@ -1056,7 +1054,7 @@ run's records are written in groups, after the bodies they refer to are durable.
 ### Logs, metrics, health
 
 - The code logs through `java.lang.System.Logger`; there is no logging configuration of its own.
-  SLF4J, which Netty, the AWS SDK and MINA SSHD use, logs through `java.util.logging` too
+  SLF4J, which Netty and MINA SSHD use, logs through `java.util.logging` too
   (`slf4j-jdk14`); the node has Vert.x log to `java.util.logging` straight, so that its lines name
   their own logger. The lines a step's code logs are also kept in its record (§5).
 - There is no metrics endpoint. Each record has wall and CPU time per step, and an optional CPU
@@ -1116,7 +1114,7 @@ endpoints, and by default a synchronous Postgres standby).
 
 ### Running it
 
-`deploy/compose` starts a node with Postgres, Valkey, S3 (SeaweedFS), an SFTP server and a partner
+`deploy/compose` starts a node with Postgres, Valkey, an SFTP server and a partner
 that echoes, and deploys `examples/demo` from the checkout's `HEAD`, the checkout mounted as the git
 repository `rail8`. The root `docker-compose.yml` is a smaller quickstart
 (`docs/QUICKSTART.md`).

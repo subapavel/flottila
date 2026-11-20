@@ -33,20 +33,18 @@ import java.util.regex.Pattern;
 /**
  * A node's whole configuration, read from its environment. Every key has a default except {@code RAIL8_ENV};
  * every refusal is an {@link IllegalArgumentException} whose message names the key. No {@code toString} here carries a secret:
- * {@link Pg}, {@link AdminServer.Config} and {@link S3} redact the password, the token and the secret key, {@link Leases} prints of
+ * {@link Pg} and {@link AdminServer.Config} redact the password and the token, {@link Leases} prints of
  * the Valkey URI its scheme, host, port and database only, {@link Secrets} names its variables only, {@link MasterKeySource} names
  * its source only, and this record's prints theirs.
  *
  * @param nodeId {@code RAIL8_NODE_ID}, else {@code $HOSTNAME}: a DNS label (lower-case letters, digits and inner dashes, at most 63)
  * @param env {@code RAIL8_ENV}, required
  * @param admin {@code RAIL8_ADMIN_HOST} (127.0.0.1), {@code RAIL8_ADMIN_PORT} (8081, 0 binds any free port), {@code RAIL8_ADMIN_TOKEN}
- * @param dataDir {@code RAIL8_DATA_DIR} (/var/lib/rail8): the spool lives under it, and the dir archive store by default
+ * @param dataDir {@code RAIL8_DATA_DIR} (/var/lib/rail8): the spool lives under it
  * @param stopDeadline {@code RAIL8_STOP_DEADLINE}, ISO-8601, not negative (PT10S)
  * @param maxPackageBytes {@code RAIL8_MAX_PACKAGE_BYTES}, 1 byte to 1 GiB (64 MiB)
  * @param pg the {@code RAIL8_PG_*} keys
  * @param blobs the {@code RAIL8_BLOB_*} keys
- * @param archives {@code RAIL8_ARCHIVE_STORE} and {@code RAIL8_ARCHIVE_DIR}: where package archives are stored
- * @param s3 the {@code RAIL8_S3_*} keys: present exactly when the archive store is {@link Archives.Store#S3}
  * @param secrets what the endpoints' {@code secret://} references resolve to: the {@code RAIL8_SECRET_*} variables
  * @param leases the {@code RAIL8_VALKEY_URI} and {@code RAIL8_POLLER_LEASE_*} keys: where and how long a polling consumer's
  *               lease is held
@@ -98,23 +96,20 @@ import java.util.regex.Pattern;
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
-                         long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
+                         long maxPackageBytes, Pg pg, Blobs blobs, Secrets secrets, Leases leases,
                          Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal,
                          MasterKeySource journalKey, SweepConfig journalSweep, IntakeGroup intakeGroup, Duration nodeLease,
                          Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies, Http http,
                          Optional<GitSettings> git) {
 
     /**
-     * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
-     * held in memory whole, so the record max is at most the memory tier. The intake pool's share of the Postgres
+     * A journal record is held in memory whole, so the record max is at most the memory tier. The intake pool's share of the Postgres
      * connections is at least 1 and below their total, so each pool keeps a connection. The intake's groups in flight leave the
      * intake pool a connection: at most max(1, intake pool size − 1) of them. The node lease is renewed at least four times a
      * lease: a renew or two may fail without closing the fence. Each pool's wait for a connection is PT0.001S to PT1M and its
      * wait queue 1 to 65536 callers: an in-process {@link Pg} is held to the ranges the env reader names.
      */
     public NodeConfig {
-        Objects.requireNonNull(archives, "archives");
-        Objects.requireNonNull(s3, "s3");
         Objects.requireNonNull(secrets, "secrets");
         Objects.requireNonNull(leases, "leases");
         Objects.requireNonNull(retention, "retention");
@@ -175,10 +170,6 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException("RAIL8_JOURNAL_RECORD_MAX " + journal.recordMax() + " is above RAIL8_BLOB_MEMORY_TIER "
                     + blobs.memoryTier() + ": a journal record is held in memory whole");
         }
-        if ((archives.store() == Archives.Store.S3) != s3.isPresent()) {
-            throw new IllegalArgumentException("RAIL8_ARCHIVE_STORE " + archives.store() + " with the S3 settings " + s3
-                    + ": an s3 archive store has them, a dir store none");
-        }
         if (pg.intakePoolSize() < 1 || pg.intakePoolSize() >= pg.poolSize()) {
             throw new IllegalArgumentException("RAIL8_PG_POOL_INTAKE " + pg.intakePoolSize() + " must be at least 1 and below RAIL8_PG_POOL_SIZE "
                     + pg.poolSize() + ": the total of both pools, and each pool keeps at least one connection (D-130)");
@@ -200,20 +191,20 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
 
     /** A node with no package repositories, as {@link #from} reads an env without {@code RAIL8_GIT_BASE}. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Blobs blobs, Secrets secrets, Leases leases, Retention.Config retention,
                       Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
                       IntakeGroup intakeGroup, Duration nodeLease, Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies,
                       Http http) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, secrets, leases, retention, cpuSampling, targets,
                 journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies, http, Optional.empty());
     }
 
     /** A node whose HTTP port has the default keys (127.0.0.1:8080), as {@link #from} reads an env without them. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Blobs blobs, Secrets secrets, Leases leases, Retention.Config retention,
                       Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
                       IntakeGroup intakeGroup, Duration nodeLease, Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, secrets, leases, retention, cpuSampling, targets,
                 journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies, Http.DEFAULTS);
     }
 
@@ -222,45 +213,45 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * one copy in dev and ci, two when deployed), as {@link #from} reads an env without them.
      */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Blobs blobs, Secrets secrets, Leases leases, Retention.Config retention,
                       Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
                       IntakeGroup intakeGroup, Duration nodeLease, Duration nodeLeaseRenew, RetryPolicy retries) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, secrets, leases, retention, cpuSampling, targets,
                 journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries,
                 new PeerConfig(PEER_BIND, PeerConfig.PORT, nodeId, PeerConfig.TIMEOUT, PeerConfig.READS), deployed(env) ? COPIES_MAX : 1);
     }
 
     /** A node whose node lease has the default keys (PT30S, renewed every PT5S), as {@link #from} reads an env without them. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Blobs blobs, Secrets secrets, Leases leases, Retention.Config retention,
                       Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
                       IntakeGroup intakeGroup) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, secrets, leases, retention, cpuSampling, targets,
                 journal, journalKey, journalSweep, intakeGroup, NODE_LEASE_DEFAULT, NODE_LEASE_RENEW_DEFAULT);
     }
 
     /** A node whose retries have the default keys (3 × PT5M, {@link FlowBuilder#DEFAULT_RETRIES}), as {@link #from} reads an env without them. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Blobs blobs, Secrets secrets, Leases leases, Retention.Config retention,
                       Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
                       IntakeGroup intakeGroup, Duration nodeLease, Duration nodeLeaseRenew) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, secrets, leases, retention, cpuSampling, targets,
                 journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, FlowBuilder.DEFAULT_RETRIES);
     }
 
     /** A node whose intake groups have the default keys for its intake pool ({@link IntakeGroup#defaults}), as {@link #from} reads an env without them. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Blobs blobs, Secrets secrets, Leases leases, Retention.Config retention,
                       Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, secrets, leases, retention, cpuSampling, targets,
                 journal, journalKey, journalSweep, IntakeGroup.defaults(pg.intakePoolSize()));
     }
 
     /** A node whose sweeper has the default keys (PT10S, PT1M, PT1H), as {@link #from} reads an env without them. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Blobs blobs, Secrets secrets, Leases leases, Retention.Config retention,
                       Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, secrets, leases, retention, cpuSampling, targets,
                 journal, journalKey, SweepConfig.DEFAULTS);
     }
 
@@ -269,54 +260,47 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * until one is given), as {@link #from} reads an env without the {@code RAIL8_JOURNAL_*} keys.
      */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Blobs blobs, Secrets secrets, Leases leases, Retention.Config retention,
                       Optional<Duration> cpuSampling, TargetLimits targets) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, secrets, leases, retention, cpuSampling, targets,
                 journal(Map.of(), dataDir, nodeId, blobs.memoryTier()), MasterKeySource.fromEnv(Map.of()));
     }
 
     /** A node whose targets have the default limits and no override, as {@link #from} reads them by default. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Blobs blobs, Secrets secrets, Leases leases, Retention.Config retention,
                       Optional<Duration> cpuSampling) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling,
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, secrets, leases, retention, cpuSampling,
                 TargetLimits.DEFAULTS);
     }
 
     /** A node without CPU sampling, as {@link #from} reads it by default. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, Optional.empty());
+                      Blobs blobs, Secrets secrets, Leases leases, Retention.Config retention) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, secrets, leases, retention, Optional.empty());
     }
 
     /** A node with the retention job's defaults (P7D, PT1H, 1000 rows), as {@link #from} reads them by default. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, RETENTION_DEFAULTS);
+                      Blobs blobs, Secrets secrets, Leases leases) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, secrets, leases, RETENTION_DEFAULTS);
     }
 
     /** A node whose poller leases are held in its memory with the default ttl and renew period, as {@link #from} reads it by default. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, Leases.DEFAULTS);
+                      Blobs blobs, Secrets secrets) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, secrets, Leases.DEFAULTS);
     }
 
     /** A node without secrets: every {@code secret://} reference of an endpoint is not set. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
-                      Blobs blobs, Archives archives, Optional<S3> s3) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, Secrets.fromEnv(Map.of()));
-    }
-
-    /** A node whose archives are stored in {@code <dataDir>/archives} (the dir store), as {@link #from} reads it by default; no secrets. */
-    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
                       Blobs blobs) {
-        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, new Archives(Archives.Store.DIR, dataDir.resolve("archives")),
-                Optional.empty());
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, Secrets.fromEnv(Map.of()));
     }
 
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
-        return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention,
+        return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, secrets, leases, retention,
                 cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies, http,
                 git);
     }
@@ -614,48 +598,6 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     public record Blobs(long treeLimit, long memoryTier, long memoryBudget, long durableMax) {}
 
     /**
-     * Where package archives are stored, each once under its SHA-256; a deployed node refuses {@link Store#DIR}.
-     *
-     * @param store {@code RAIL8_ARCHIVE_STORE}, {@code dir} or {@code s3} (dir)
-     * @param dir {@code RAIL8_ARCHIVE_DIR} ({@code <dataDir>/archives}): the dir store's directory
-     * @since 0.1
-     */
-    public record Archives(Store store, Path dir) {
-        /** The archive store a node uses. */
-        public enum Store {
-            /** Files in {@link Archives#dir()}: dev and ci only. */
-            DIR,
-            /** Objects in an S3 bucket ({@link S3}). */
-            S3
-        }
-    }
-
-    /**
-     * The S3 archive store's bucket and how to reach it. Without keys the client takes the AWS SDK's default credentials
-     * chain, which reads the process environment and the instance's role: the one place the node's credentials do not come from
-     * this record.
-     *
-     * @param bucket {@code RAIL8_S3_BUCKET}, required
-     * @param region {@code RAIL8_S3_REGION}, required
-     * @param endpoint {@code RAIL8_S3_ENDPOINT}, an absolute http or https URI (none: the SDK's endpoint for the region); a
-     *                 deployed node refuses http
-     * @param pathStyle {@code RAIL8_S3_PATH_STYLE}, true or false (false)
-     * @param prefix {@code RAIL8_S3_PREFIX} (rail8): archives are the objects {@code <prefix>/archives/<sha256>.zip}
-     * @param accessKey {@code RAIL8_S3_ACCESS_KEY}, given together with the secret key or not at all
-     * @param secretKey {@code RAIL8_S3_SECRET_KEY}, given together with the access key or not at all
-     * @since 0.1
-     */
-    public record S3(String bucket, String region, Optional<URI> endpoint, boolean pathStyle, String prefix, Optional<String> accessKey,
-                     Optional<String> secretKey) {
-        /** The secret key redacted: a log line never carries it. */
-        @Override
-        public String toString() {
-            return "S3[bucket=" + bucket + ", region=" + region + ", endpoint=" + endpoint + ", pathStyle=" + pathStyle + ", prefix=" + prefix
-                    + ", accessKey=" + accessKey + ", secretKey=" + secretKey.map(redacted -> "***") + "]";
-        }
-    }
-
-    /**
      * Where a polling consumer's lease is held and for how long: the node runs the consumer only while it holds the lease.
      *
      * @param valkey {@code RAIL8_VALKEY_URI}, a {@code redis://} or {@code rediss://} URI with a host (none: the leases are held
@@ -718,7 +660,6 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     private static final long GIB = 1024 * MIB;
     /** RAIL8_MAX_PACKAGE_BYTES by default: the most bytes one package's files may hold. */
     public static final long MAX_PACKAGE_BYTES_DEFAULT = 64 * MIB;
-    private static final Set<String> HTTP = Set.of("http", "https");
     private static final Set<String> REDIS = Set.of("redis", "rediss");
     /** The {@code RAIL8_PG_HOST} values that default to {@code RAIL8_PG_SSL_MODE=disable}: written as-is, never resolved. */
     private static final Set<String> PG_LOOPBACK = Set.of("localhost", "127.0.0.1", "::1");
@@ -783,10 +724,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Blobs blobs = new Blobs(number(env, "RAIL8_BLOB_TREE_LIMIT", 8 * MIB, 1, Integer.MAX_VALUE), memoryTier, memoryBudget,
                 number(env, "RAIL8_BLOB_DURABLE_MAX", MIB, 1, 64 * MIB));
         Path dataDir = Path.of(env.getOrDefault("RAIL8_DATA_DIR", "/var/lib/rail8"));
-        Archives archives = new Archives(archiveStore(env), Path.of(env.getOrDefault("RAIL8_ARCHIVE_DIR", dataDir.resolve("archives").toString())));
-        Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "RAIL8_MAX_PACKAGE_BYTES", MAX_PACKAGE_BYTES_DEFAULT, 1, GIB), pg, blobs,
-                archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
+                Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
                 MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.intakePoolSize()), duration(env, "RAIL8_NODE_LEASE", NODE_LEASE_DEFAULT),
                 duration(env, "RAIL8_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT), retries(env), peer(env, nodeId),
                 (int) number(env, "RAIL8_JOURNAL_COPIES", deployed(name) ? COPIES_MAX : 1, 1, COPIES_MAX),
@@ -1108,63 +1047,6 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException(key + " must be whole milliseconds (a lease counts in them), was " + raw);
         }
         return value;
-    }
-
-    private static Archives.Store archiveStore(Map<String, String> env) {
-        String raw = env.getOrDefault("RAIL8_ARCHIVE_STORE", "dir");
-        return switch (raw) {
-            case "dir" -> Archives.Store.DIR;
-            case "s3" -> Archives.Store.S3;
-            default -> throw new IllegalArgumentException("RAIL8_ARCHIVE_STORE must be dir or s3, was '" + raw + "'");
-        };
-    }
-
-    /** The {@code RAIL8_S3_*} keys of an s3 archive store. */
-    private static S3 s3(Map<String, String> env) {
-        String bucket = required(env, "RAIL8_S3_BUCKET");
-        String region = required(env, "RAIL8_S3_REGION");
-        Optional<URI> endpoint = Optional.ofNullable(env.get("RAIL8_S3_ENDPOINT")).map(NodeConfig::endpoint);
-        boolean pathStyle = pathStyle(env.getOrDefault("RAIL8_S3_PATH_STYLE", "false"));
-        Optional<String> accessKey = Optional.ofNullable(env.get("RAIL8_S3_ACCESS_KEY"));
-        Optional<String> secretKey = Optional.ofNullable(env.get("RAIL8_S3_SECRET_KEY"));
-        if (accessKey.isPresent() != secretKey.isPresent()) {
-            throw new IllegalArgumentException((accessKey.isPresent() ? "RAIL8_S3_SECRET_KEY" : "RAIL8_S3_ACCESS_KEY") + " is missing: the S3 keys "
-                    + "are given both or neither (neither: the AWS SDK's default credentials chain)");
-        }
-        return new S3(bucket, region, endpoint, pathStyle, env.getOrDefault("RAIL8_S3_PREFIX", "rail8"), accessKey, secretKey);
-    }
-
-    /** {@code key}'s value, which must be there and not blank. */
-    private static String required(Map<String, String> env, String key) {
-        String raw = env.get(key);
-        if (raw == null || raw.isBlank()) throw new IllegalArgumentException(key + " must be set for RAIL8_ARCHIVE_STORE s3, was '" + raw + "'");
-        return raw;
-    }
-
-    /** {@code RAIL8_S3_ENDPOINT}: an absolute http or https URI with a host. */
-    private static URI endpoint(String raw) {
-        URI uri;
-        try {
-            uri = new URI(raw);
-        } catch (URISyntaxException notAUri) {
-            throw notAnEndpoint(raw);
-        }
-        // a URI without a scheme (a bare host, a path) has none: never in the set, and Set.contains takes no null
-        if (!HTTP.contains(Objects.toString(uri.getScheme(), "")) || uri.getHost() == null) throw notAnEndpoint(raw);
-        return uri;
-    }
-
-    private static IllegalArgumentException notAnEndpoint(String raw) {
-        return new IllegalArgumentException("RAIL8_S3_ENDPOINT must be an absolute http or https URI with a host, such as https://s3.example.net, was '"
-                + raw + "'");
-    }
-
-    private static boolean pathStyle(String raw) {
-        return switch (raw) {
-            case "true" -> true;
-            case "false" -> false;
-            default -> throw new IllegalArgumentException("RAIL8_S3_PATH_STYLE must be true or false, was '" + raw + "'");
-        };
     }
 
     /** {@code key}'s whole number within [{@code min}, {@code max}], {@code fallback} when the key is absent. */

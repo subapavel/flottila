@@ -25,7 +25,6 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -98,33 +97,15 @@ class NodeTest {
         assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "nothing left listening");
     }
 
-    // --- P1-09c3a (D-070): a deployed node's archive store
+    // --- a deployed node's start
 
     /** A node's environment over a Postgres port nothing listens on: a node that gets as far as Postgres fails with a refused connection. */
     static Map<String, String> closedPostgres(String env, Path data) throws IOException {
         Map<String, String> m = new java.util.HashMap<>(Map.of(
                 "RAIL8_ENV", env, "RAIL8_NODE_ID", "node-1", "RAIL8_ADMIN_PORT", "0", "RAIL8_DATA_DIR", data.toString(),
                 "RAIL8_PG_HOST", "127.0.0.1", "RAIL8_PG_PORT", String.valueOf(closedPort())));
-        TestJournalKey.with(m);   // the master key is loaded before Postgres (CORE-4c1 r1, D-106): a required configuration
+        TestJournalKey.with(m);   // the master key is loaded before Postgres: a required configuration
         return m;
-    }
-
-    /** {@code env} with an s3 archive store at {@code endpoint}, keys given (the SDK's default chain is never asked). */
-    static Map<String, String> s3(Map<String, String> env, String endpoint) {
-        env.put("RAIL8_ARCHIVE_STORE", "s3");
-        env.put("RAIL8_S3_BUCKET", "rail8-archives");
-        env.put("RAIL8_S3_REGION", "eu-central-1");
-        env.put("RAIL8_S3_ENDPOINT", endpoint);
-        env.put("RAIL8_S3_ACCESS_KEY", "AKIAEXAMPLE");
-        env.put("RAIL8_S3_SECRET_KEY", "secret-example");
-        return env;
-    }
-
-    /** What {@code Node.start} throws with {@code env} and plain components; it must throw. */
-    Throwable startFails(Map<String, String> env, List<Component> components) {
-        NodeConfig config = NodeConfig.from(env);
-        return assertThrows(Throwable.class, () -> OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> components, List.of(), List.of())),
-                "the node does not start: " + env);
     }
 
     static boolean refusedConnection(Throwable t) {
@@ -132,50 +113,19 @@ class NodeTest {
         return false;
     }
 
-    /** The node passed the archive checks and got as far as Postgres: its start failed on the refused connection, nothing else. */
-    static void reachedPostgres(Throwable failure, String what) {
-        assertTrue(refusedConnection(failure), what + ": the start got past the archive checks to Postgres (a refused connection), was " + failure);
-    }
-
     /**
-     * A deployed node refuses the dir archive store — the default — with an IllegalStateException naming RAIL8_ARCHIVE_STORE,
-     * after the mock check (a mock is refused first) and before it touches Postgres, with nothing left listening; dev takes it.
+     * A deployed node whose environment names no store for packages gets as far as Postgres: its start fails on the refused
+     * connection, nothing else, with nothing left listening. Packages come from git; no archive setting is asked for.
      */
-    @Test
-    void aDeployedNodeRefusesADirArchiveStoreBeforePostgres() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"test", "prod"})
+    void aDeployedNodeNeedsNoArchiveSettings(String env) throws Exception {
         Set<String> before = Set.copyOf(vertx.deploymentIDs());
-        Map<String, String> byDefault = closedPostgres("test", data);
-        Map<String, String> explicit = closedPostgres("prod", data);
-        explicit.put("RAIL8_ARCHIVE_STORE", "dir");
-        for (Map<String, String> env : List.of(byDefault, explicit)) {
-            Throwable refused = startFails(env, List.of(new PlainComponent("jms")));
-            assertInstanceOf(IllegalStateException.class, refused, "a deployed node refuses the dir archive store: " + env);
-            assertTrue(String.valueOf(refused.getMessage()).contains("RAIL8_ARCHIVE_STORE"), "the refusal names the key: " + refused.getMessage());
-            assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "nothing left listening");
-        }
-        Throwable mockFirst = startFails(byDefault, List.of(new PlainComponent("jms"), new PlainComponent("mock")));
-        assertInstanceOf(IllegalStateException.class, mockFirst);
-        assertTrue(String.valueOf(mockFirst.getMessage()).contains("mock") && !String.valueOf(mockFirst.getMessage()).contains("RAIL8_ARCHIVE_STORE"),
-                "the mock check comes first: its refusal, not the archive store's: " + mockFirst.getMessage());
-        reachedPostgres(startFails(closedPostgres("dev", data), List.of(new PlainComponent("jms"))), "dev with the dir store");
-        assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "nothing left listening");
-    }
-
-    /**
-     * A deployed node refuses an S3 endpoint over plain http with an IllegalStateException naming RAIL8_S3_ENDPOINT, before it
-     * touches Postgres; https passes the check, and so does http in dev (LocalStack).
-     */
-    @Test
-    void aDeployedNodeRefusesAPlainHttpS3Endpoint() throws Exception {
-        Set<String> before = Set.copyOf(vertx.deploymentIDs());
-        String http = "http://127.0.0.1:" + closedPort();
-        Throwable refused = startFails(s3(closedPostgres("test", data), http), List.of(new PlainComponent("jms")));
-        assertInstanceOf(IllegalStateException.class, refused, "a deployed node refuses a plain-http S3 endpoint");
-        assertTrue(String.valueOf(refused.getMessage()).contains("RAIL8_S3_ENDPOINT"), "the refusal names the key: " + refused.getMessage());
-        assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "nothing left listening");
-        reachedPostgres(startFails(s3(closedPostgres("test", data), "https://127.0.0.1:" + closedPort()), List.of(new PlainComponent("jms"))),
-                "a deployed node with an https endpoint");
-        reachedPostgres(startFails(s3(closedPostgres("dev", data), http), List.of(new PlainComponent("jms"))), "dev with a plain-http endpoint");
+        Map<String, String> config = closedPostgres(env, data);
+        Throwable failure = assertThrows(Throwable.class,
+                () -> OnVirtualThread.call(() -> Node.start(NodeConfig.from(config), vertx, ctx -> List.of(new PlainComponent("jms")), List.of(), List.of())),
+                "the node does not start: " + config);
+        assertTrue(refusedConnection(failure), "the start got as far as Postgres (a refused connection), was " + failure);
         assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "nothing left listening");
     }
 }
