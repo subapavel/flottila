@@ -218,6 +218,29 @@ class GitCacheHttpsTest {
     }
 
     @Test
+    void anAbortStopsAFetchThatWaitsOnASilentServerWithNoTimerFiring() throws Exception {
+        CountDownLatch arrived = server.hold();
+        PackageRepositories repositories = open(Optional.empty());
+        CompletableFuture<GitFailure> result = new CompletableFuture<>();
+        Thread.ofVirtual().start(() -> {
+            try {
+                repositories.forDeploy("orders", orders);
+                result.complete(null);
+            } catch (GitFailure failure) {
+                result.complete(failure);
+            } catch (Throwable unexpected) {
+                result.completeExceptionally(unexpected);
+            }
+        });
+        arrived.await();
+        repositories.abort();   // the clock stands: RAIL8_GIT_TIMEOUT never passes
+        GitFailure failure = result.get();
+        assertEquals(Reason.TIMED_OUT, failure == null ? null : failure.reason());
+        GitFailure later = failure(Reason.TIMED_OUT, () -> repositories.recorded("orders", orders));
+        assertEquals("orders at " + orders + ": timed out (RAIL8_GIT_TIMEOUT)", later.getMessage(), "a fetch after the abort fails at once");
+    }
+
+    @Test
     void holdsTheCacheLimitWhileTheFetchReceives() throws Exception {
         byte[] big = new byte[3 << 20];
         new Random(11).nextBytes(big);

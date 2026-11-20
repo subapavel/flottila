@@ -388,7 +388,12 @@ public final class GitCache {
             if (deadline != null) deadline.cancel();
         }
 
-        /** The deadline passed: no further fetch starts, and the one running stops. */
+        @Override
+        public void abort() {
+            expire();
+        }
+
+        /** The deadline passed, or the session was aborted: no further fetch starts, and the one running stops. */
         private void expire() {
             expired = true;
             Fetch fetch = current;

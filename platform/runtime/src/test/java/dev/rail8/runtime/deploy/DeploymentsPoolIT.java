@@ -12,6 +12,7 @@ import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.testkit.FakeRuntime;
 import dev.rail8.testkit.SharedPostgres;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
@@ -35,6 +36,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static dev.rail8.runtime.deploy.DeploymentsRedeployTest.reachedWhile;
 import static dev.rail8.runtime.deploy.DeploymentsTest.joinRefused;
@@ -43,6 +45,7 @@ import static dev.rail8.runtime.deploy.DeploymentsTest.within;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -111,8 +114,17 @@ class DeploymentsPoolIT {
             this(id, repos.base().toString());
         }
 
+        /** A node in dev reading the pool's repositories, its records through {@code records}. */
+        Peer(String id, DeploymentStore records) {
+            this(id, repos.base().toString(), records);
+        }
+
         /** A node in dev whose {@code RAIL8_GIT_BASE} is {@code base}. */
         Peer(String id, String base) {
+            this(id, base, new PgDeploymentStore(pool, () -> PgConnection.connect(vertx, connect).map(c -> c)));
+        }
+
+        Peer(String id, String base, DeploymentStore records) {
             this.id = id;
             Map<String, String> e = new HashMap<>();
             e.put("RAIL8_ENV", "dev");
@@ -123,7 +135,6 @@ class DeploymentsPoolIT {
             e.put("RAIL8_MAX_PACKAGE_BYTES", Long.toString(2L * 1024 * 1024));
             e.put("RAIL8_GIT_BASE", base);
             Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
-            PgDeploymentStore records = new PgDeploymentStore(pool, () -> PgConnection.connect(vertx, connect).map(c -> c));
             deployments = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
                     queue, () -> 0L, records);
             peers.add(this);
@@ -189,6 +200,27 @@ class DeploymentsPoolIT {
             p.endpoint(id + "-in", "in", new JsonObject().put("path", "/" + id)).flow(id, "1.0.0", "sync", id + "-in", 1024, PackageDraft.toPartner());
         }
         return p;
+    }
+
+    /** The pool's records through the Postgres store, whose reads fail while {@code failing} is set. */
+    static final class Unreadable implements DeploymentStore {
+        final DeploymentStore records = new PgDeploymentStore(pool, () -> PgConnection.connect(vertx, connect).map(c -> c));
+        volatile boolean failing;
+
+        @Override
+        public Future<Snapshot> read() {
+            return failing ? Future.failedFuture(new IllegalStateException("the pool's database does not answer")) : records.read();
+        }
+
+        @Override
+        public Future<Optional<PoolLock>> lock() {
+            return records.lock();
+        }
+
+        @Override
+        public Future<Void> audit(String actor, String repository, JsonObject detail) {
+            return records.audit(actor, repository, detail);
+        }
     }
 
     /** The pool's generation, read with plain SQL. */
@@ -295,15 +327,17 @@ class DeploymentsPoolIT {
         Peer b = new Peer("node-b").restored();
         b.deployments.startFollowing();
         a.deploy("shop", repos.commit(pkg("shop", "1.0.0", "a")));
-        rt.clock().advance(Deployments.FOLLOW_EVERY.minusMillis(1));
-        assertEquals(List.of(), b.listed(), "no tick before its time");
+        rt.clock().advance(Duration.ofSeconds(5).minusMillis(1));
+        assertEquals(Duration.ofMillis(1), rt.timer().nextDelay(), "no tick before its time: the first one is due 1 ms later");
+        assertEquals(List.of(), b.listed());
 
         rt.clock().advance(Duration.ofMillis(1));
         until(() -> b.listed().equals(List.of("shop@1.0.0 RUNNING")), "node b's tick installs shop");
 
         a.undeploy("shop");
         until(() -> !b.deployments.packages().isEmpty() && b.live("shop/a").size() == 1, "fixture: shop still runs on node b");
-        rt.clock().advance(Deployments.FOLLOW_EVERY);
+        until(() -> rt.timer().pending() > 0 && rt.timer().nextDelay().equals(Duration.ofSeconds(5)), "the next tick is due 5 s after the first ended");
+        rt.clock().advance(Duration.ofSeconds(5));
         until(() -> b.listed().isEmpty(), "the next tick, scheduled once the first ended, undeploys it");
     }
 
@@ -325,5 +359,91 @@ class DeploymentsPoolIT {
         OnVirtualThread.join(tick);
         OnVirtualThread.join(deploy);
         assertEquals(List.of("billing@1.0.0 RUNNING", "shop@1.0.0 RUNNING"), b.listed());
+    }
+
+    /**
+     * A node that cannot install a newer record of a package it runs runs the old version on and is DEGRADED, BEHIND; a deploy on it
+     * is refused, BUSY, while it is behind, and an undeploy is not; the tick after the repository answers installs the record.
+     */
+    @Test
+    void aNodeThatCannotInstallANewerRecordRunsTheOldVersionOnAndRefusesDeploysUntilItCatchesUp() throws Exception {
+        Peer a = new Peer("node-a").restored();
+        Peer b = new Peer("node-b").restored();
+        a.deploy("shop", repos.commit(pkg("shop", "1.0.0", "a")));
+        a.deploy("billing", repos.commit(pkg("billing", "1.0.0", "b")));
+        b.follow();
+        Doors.Door oldShop = b.live("shop/a").getFirst();
+        a.deploy("shop", repos.commit(pkg("shop", "2.0.0", "a", "c")));
+        Path aside = tmp.resolve("aside");
+        Files.move(repos.dir("shop"), aside);   // shop's repository does not answer node b's fetch of 2.0.0
+
+        b.follow();
+        assertEquals(List.of("billing@1.0.0 RUNNING", "shop@1.0.0 RUNNING"), b.listed(), "node b runs shop 1.0.0 on");
+        assertEquals(List.of(oldShop), b.live("shop/a"), "its old door serves");
+        assertEquals(List.of(), b.live("shop/c"));
+        Health behind = b.deployments.health();
+        assertEquals(Health.Status.DEGRADED, behind.status(), behind.detail());
+        assertTrue(behind.detail().contains("BEHIND: package shop runs version 1.0.0: "), behind.detail());
+
+        DeployRefusedException busy = joinRefused(b.deploying("orders", repos.commit(pkg("orders", "1.0.0", "o"))), "a deploy on node b while shop is behind");
+        assertEquals(Kind.BUSY, busy.kind(), busy.getMessage());
+        assertEquals(List.of(), b.live("orders/o"), "nothing of it runs");
+        long before = generation();
+        assertEquals(new UndeployResult("billing", "1.0.0", List.of("billing/b")), b.undeploy("billing"), "an undeploy is not refused for it");
+        assertEquals(before + 1, generation());
+        assertEquals(List.of("shop@1.0.0 RUNNING"), b.listed());
+
+        Files.move(aside, repos.dir("shop"));
+        b.follow();
+        assertEquals(List.of("shop@2.0.0 RUNNING"), b.listed(), "the tick after the repository answers installs the record");
+        assertEquals(1, b.live("shop/c").size(), b.doors.events().toString());
+        assertEquals(Health.up(), b.deployments.health());
+    }
+
+    @Test
+    void healthIsDegradedWhileThePoolsRecordsCannotBeReadAndUpOnceATickReadsThem() throws Exception {
+        Unreadable records = new Unreadable();
+        Peer b = new Peer("node-b", records).restored();
+        records.failing = true;
+        b.follow();
+        Health unread = b.deployments.health();
+        assertEquals(Health.Status.DEGRADED, unread.status(), unread.detail());
+        assertTrue(unread.detail().contains("BEHIND: the pool's records could not be read: "), unread.detail());
+
+        records.failing = false;
+        b.follow();
+        assertEquals(Health.up(), b.deployments.health());
+    }
+
+    @Test
+    void healthIsDegradedWhileATickFailsAndUpOnceOneBringsTheNodeToTheRecords() throws Exception {
+        Peer a = new Peer("node-a").restored();
+        Peer b = new Peer("node-b").restored();
+        a.deploy("shop", repos.commit(pkg("shop", "1.0.0", "a")));
+        Path incoming = b.deployments.incomingDir();
+        Files.delete(incoming);
+        Files.writeString(incoming, "not a folder");   // node b cannot write its data directory
+
+        assertThrows(java.io.IOException.class, b::follow, "the tick fails");
+        Health failed = b.deployments.health();
+        assertEquals(Health.Status.DEGRADED, failed.status(), failed.detail());
+        assertTrue(failed.detail().contains("BEHIND: the last tick could not bring this node to the pool's records: "), failed.detail());
+
+        Files.delete(incoming);
+        b.follow();
+        assertEquals(List.of("shop@1.0.0 RUNNING"), b.listed());
+        assertEquals(Health.up(), b.deployments.health());
+    }
+
+    @Test
+    void aDeployRecordsTheQualifiedIdsOfItsAtLeastOnceFlows() throws Exception {
+        Peer a = new Peer("node-a").restored();
+        PackageDraft shop = pkg("shop", "1.0.0", "a").endpoint("keep-in", "in", new JsonObject().put("path", "/keep"))
+                .flow("keep", "1.0.0", "at-least-once", "keep-in", 1024, PackageDraft.toPartner());
+        a.deploy("shop", repos.commit(shop));
+
+        List<String> recorded = List.of(pool.query("select at_least_once from deployments where package = 'shop'").execute().await().iterator().next()
+                .getArrayOfStrings(0));
+        assertEquals(List.of("shop/keep"), recorded, "the at-least-once flow, not the sync one");
     }
 }
