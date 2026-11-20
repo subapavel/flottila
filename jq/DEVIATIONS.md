@@ -474,7 +474,8 @@ of `CollectOp.grown` pin the engine's side.
 The computed math builtins print the engine's own last digits, the same on every platform:
 `StrictMath` for `acos`, `asin`, `atan`, `atan2`, `cbrt`, `cos`, `cosh`, `exp`, `expm1`, `hypot`,
 `log`, `log10`, `log1p`, `pow`, `sin`, `sinh`, `tan` and `tanh` (`pow` gives C's 1 for a base of 1
-whatever the exponent and for a base of -1 with an infinite exponent, where Java gives NaN);
+whatever the exponent and for a base of -1 with an infinite exponent, where Java gives NaN, and
+`pow`, `atan2`, `hypot` and `log1p` pass on the NaN jq-ref passes on, so every sign matches);
 definitions over `StrictMath` for `acosh`, `asinh`, `atanh`, `exp2`, `exp10` and `log2`; Arm's
 optimized-routines for `erf`; FreeBSD's msun, fdlibm's code, for `erfc`; published formulas, or the
 owner's answer on issue #105, for `gamma`, `lgamma`, `lgamma_r`, `tgamma`, `j0`, `j1`, `jn`, `y0`,

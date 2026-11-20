@@ -10,8 +10,9 @@ package dev.rail8.jq.internal.op;
  * is the one jq-ref passes on. The conversions of an exponent or an order to {@code int} or {@code long} are x86-64's:
  * NaN and any value whose truncation does not fit become that type's minimum value.
  *
- * <p>{@link #acosh}, {@link #asinh}, {@link #atanh}, {@link #exp2}, {@link #exp10} and {@link #log2} are computed from
- * their definitions over {@code StrictMath}. jq-ref's results for them come from glibc and vary with the CPU, so their
+ * <p>{@link #pow}, {@link #atan2}, {@link #hypot} and {@link #log1p} are {@code StrictMath}'s with C's special results
+ * and jq-ref's NaNs. {@link #acosh}, {@link #asinh}, {@link #atanh}, {@link #exp2}, {@link #exp10} and {@link #log2}
+ * are computed from their definitions over {@code StrictMath}. jq-ref's results for them come from glibc and vary with the CPU, so their
  * last digits are this engine's own. They are exact where jq-ref is: on powers of two and of ten, and at zero, one
  * and infinity.
  */
@@ -187,11 +188,6 @@ final class Libm {
     return Math.nextAfter(x, y);
   }
 
-  /** C's {@code copysign}: {@code x}'s magnitude with {@code y}'s sign bit, a NaN's included. */
-  static double copysign(double x, double y) {
-    return Math.copySign(x, y);
-  }
-
   /** C's {@code ldexp}: {@code x} times 2 to the power of {@code e} converted to {@code int}, rounded once. */
   static double ldexp(double x, double e) {
     return Double.isNaN(x) ? x : Math.scalb(x, toInt(e));
@@ -311,11 +307,57 @@ final class Libm {
   }
 
   /**
-   * C's {@code pow}: {@code StrictMath.pow}, but 1 for a base of 1 whatever the exponent, NaN included, and for a base
-   * of -1 with an infinite exponent, where Java gives NaN.
+   * C's {@code pow}: {@code StrictMath.pow}, with C's special results and glibc's NaNs. It is 1 for an exponent of
+   * zero, for a base of 1 whatever the exponent, NaN included, and for a base of -1 with an infinite exponent, where
+   * Java gives NaN. A NaN base is passed on, without its sign for an odd integer exponent; otherwise a NaN exponent is
+   * passed on.
    */
   static double pow(double x, double y) {
-    return x == 1 || (x == -1 && Double.isInfinite(y)) ? 1 : StrictMath.pow(x, y);
+    if (y == 0 || x == 1) {
+      return 1;
+    }
+    if (Double.isNaN(x)) {
+      return oddInteger(y) ? Math.abs(x) : x;
+    }
+    if (Double.isNaN(y)) {
+      return y;
+    }
+    return x == -1 && Double.isInfinite(y) ? 1 : StrictMath.pow(x, y);
+  }
+
+  /** Whether {@code y} is an odd integer. */
+  private static boolean oddInteger(double y) {
+    return Math.abs(y) < 0x1p53 && y == Math.rint(y) && (long) y % 2 != 0;
+  }
+
+  /**
+   * C's {@code atan2(y, x)}: {@code StrictMath.atan2}, but a NaN argument is passed on, {@code x} when both are; Java
+   * leaves which one to the compiled code.
+   */
+  static double atan2(double y, double x) {
+    if (Double.isNaN(x)) {
+      return x;
+    }
+    return Double.isNaN(y) ? y : StrictMath.atan2(y, x);
+  }
+
+  /** C's {@code hypot}: {@code StrictMath.hypot}, but a NaN argument, {@code x} first, is passed on unless the other is infinite. */
+  static double hypot(double x, double y) {
+    if (Double.isInfinite(x) || Double.isInfinite(y)) {
+      return Double.POSITIVE_INFINITY;
+    }
+    if (Double.isNaN(x)) {
+      return x;
+    }
+    return Double.isNaN(y) ? y : StrictMath.hypot(x, y);
+  }
+
+  /** C's {@code log1p}: {@code StrictMath.log1p}, but a NaN is passed on and below -1 the result is {@link #INVALID}. */
+  static double log1p(double x) {
+    if (Double.isNaN(x)) {
+      return x;
+    }
+    return x < -1 ? INVALID : StrictMath.log1p(x);
   }
 
   /** {@code exp2}: {@code StrictMath.pow(2, x)}, exact on integers. */

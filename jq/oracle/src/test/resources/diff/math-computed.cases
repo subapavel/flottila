@@ -175,3 +175,161 @@ arg -c
 filter [[0, 0*-1, 1, -1, 2, 0.5, 5e-324, 1e300, infinite, -infinite, nan][] as $x | [0, 0*-1, 1, -1, 2, 0.5, 5e-324, 1e300, infinite, -infinite, nan][] as $y | pow($x; $y)]
 stdin null\n
 end
+
+# The signs of the computed functions' results, a NaN's included: each result r as copysign(1; r).
+
+case math-computed/acos-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; acos))
+stdin null\n
+end
+
+case math-computed/acosh-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; acosh))
+stdin null\n
+end
+
+case math-computed/asin-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; asin))
+stdin null\n
+end
+
+case math-computed/asinh-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; asinh))
+stdin null\n
+end
+
+case math-computed/atan-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; atan))
+stdin null\n
+end
+
+case math-computed/atanh-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; atanh))
+stdin null\n
+end
+
+case math-computed/cbrt-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; cbrt))
+stdin null\n
+end
+
+case math-computed/cos-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; cos))
+stdin null\n
+end
+
+case math-computed/cosh-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; cosh))
+stdin null\n
+end
+
+case math-computed/erf-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; erf))
+stdin null\n
+end
+
+case math-computed/erfc-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; erfc))
+stdin null\n
+end
+
+case math-computed/exp-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; exp))
+stdin null\n
+end
+
+case math-computed/exp10-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; exp10))
+stdin null\n
+end
+
+case math-computed/exp2-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; exp2))
+stdin null\n
+end
+
+case math-computed/expm1-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; expm1))
+stdin null\n
+end
+
+case math-computed/log-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; log))
+stdin null\n
+end
+
+case math-computed/log10-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; log10))
+stdin null\n
+end
+
+case math-computed/log1p-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; log1p))
+stdin null\n
+end
+
+case math-computed/log2-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; log2))
+stdin null\n
+end
+
+case math-computed/sin-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; sin))
+stdin null\n
+end
+
+case math-computed/sinh-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; sinh))
+stdin null\n
+end
+
+case math-computed/tan-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; tan))
+stdin null\n
+end
+
+case math-computed/tanh-signs
+arg -c
+filter [0, 0*-1, 1, -1, 0.5, -0.5, 1.5, -1.5, 2, -2, 5e-324, -5e-324, 1e300, -1e300, 1.7976931348623157e308, -1.7976931348623157e308, infinite, -infinite, nan, -nan] | map(copysign(1; tanh))
+stdin null\n
+end
+
+case math-computed/atan2-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 2, -2, 3, -3, 0.5, 1e300, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 2, -2, 3, -3, 0.5, 1e300, infinite, -infinite, nan, -nan][] as $y | copysign(1; atan2($x; $y))]
+stdin null\n
+end
+
+case math-computed/hypot-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 2, -2, 3, -3, 0.5, 1e300, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 2, -2, 3, -3, 0.5, 1e300, infinite, -infinite, nan, -nan][] as $y | copysign(1; hypot($x; $y))]
+stdin null\n
+end
+
+case math-computed/pow-signs
+arg -c
+filter [[0, 0*-1, 1, -1, 2, -2, 3, -3, 0.5, 1e300, infinite, -infinite, nan, -nan][] as $x | [0, 0*-1, 1, -1, 2, -2, 3, -3, 0.5, 1e300, infinite, -infinite, nan, -nan][] as $y | copysign(1; pow($x; $y))]
+stdin null\n
+end

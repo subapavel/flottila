@@ -48,7 +48,7 @@ import java.util.function.DoubleUnaryOperator;
  * {@code [mantissa, exponent]} and {@code [fraction, integer part]}. A value that is not a number raises jq's
  * "number required" error, the first argument checked first, before any number is read.
  *
- * <p>The exact functions are {@link Libm}'s and Java's ({@code Math.fabs}'s, {@code Math.copySign}'s). The computed
+ * <p>The exact functions are {@link Libm}'s and Java's ({@code Math.abs}'s, {@code Math.copySign}'s). The computed
  * ones are {@code StrictMath}'s, {@link Libm}'s definitions over it, {@link Erf}'s and {@link Erfc}'s; their last digits
  * are this engine's own, the same on every platform. Every one declares path NONE, is pure and builds its result
  * afresh; none ticks, and only the read of a non-short view's double charges ({@link Numbers#doubleValue}). The
@@ -80,7 +80,7 @@ public final class MathNatives {
     unary(ops, "significand", Libm::significand);
     unary(ops, "sqrt", Libm::sqrt);
     unary(ops, "trunc", Libm::trunc);
-    binary(ops, "copysign", Libm::copysign);
+    binary(ops, "copysign", Math::copySign);
     binary(ops, "drem", Libm::drem);
     binary(ops, "fdim", Libm::fdim);
     binary(ops, "fmax", Libm::fmax);
@@ -106,15 +106,16 @@ public final class MathNatives {
     unary(ops, "expm1", StrictMath::expm1);
     unary(ops, "log", StrictMath::log);
     unary(ops, "log10", StrictMath::log10);
-    unary(ops, "log1p", StrictMath::log1p);
     unary(ops, "sin", StrictMath::sin);
     unary(ops, "sinh", StrictMath::sinh);
     unary(ops, "tan", StrictMath::tan);
     unary(ops, "tanh", StrictMath::tanh);
-    binary(ops, "atan2", StrictMath::atan2);
-    binary(ops, "hypot", StrictMath::hypot);
-    // Computed: definitions over StrictMath, and the translated error functions.
+    // Computed: StrictMath with C's special results and NaNs.
+    unary(ops, "log1p", Libm::log1p);
+    binary(ops, "atan2", Libm::atan2);
+    binary(ops, "hypot", Libm::hypot);
     binary(ops, "pow", Libm::pow);
+    // Computed: definitions over StrictMath, and the translated error functions.
     unary(ops, "acosh", Libm::acosh);
     unary(ops, "asinh", Libm::asinh);
     unary(ops, "atanh", Libm::atanh);
