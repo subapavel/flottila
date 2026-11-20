@@ -89,6 +89,30 @@ class PgDeploymentStoreIT extends DeploymentStoreContract {
                 "the lost lock writes nothing");
     }
 
+    /**
+     * A save and a delete under a lock whose generation another writer raised, by plain SQL, both fail and write nothing: the
+     * generation is compared and set in the transaction that writes the row.
+     */
+    @Test
+    void aWriteUnderAGenerationRaisedMeanwhileFailsAndWritesNothing() {
+        save(record("shop", "1.0.0", C_1, SHA_1, AT));
+        DeploymentStore.PoolLock held = lock();
+        long read = held.snapshot().generation();
+        pool.query("update deploy_pool set generation = generation + 1").execute().await();
+
+        assertTrue(held.save(record("billing", "1.0.0", C_2, SHA_2, AT)).transform(done -> io.vertx.core.Future.succeededFuture(done.failed())).await(),
+                "the save under the stale generation fails");
+        assertTrue(held.delete("shop").transform(done -> io.vertx.core.Future.succeededFuture(done.failed())).await(),
+                "the delete under it too");
+        held.close().await();
+
+        List<String> rows = new java.util.ArrayList<>();
+        pool.query("select package from deployments order by package").execute().await().forEach(row -> rows.add(row.getString(0)));
+        assertEquals(List.of("shop"), rows, "no row was written or deleted");
+        long now = pool.query("select generation from deploy_pool").execute().await().iterator().next().getLong(0);
+        assertEquals(read + 1, now, "only the plain SQL raised the generation");
+    }
+
     /** delete removes the row from the {@code deployments} table, read with plain SQL: the other package's row stays. */
     @Test
     void aDeleteRemovesTheTableRow() {

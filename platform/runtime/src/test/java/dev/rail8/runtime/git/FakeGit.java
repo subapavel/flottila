@@ -116,7 +116,7 @@ final class FakeGit implements PackageRepositoriesContract.Source {
         private final Map<String, Map<String, String>> fetched = new HashMap<>();
         private final Set<String> reading = new HashSet<>();
         private boolean started;
-        private boolean expired;
+        private volatile boolean expired;
         private Timer.Cancellable deadline;
 
         Session(String path, Optional<String> ref, boolean deployed, Duration timeout, long maxBytes, long maxPackageBytes, Timer timer,
@@ -176,6 +176,11 @@ final class FakeGit implements PackageRepositoriesContract.Source {
         @Override
         public void close() {
             if (deadline != null) deadline.cancel();
+        }
+
+        @Override
+        public void abort() {
+            expired = true;   // its fetches never wait: the next one fails as timed out
         }
 
         private static void complete(Map<String, FakeCommit> cached, String id, String repository, String target) throws GitFailure {

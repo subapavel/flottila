@@ -165,9 +165,8 @@ import java.util.stream.Stream;
  * read under the lock, and waits for it within the stop deadline: the commit point. A save that fails
  * refuses a first deploy ({@link Kind#FAILED} "the deploy record was not written: &lt;cause&gt;", or "whether the deploy record was
  * written is unknown: ..." when it did not answer in time; the cleanup below) and rolls a
- * redeploy back as a failed start does (below), with that line as its first problem; when the node's Postgres pool refused the
- * save a connection ({@link PgTx#refusedByThePool}) the refusal is {@link Kind#BUSY} instead, retryable. Either way the generation
- * this node applied stays behind, so its next tick installs whatever the pool's records hold. Only once the record is written is the
+ * redeploy back as a failed start does (below), with that line as its first problem. Either way the generation this node applied
+ * stays behind, so its next tick installs whatever the pool's records hold. Only once the record is written is the
  * listing replaced, and {@code packages/<name>/} is pruned to the current directory, the previous one (the last other content the
  * package ran: a deploy of the running content keeps it), every one a running flow was built from — the directories this node
  * keeps — and every one a record pins (a
@@ -233,7 +232,8 @@ import java.util.stream.Stream;
  * a queue that cannot answer is the node's {@link IOException}, and only when every question that failed was one the node's Postgres
  * pool refused a connection ({@link PgTx#refusedByThePool}) and no flow holds items {@link Kind#BUSY}, retryable). Then, under the
  * pool's lock, its record is deleted in one transaction that raises the pool's generation, as a save does: the commit point. A delete
- * that fails is the node's {@link IOException}, one the pool refused {@link Kind#BUSY}; either changes nothing else.
+ * that fails is the node's {@link IOException} ("whether the deploy record ... was deleted is unknown: ..." when it did not answer in
+ * time), and changes nothing else; the node's next tick follows whatever the pool's records hold.
  * Then every flow of it that runs stops and closes as phase A stops a flow (a stop that fails is a WARNING and counts as settled;
  * an at-least-once one is asked for queue items again once its worker drained, items that arrived meanwhile a WARNING),
  * the listing drops it, and {@code packages/<name>/} is pruned of every directory no remaining record pins and no remaining flow
@@ -332,6 +332,12 @@ public final class Deployments {
     private final Map<String, String> behind = new ConcurrentSkipListMap<>();
     /** Why the last tick could not read the pool's records; null once a tick read them. */
     private volatile String unread;
+    /** Why the last tick that read the pool's records failed to bring this node to them; null once one did. */
+    private volatile String unreconciled;
+    /** Whether a tick of {@link #follow} holds {@link #deploying} now; written under it. */
+    private boolean following;
+    /** The git session of the install a tick runs now; null otherwise. {@link #close} aborts its fetch. */
+    private volatile PackageRepositories tickFetch;
     /** The pool's lock while a deploy or an undeploy holds it (under {@link #deploying}); null otherwise. */
     private PoolLock poolLock;
     /** The end of the tick of {@link #follow} in flight; null while none runs. */
@@ -899,8 +905,8 @@ public final class Deployments {
         lockForChange();   // closing read where the lock decides, as a deploy reads it
         try {
             if (closing) throw stopping();
-            poolLocked();
             try {
+                poolLocked();
                 Deployed listed = deployed.get(name);
                 if (listed == null) throw refused(Kind.NOT_FOUND, "no package '" + name + "' is deployed");
                 String version = listed.pkg().version();
@@ -911,9 +917,9 @@ public final class Deployments {
                     PoolLock pool = poolLock;
                     Future<Long> deleted = bounded(Future.future(done -> pool.delete(name).onComplete(done)), "the delete of the deploy record");
                     deleted.otherwiseEmpty().await();
-                    if (deleted.failed()) {
-                        String undeleted = "the deploy record of package '" + name + "' was not deleted: " + reason(deleted.cause());
-                        if (PgTx.refusedByThePool(deleted.cause())) throw refused(Kind.BUSY, undeleted);   // retryable, nothing changed
+                    if (deleted.failed()) {   // nothing else changed; the node's next tick follows whatever the pool holds
+                        String undeleted = (deleted.cause() instanceof TimeoutException ? "whether the deploy record of package '" + name + "' was deleted is unknown: "
+                                : "the deploy record of package '" + name + "' was not deleted: ") + reason(deleted.cause());
                         throw new IOException(undeleted, deleted.cause());
                     }
                     applied = deleted.result();
@@ -1079,6 +1085,8 @@ public final class Deployments {
         synchronized (follower) {
             if (nextTick != null) nextTick.cancel();   // a tick in flight ends before the lock is taken below
         }
+        PackageRepositories fetch = tickFetch;
+        if (fetch != null) fetch.abort();   // a tick's git fetch stops now, not at RAIL8_GIT_TIMEOUT; one it opens later is aborted at its open
         deploying.lock();
         try {
             List<Flow> running = deployed.values().stream().flatMap(d -> d.flows().stream()).filter(Flow::runs).toList();
@@ -1149,7 +1157,8 @@ public final class Deployments {
      * generation moved since this node last applied one or a package is behind, installs and undeploys here what they name. It
      * writes no record and no audit row. A deploy, an undeploy or a restore holding the node's lock skips the tick, and one that
      * comes while the tick runs waits for it ({@link #lockForChange}). A read that fails or does not answer within the stop
-     * deadline changes nothing and turns {@link #health} DEGRADED until a tick reads the records. Blocking: on a virtual thread.
+     * deadline changes nothing and turns {@link #health} DEGRADED until a tick reads the records; so does a tick that fails, until a
+     * tick brings the node to them. {@link #close} aborts a git fetch the tick runs. Blocking: on a virtual thread.
      *
      * @throws IOException the data directory cannot be written: the node's failure
      */
@@ -1171,7 +1180,16 @@ public final class Deployments {
                     return;
                 }
                 unread = null;
-                reconcile(read.result());
+                following = true;
+                try {
+                    reconcile(read.result());
+                    unreconciled = null;
+                } catch (IOException | RuntimeException failed) {
+                    unreconciled = reason(failed);
+                    throw failed;
+                } finally {
+                    following = false;
+                }
             } finally {
                 deploying.unlock();
             }
@@ -1235,6 +1253,8 @@ public final class Deployments {
         List<String> lagging = new ArrayList<>();
         String notRead = unread;
         if (notRead != null) lagging.add("the pool's records could not be read: " + notRead);
+        String notReconciled = unreconciled;
+        if (notReconciled != null) lagging.add("the last tick could not bring this node to the pool's records: " + notReconciled);
         behind.forEach((name, why) -> {
             if (runs(name)) lagging.add("package " + name + " runs version " + deployed.get(name).pkg().version() + ": " + why);
         });
@@ -1246,6 +1266,17 @@ public final class Deployments {
     }
 
     /**
+     * {@code repos}, kept as {@link #tickFetch} while a tick runs so that {@link #close} can abort its fetch; aborted at once when a
+     * close began before it was kept.
+     */
+    private PackageRepositories fetching(PackageRepositories repos) {
+        if (!following) return repos;
+        tickFetch = repos;
+        if (closing) repos.abort();   // a close that read tickFetch before it was set aborted nothing
+        return repos;
+    }
+
+    /**
      * One record of {@link #reconcile}: installed — true — or, refused, {@link #behind} with its problems: a package that ran
      * runs on as it did, one that did not is listed FAILED; either is an ERROR log once per new reason. Only an IOException of the
      * data directory throws.
@@ -1254,7 +1285,7 @@ public final class Deployments {
         Path folder = null;
         try {
             GitCache cache = git.orElseThrow(() -> refused(Kind.FAILED, "the node has no RAIL8_GIT_BASE: it reads no commit"));
-            try (PackageRepositories repos = cache.open()) {
+            try (PackageRepositories repos = fetching(cache.open())) {
                 Commits commits = (repository, commit) -> restored(cache, repos, repository, commit);
                 Commit commit;
                 try {
@@ -1286,6 +1317,7 @@ public final class Deployments {
                     row.dependencies(), row));
             return false;
         } finally {
+            tickFetch = null;
             Path left = folder;   // moved into packages/ by now, unless the package was refused or a kept directory served
             if (left != null) quietly("the folder " + left.getFileName() + " of .incoming could not be deleted", () -> deleteTree(left));
         }
@@ -1426,9 +1458,8 @@ public final class Deployments {
                     // the generation this node applied stays behind: its next tick installs whatever the pool holds
                     String unrecorded = (saved.cause() instanceof TimeoutException ? "whether the deploy record was written is unknown: "
                             : "the deploy record was not written: ") + reason(saved.cause());
-                    Kind unwritten = PgTx.refusedByThePool(saved.cause()) ? Kind.BUSY : Kind.FAILED;   // a pool refusal is retryable
-                    if (running == null) throw refused(unwritten, unrecorded);   // a first deploy: the cleanup stops the flows that started
-                    throw rollBack(unwritten, version, "was not recorded", List.of(unrecorded), running, retiring, started, packageDir, built, again);
+                    if (running == null) throw refused(Kind.FAILED, unrecorded);   // a first deploy: the cleanup stops the flows that started
+                    throw rollBack(Kind.FAILED, version, "was not recorded", List.of(unrecorded), running, retiring, started, packageDir, built, again);
                 }
                 record = saving;
                 applied = saved.result();

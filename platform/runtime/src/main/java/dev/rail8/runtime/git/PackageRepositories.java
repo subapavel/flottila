@@ -49,6 +49,12 @@ public interface PackageRepositories extends AutoCloseable {
     void close();
 
     /**
+     * Stops the fetch of this instance that runs now and fails every later one, as its deadline passing does (timed out), from any
+     * thread; never fails. A commit it answered stays readable.
+     */
+    void abort();
+
+    /**
      * Refuses what {@link #forDeploy} refuses of the names it is given, before anything is fetched: a repository's name that is not
      * one segment of at most 100 letters, digits, {@code .}, {@code _} and {@code -}, or a commit that is neither 40 hex digits
      * nor, outside a deployed environment, a ref.
