@@ -129,10 +129,13 @@ public final class PgDeploymentStore implements DeploymentStore {
             return write(DELETE, Tuple.of(name));
         }
 
-        /** {@code sql} with the generation raised, in one transaction; a generation that moved writes nothing. */
+        /**
+         * {@code sql} with the generation raised, in one transaction; a generation that moved writes nothing, and neither does a
+         * lock that was freed: its connection is closed, and the client's throw is the write's failure.
+         */
         private Future<Long> write(String sql, Tuple args) {
             long expected = generation;
-            return conn.begin().compose(tx -> conn.preparedQuery(RAISE).execute(Tuple.of(expected)).compose(raised -> {
+            return Future.<Void>succeededFuture().compose(start -> conn.begin()).compose(tx -> conn.preparedQuery(RAISE).execute(Tuple.of(expected)).compose(raised -> {
                 if (raised.rowCount() == 0) {
                     return Future.<Long>failedFuture(new IllegalStateException("the pool's generation is no longer " + expected));
                 }
@@ -144,7 +147,7 @@ public final class PgDeploymentStore implements DeploymentStore {
 
         @Override
         public Future<Void> close() {
-            return conn.query(UNLOCK).execute().transform(unlocked -> conn.close()).otherwiseEmpty();
+            return Future.<Void>succeededFuture().compose(start -> conn.query(UNLOCK).execute()).transform(unlocked -> conn.close()).otherwiseEmpty();
         }
     }
 }
